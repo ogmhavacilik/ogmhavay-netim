@@ -1,0 +1,7 @@
+{
+  "name": "OGM Hava Araçları Yönetim Sistemi",
+  "description": "Orman Genel Müdürlüğü hava araçları durum takip, bakım yönetimi ve faaliyet takvimi portalı.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
