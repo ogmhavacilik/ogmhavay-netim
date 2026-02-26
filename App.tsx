@@ -34,7 +34,7 @@ const App = () => {
   const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxcELr64A09o-x3jByNreNHbiurVHrNnGGV63XgQgKvr4kOz9gGqXLLINRRVAX8LcBHDQ/exec"; 
   const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzD1GdmzKz2Q3r1-Whq8ueFW9ixN6faTjHkOUdoLxoN2NIRY6hANFlrMXQcVTGk1ZILSg/exec";
   const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdmkAhcQgC6kqHtEKUCKfcc5JKphOzyt_VbOfuI5hv6qCuyRl-k6h46-gaIGakydo/exec";
-  const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxz9VHGkSQ9Go9Yt2UHcIxN08vUSXbGeQJs7Jgar86bFXlmC977OD0dgumFcZgXK252/exec";
+  const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzgBWsS3BDcfba2NM9CJi9W9Q5Dn0Fh5KO31wCb0vRygcH2z9F0FatqoxbZ5BotioPnrQ/exec";
   
   const initialSyncDone = useRef(false);
 
@@ -258,20 +258,39 @@ const App = () => {
   const runGlobalSync = useCallback(async () => {
     setIsSyncing(true);
     try {
+      const fetchedFleet: Aircraft[] = [];
+
       await Promise.all(SHEET_CONFIGS.map(async (config) => {
         try {
           const data = await fetchAircraftDataFromAppsScript(config.appsScriptUrl, config);
-          if (data && data.length > 0) handleSyncFromExcel(data, config.aircraftType);
+          if (data && data.length > 0) {
+            handleSyncFromExcel(data, config.aircraftType);
+            fetchedFleet.push(...(data as Aircraft[]));
+          }
         } catch (e) {
           console.error(`Sync error for ${config.aircraftType}:`, e);
         }
       }));
 
-      // Log tablosundan geçmiş faaliyet verilerini çek
+      // Önce güncel verileri log tablosuna kaydet
+      if (LOG_SCRIPT_URL && fetchedFleet.length > 0) {
+        try {
+          await fetch(LOG_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ action: 'saveLogs', fleetData: fetchedFleet })
+          });
+        } catch (err) {
+          console.error("Log save error:", err);
+        }
+      }
+
+      // Sonra log tablosundan geçmiş faaliyet verilerini çek
       if (LOG_SCRIPT_URL) {
         try {
           const response = await fetch(LOG_SCRIPT_URL, {
             method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({ action: 'getFaaliyetLog' })
           });
           const logData = await response.json();
@@ -282,21 +301,34 @@ const App = () => {
               
               logData.forEach((logEntry: any) => {
                 const kuyrukNo = String(logEntry.kuyrukNo).trim();
-                const tarihStr = String(logEntry.tarih).trim(); // dd.MM.yyyy
+                const tarihStr = String(logEntry.tarih).trim();
                 const durumAyrintisi = String(logEntry.durum).trim().toUpperCase();
                 const analizKodu = logEntry.analizKodu ? String(logEntry.analizKodu).trim() : null;
                 
                 if (!kuyrukNo || !tarihStr) return;
                 
-                const parts = tarihStr.split('.');
-                if (parts.length === 3) {
-                  const dayNum = parseInt(parts[0], 10);
-                  const monthNum = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
-                  const yearNum = parseInt(parts[2], 10);
-                  
-                  // Sadece mevcut ayın verilerini al
+                let dayNum = -1, monthNum = -1, yearNum = -1;
+                
+                if (tarihStr.includes('T') || (tarihStr.includes('-') && !tarihStr.includes('.'))) {
+                  const d = new Date(tarihStr);
+                  if (!isNaN(d.getTime())) {
+                    dayNum = d.getDate();
+                    monthNum = d.getMonth();
+                    yearNum = d.getFullYear();
+                  }
+                } else if (tarihStr.includes('.')) {
+                  const parts = tarihStr.split('.');
+                  if (parts.length === 3) {
+                    dayNum = parseInt(parts[0], 10);
+                    monthNum = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
+                    yearNum = parseInt(parts[2], 10);
+                  }
+                }
+                
+                if (dayNum !== -1) {
+                  // Sadece mevcut ayın geçmiş günlerinin verilerini al (bugün hariç)
                   const now = new Date();
-                  if (monthNum === now.getMonth() && yearNum === now.getFullYear()) {
+                  if (monthNum === now.getMonth() && yearNum === now.getFullYear() && dayNum !== now.getDate()) {
                     let code: DailyStatusCode = 'F'; // Varsayılan FAAL
                     
                     if (analizKodu) {
@@ -319,6 +351,13 @@ const App = () => {
                         ...newActivities[existsIdx],
                         dailyStatuses: { ...newActivities[existsIdx].dailyStatuses, [dayNum]: code }
                       };
+                    } else {
+                      newActivities.push({
+                        kuyrukNo: kuyrukNo,
+                        cagriKodu: `ORMAN-${kuyrukNo.split('-')[1] || 'XX'}`,
+                        tip: logEntry.tip || 'Bilinmiyor',
+                        dailyStatuses: { [dayNum]: code }
+                      });
                     }
                   }
                 }
