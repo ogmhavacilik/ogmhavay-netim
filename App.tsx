@@ -8,6 +8,7 @@ import SplashScreen from './components/SplashScreen';
 import AdminPanel from './components/AdminPanel';
 import LandingPage from './components/LandingPage';
 import DataUpdateForm from './components/DataUpdateForm';
+import GovdeSorgulaModal from './components/GovdeSorgulaModal';
 import { Aircraft, Status, SheetConfig, AppNotification, DailyStatusCode, AircraftActivity } from './types';
 import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM } from './services/sheetService';
 
@@ -31,9 +32,14 @@ const App = () => {
   
   const [filterType, setFilterType] = useState('Tümü');
   const [filterTail, setFilterTail] = useState('');
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [filterStartDate, setFilterStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
   const [filterEndDate, setFilterEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
   const [hideKazaKirim, setHideKazaKirim] = useState(true);
+
+  const [historicalFleet, setHistoricalFleet] = useState<Aircraft[] | null>(null);
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+  const [isGovdeSorguOpen, setIsGovdeSorguOpen] = useState(false);
 
   const [authenticatedTypes, setAuthenticatedTypes] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<{ type: string, action: () => void } | null>(null);
@@ -225,7 +231,11 @@ const App = () => {
   };
 
   const exportFleetToExcel = () => {
-    const dateStr = new Date().toLocaleDateString('tr-TR');
+    const isHistorical = historicalFleet !== null;
+    const targetDate = new Date(filterDate);
+    const dateStr = targetDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const fileNameDate = dateStr.replace(/\./g, '-');
+    const fileName = isHistorical ? `Genel_Rapor_${fileNameDate}.xls` : 'Genel_Hava_Araci_Durum_Raporu.xls';
     
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -283,7 +293,7 @@ const App = () => {
 
     const url = 'data:application/vnd.ms-excel;base64,' + btoa(unescape(encodeURIComponent(html)));
     const link = document.createElement('a');
-    link.download = 'Genel_Hava_Araci_Durum_Raporu.xls';
+    link.download = fileName.replace('.xls', '.xlsx');
     link.href = url;
     link.click();
   };
@@ -591,8 +601,109 @@ const App = () => {
     return () => clearInterval(interval);
   }, [runGlobalSync]);
 
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (filterDate === todayStr) {
+      setHistoricalFleet(null);
+      return;
+    }
+
+    const fetchHistory = async () => {
+      setIsFetchingHistory(true);
+      try {
+        const url = "https://script.google.com/macros/s/AKfycbxh6SyGVZfoby2CYc7FNk3JJQQW-P4Uh-Wx4ZupaRydrpY74FDblcyQBGac9XrphnQW/exec";
+        const res = await fetch(url, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'getAircraftData',
+            sheetId: '1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg',
+            mapping: {
+              id: 'A2:A10000',
+              tarih: 'B2:B10000',
+              kuyrukNo: 'C2:C10000',
+              tip: 'D2:D10000',
+              govdeUcusSaati: 'E2:E10000',
+              faydaliSaat: 'F2:F10000',
+              konum: 'G2:G10000',
+              durum: 'H2:H10000',
+              durumAyrintisi: 'I2:I10000',
+              aciklama: 'J2:J10000',
+              analizKodu: 'K2:K10000'
+            }
+          })
+        });
+        const data = await res.json();
+        
+        const targetDate = new Date(filterDate);
+        const targetDay = targetDate.getDate();
+        const targetMonth = targetDate.getMonth();
+        const targetYear = targetDate.getFullYear();
+
+        const filtered = data.filter((row: any) => {
+          if (!row.tarih) return false;
+          const rowDate = new Date(row.tarih);
+          return rowDate.getDate() === targetDay && 
+                 rowDate.getMonth() === targetMonth && 
+                 rowDate.getFullYear() === targetYear;
+        });
+
+        const parseHour = (val: any): number | null => {
+          if (val === null || val === undefined || String(val).trim() === "" || String(val).toUpperCase() === "N/A") return null;
+          if (typeof val === 'string' && val.includes('T') && val.includes('Z')) {
+            const d = new Date(val);
+            const epoch = new Date(Date.UTC(1899, 11, 30));
+            return (d.getTime() - epoch.getTime()) / (1000 * 60 * 60);
+          }
+          const s = String(val).trim().replace(',', '.');
+          if (s.includes(':')) {
+            const parts = s.split(':').map(Number);
+            if (parts.length >= 2) return (parts[0] || 0) + (parts[1] || 0) / 60;
+          }
+          const n = parseFloat(s);
+          return isNaN(n) ? null : n;
+        };
+
+        const historyFleet: Aircraft[] = filtered.map((row: any) => {
+          const govdeSaat = parseHour(row.govdeUcusSaati);
+          let h = govdeSaat !== null ? Math.floor(govdeSaat) : 0;
+          let m = govdeSaat !== null ? Math.round((govdeSaat - h) * 60) : 0;
+          if (m === 60) {
+            h += 1;
+            m = 0;
+          }
+          const govdeStr = govdeSaat !== null ? `${h}:${m.toString().padStart(2, '0')}` : '-';
+
+          return {
+            kuyrukNo: row.kuyrukNo || '',
+            cagriKodu: `ORMAN-${(row.kuyrukNo || '').split('-')[1] || 'XX'}`,
+            tip: row.tip || '',
+            durum: row.durum || '',
+            durumAyrintisi: row.durumAyrintisi || '',
+            konum: row.konum || '',
+            faydaliSaat: parseHour(row.faydaliSaat) || 0,
+            aciklama: row.aciklama || '',
+            govdeUcusSaati: govdeStr,
+            assignedCode: row.analizKodu as DailyStatusCode || 'F',
+            appsScriptUrl: '',
+            sheetId: ''
+          };
+        });
+
+        setHistoricalFleet(historyFleet);
+      } catch (err) {
+        console.error("Historical data fetch error:", err);
+        setHistoricalFleet([]);
+      } finally {
+        setIsFetchingHistory(false);
+      }
+    };
+
+    fetchHistory();
+  }, [filterDate]);
+
   const filteredFleet = useMemo(() => {
-    const filtered = fleet.filter(a => {
+    const sourceFleet = historicalFleet || fleet;
+    const filtered = sourceFleet.filter(a => {
       const s = searchTerm.toLowerCase();
       const matchesSearch = a.kuyrukNo.toLowerCase().includes(s) || a.konum.toLowerCase().includes(s) || (a.tip && a.tip.toLowerCase().includes(s));
       const matchesType = filterType === 'Tümü' || a.tip === filterType;
@@ -747,18 +858,30 @@ const App = () => {
           <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Kuyruk No</label>
           <input type="text" value={filterTail} onChange={(e) => setFilterTail(e.target.value)} placeholder="Örn: OR-2021" className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs w-32" />
         </div>
-        <div className="flex flex-col">
-          <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Başlangıç Tarihi</label>
-          <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs" />
-        </div>
-        <div className="flex flex-col">
-          <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Bitiş Tarihi</label>
-          <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs" />
-        </div>
+        {showActivity ? (
+          <>
+            <div className="flex flex-col">
+              <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Başlangıç Tarihi</label>
+              <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs" />
+            </div>
+            <div className="flex flex-col">
+              <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Bitiş Tarihi</label>
+              <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs" />
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col">
+            <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Tarih</label>
+            <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs" />
+          </div>
+        )}
         <div className="flex items-center ml-auto bg-black/40 px-4 py-2.5 rounded-xl border border-white/10">
           <input type="checkbox" id="hideKazaKirim" checked={hideKazaKirim} onChange={(e) => setHideKazaKirim(e.target.checked)} className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 focus:ring-2" />
           <label htmlFor="hideKazaKirim" className="ml-2 text-xs font-black text-white uppercase tracking-widest cursor-pointer">Kaza Kırımları Gizle</label>
         </div>
+        <button onClick={() => setIsGovdeSorguOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl ml-2">
+          Gövde Uçuş Saati Sorgula
+        </button>
       </div>
 
       <div className="mb-14"><Dashboard fleet={filteredFleet} /></div>
@@ -780,6 +903,11 @@ const App = () => {
           <div className="flex justify-between items-end mb-12 px-6">
              <div>
                 <h2 className="text-6xl font-black text-white uppercase tracking-tighter italic">GENEL HAVA ARACI DURUM RAPORU</h2>
+                {historicalFleet !== null && (
+                  <div className="mt-4 bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-2 rounded-xl inline-block font-black text-xs uppercase tracking-widest">
+                    Bu rapor geçmiş tarihli veridir.
+                  </div>
+                )}
                 <p className="text-emerald-500 text-[10px] font-black uppercase tracking-[0.8em] mt-4 border-l-4 border-emerald-500 pl-4">Platform Bazlı Durum ve Gövde Uçuş Saati</p>
              </div>
              <div className="flex items-center space-x-6">
@@ -926,6 +1054,8 @@ const App = () => {
           </div>
         </div>
       )}
+
+      <GovdeSorgulaModal isOpen={isGovdeSorguOpen} onClose={() => setIsGovdeSorguOpen(false)} />
     </Layout>
   );
 };
