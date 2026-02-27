@@ -11,16 +11,21 @@ interface ActivityGridProps {
 }
 
 const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endDate, title, onExport }) => {
-  const getDaysInRange = (start: Date) => {
+  const getDaysInRange = (start: Date, end: Date) => {
     const dates = [];
-    const year = start.getFullYear();
-    const month = start.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    for (let i = 1; i <= daysInMonth; i++) dates.push(new Date(year, month, i));
+    let currentDate = new Date(start);
+    currentDate.setHours(0, 0, 0, 0);
+    const lastDate = new Date(end);
+    lastDate.setHours(0, 0, 0, 0);
+
+    while (currentDate <= lastDate) {
+      dates.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
     return dates;
   };
 
-  const visibleDates = getDaysInRange(startDate);
+  const visibleDates = getDaysInRange(startDate, endDate);
   const totalDaysInMonth = visibleDates.length;
 
   const getStatusClass = (code: DailyStatusCode) => {
@@ -49,8 +54,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     let currentStreak = 0;
 
     visibleDates.forEach(date => {
-      const day = date.getDate();
-      const s = activity.dailyStatuses[day] || '';
+      const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const s = activity.dailyStatuses[dateStrKey] || '';
       
       if (['B', 'BB', 'KM'].includes(s)) bakim++;
       else if (['A', 'PB', 'KK'].includes(s)) ariza++;
@@ -169,7 +174,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                         <td className="border border-black text-center font-bold px-1">{act.kuyrukNo}</td>
                         <td className="border border-black text-center px-1 font-bold">{act.tip}</td>
                         {visibleDates.map((date, dIdx) => {
-                          const status = act.dailyStatuses[date.getDate()] || '';
+                          const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                          const status = act.dailyStatuses[dateStrKey] || '';
                           return (
                             <td key={dIdx} className={`border border-black text-center text-[10px] ${getStatusClass(status)}`} style={getStatusStyle(status)}>
                               {status === 'F' ? '' : status}

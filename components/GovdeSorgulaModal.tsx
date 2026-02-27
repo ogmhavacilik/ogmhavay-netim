@@ -169,9 +169,12 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
         <meta charset="utf-8" />
         <style>
           table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
-          th, td { border: 1px solid black; padding: 5px; text-align: center; vertical-align: middle; font-size: 12px; }
-          .header-row th { background-color: #064e3b; color: white; font-weight: bold; }
-          .title-row { background-color: #f2f2f2; font-weight: bold; font-size: 14px; }
+          th, td { border: 1px solid #e2e8f0; padding: 12px 8px; text-align: center; vertical-align: middle; font-size: 12px; }
+          .header-row th { background-color: #064e3b; color: white; font-weight: bold; font-size: 11px; }
+          .title-row { background-color: #f8fafc; font-weight: bold; font-size: 14px; color: #064e3b; }
+          .kuyruk-col { font-weight: bold; color: #064e3b; font-size: 14px; }
+          .saat-col { font-weight: bold; color: #475569; }
+          .fark-col { font-weight: bold; color: #2563eb; font-size: 14px; background-color: #eff6ff; }
         </style>
       </head>
       <body>
@@ -183,7 +186,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
             <td colspan="4" class="title-row" style="text-align: center;">GÖVDE UÇUŞ SAATİ SORGULAMA SONUÇLARI (${type})</td>
           </tr>
           <tr>
-            <td colspan="4" style="text-align: center; font-weight: bold;">Başlangıç: ${startDate} | Bitiş: ${endDate}</td>
+            <td colspan="4" style="text-align: center; font-weight: bold; color: #475569; background-color: #f8fafc;">Başlangıç: ${startDate} | Bitiş: ${endDate}</td>
           </tr>
           <tr class="header-row">
             <th>KUYRUK NO</th>
@@ -196,10 +199,10 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
     results.forEach(r => {
       html += `
         <tr>
-          <td style="font-weight: bold;">${r.kuyrukNo}</td>
-          <td style="mso-number-format:'\@';">${formatHour(r.baslangicSaat)}</td>
-          <td style="mso-number-format:'\@';">${formatHour(r.bitisSaat)}</td>
-          <td style="font-weight: bold; color: #2563eb; mso-number-format:'\@';">${formatHour(r.fark)}</td>
+          <td class="kuyruk-col">${r.kuyrukNo}</td>
+          <td class="saat-col" style="mso-number-format:'\@';">${formatHour(r.baslangicSaat)}</td>
+          <td class="saat-col" style="mso-number-format:'\@';">${formatHour(r.bitisSaat)}</td>
+          <td class="fark-col" style="mso-number-format:'\@';">${formatHour(r.fark)}</td>
         </tr>
       `;
     });
@@ -210,11 +213,13 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
       </html>
     `;
 
-    const url = 'data:application/vnd.ms-excel;base64,' + btoa(unescape(encodeURIComponent(html)));
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.download = `Govde_Ucus_Saati_${type}_${startDate}_${endDate}.xlsx`;
+    link.download = `Govde_Ucus_Saati_${type}_${startDate}_${endDate}.xls`;
     link.href = url;
     link.click();
+    URL.revokeObjectURL(url);
   };
 
   return (

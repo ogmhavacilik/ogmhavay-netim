@@ -291,18 +291,23 @@ const App = () => {
       </html>
     `;
 
-    const url = 'data:application/vnd.ms-excel;base64,' + btoa(unescape(encodeURIComponent(html)));
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.download = fileName.replace('.xls', '.xlsx');
+    link.download = fileName;
     link.href = url;
     link.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleManualOverride = (kuyrukNo: string, newCode: DailyStatusCode) => {
     setFleet(prev => prev.map(a => a.kuyrukNo === kuyrukNo ? { ...a, assignedCode: newCode } : a));
+    const now = new Date();
+    const currentDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    
     setActivities(prev => prev.map(act => act.kuyrukNo === kuyrukNo ? {
       ...act,
-      dailyStatuses: { ...act.dailyStatuses, [new Date().getDate()]: newCode }
+      dailyStatuses: { ...act.dailyStatuses, [currentDateStr]: newCode }
     } : act));
     
     setNotifications(prev => [{
@@ -369,20 +374,21 @@ const App = () => {
         setActivities(prevActivities => {
           let newActivities = [...prevActivities];
           const existsIdx = newActivities.findIndex(act => act.kuyrukNo === incoming.kuyrukNo);
-          const currentDayNum = new Date().getDate();
+          const now = new Date();
+          const currentDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
           const newCode = (incoming.assignedCode || 'F') as DailyStatusCode;
 
           if (existsIdx !== -1) {
             newActivities[existsIdx] = {
               ...newActivities[existsIdx],
-              dailyStatuses: { ...newActivities[existsIdx].dailyStatuses, [currentDayNum]: newCode }
+              dailyStatuses: { ...newActivities[existsIdx].dailyStatuses, [currentDateStr]: newCode }
             };
           } else {
             newActivities.push({
               kuyrukNo: incoming.kuyrukNo || '',
               cagriKodu: incoming.cagriKodu || `ORMAN-${incoming.kuyrukNo?.split('-')[1] || 'XX'}`,
               tip: incoming.tip || platform,
-              dailyStatuses: { [currentDayNum]: newCode }
+              dailyStatuses: { [currentDateStr]: newCode }
             });
           }
           return newActivities;
@@ -437,9 +443,11 @@ const App = () => {
             }
             
             if (dayNum !== -1) {
-              // Sadece mevcut ayın geçmiş günlerinin verilerini al (bugün hariç)
+              const dateStrKey = `${yearNum}-${String(monthNum + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
               const now = new Date();
-              if (monthNum === now.getMonth() && yearNum === now.getFullYear() && dayNum !== now.getDate()) {
+              const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+              
+              if (dateStrKey !== todayStr) {
                 let code: DailyStatusCode = 'F'; // Varsayılan FAAL
                 
                 if (analizKodu) {
@@ -460,14 +468,14 @@ const App = () => {
                 if (existsIdx !== -1) {
                   newActivities[existsIdx] = {
                     ...newActivities[existsIdx],
-                    dailyStatuses: { ...newActivities[existsIdx].dailyStatuses, [dayNum]: code }
+                    dailyStatuses: { ...newActivities[existsIdx].dailyStatuses, [dateStrKey]: code }
                   };
                 } else {
                   newActivities.push({
                     kuyrukNo: kuyrukNo,
                     cagriKodu: `ORMAN-${kuyrukNo.split('-')[1] || 'XX'}`,
                     tip: logEntry.tip || 'Bilinmiyor',
-                    dailyStatuses: { [dayNum]: code }
+                    dailyStatuses: { [dateStrKey]: code }
                   });
                 }
               }
@@ -893,8 +901,8 @@ const App = () => {
                activities={filteredActivities} 
                startDate={new Date(filterStartDate)} 
                endDate={new Date(filterEndDate)} 
-               title={`${new Date(filterStartDate).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }).toUpperCase()}`} 
-               onExport={() => exportTableToExcel('activity-table', `OGM_Faaliyet_Raporu_${new Date(filterStartDate).getMonth() + 1}_${new Date(filterStartDate).getFullYear()}`)} 
+               title={`${new Date(filterStartDate).toLocaleDateString('tr-TR')} - ${new Date(filterEndDate).toLocaleDateString('tr-TR')} FAALİYET ÇİZELGESİ`} 
+               onExport={() => exportTableToExcel('activity-table', `OGM_Faaliyet_Raporu_${filterStartDate}_${filterEndDate}`)} 
              />
            </div>
         </div>
@@ -938,8 +946,8 @@ const App = () => {
                   const isKazaKirim = a.assignedCode === 'KK' || a.durumAyrintisi?.toUpperCase().includes('KAZA KIRIM');
                   const hasOplAlert = a.oplAlerts && a.oplAlerts.length > 0 && !isKazaKirim;
                   return (
-                    <tr key={i} className={`hover:bg-slate-50 cursor-pointer transition-all active:scale-[0.99] group ${hasOplAlert ? 'animate-pulse bg-red-50/30' : ''}`}>
-                      <td className="px-8 py-6" onClick={() => setSelectedAircraft(a)}>
+                    <tr key={i} className={`hover:bg-slate-50 transition-all group ${hasOplAlert ? 'animate-pulse bg-red-50/30' : ''} ${historicalFleet !== null ? 'opacity-60 cursor-default' : 'cursor-pointer active:scale-[0.99]'}`}>
+                      <td className="px-8 py-6" onClick={() => historicalFleet === null && setSelectedAircraft(a)}>
                          <div className="font-black text-emerald-950 text-xl tracking-tighter group-hover:text-emerald-600 transition-colors flex items-center">
                            {a.kuyrukNo}
                            {hasOplAlert && (
@@ -950,7 +958,7 @@ const App = () => {
                          </div>
                          <div className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full w-fit uppercase mt-1">{a.tip}</div>
                       </td>
-                      <td className="px-8 py-6 text-center select-none" onDoubleClick={() => setSelectedAircraft(a)}>
+                      <td className="px-8 py-6 text-center select-none" onDoubleClick={() => historicalFleet === null && setSelectedAircraft(a)}>
                           <span className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase border-2 shadow-sm transition-transform active:scale-95 block ${a.durum === Status.FAAL ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                             {a.durum}
                             {a.durum === Status.GAYRI_FAAL && a.durumAyrintisi && a.durumAyrintisi !== '-' && (
@@ -968,7 +976,7 @@ const App = () => {
                             {formatToHHMM(a.faydaliSaat)}
                          </div>
                       </td>
-                      <td className="px-8 py-6" onDoubleClick={() => toggleNote(a.kuyrukNo)}>
+                      <td className="px-8 py-6" onDoubleClick={() => historicalFleet === null && toggleNote(a.kuyrukNo)}>
                          <div className="text-slate-500 text-xs font-bold leading-relaxed max-w-md">
                             <div className="text-emerald-700 font-black text-[9px] uppercase mb-1">{a.durumAyrintisi}</div>
                             <div className={`italic ${expandedNotes[a.kuyrukNo] ? 'whitespace-pre-wrap' : 'truncate'}`}>

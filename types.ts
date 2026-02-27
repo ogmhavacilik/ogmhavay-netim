@@ -86,7 +86,7 @@ export interface AircraftActivity {
   kuyrukNo: string;
   cagriKodu: string;
   tip: string;
-  dailyStatuses: { [day: number]: DailyStatusCode };
+  dailyStatuses: { [dateStr: string]: DailyStatusCode };
 }
 
 export interface SheetMapping {
