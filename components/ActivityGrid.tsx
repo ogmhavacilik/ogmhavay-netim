@@ -28,40 +28,50 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
   const visibleDates = getDaysInRange(startDate, endDate);
   const totalDaysInMonth = visibleDates.length;
 
-  const getStatusClass = (code: DailyStatusCode) => {
+  const getStatusClass = (code: DailyStatusCode | string) => {
     switch (code) {
       case 'B': case 'BB': case 'KM': return 'bg-[#FFFF00] text-black font-black border-black'; // SARI
       case 'A': case 'PB': case 'KK': return 'bg-[#FF0000] text-white font-black border-black'; // KIRMIZI
       case 'X': return 'bg-[#7030A0] text-white font-black border-black'; // MOR
       case 'F': return 'bg-white text-transparent';
+      case '': return 'bg-gray-200 text-transparent'; // Veri yok
       default: return 'bg-white';
     }
   };
 
-  const getStatusStyle = (code: DailyStatusCode): React.CSSProperties => {
+  const getStatusStyle = (code: DailyStatusCode | string): React.CSSProperties => {
     switch (code) {
       case 'B': case 'BB': case 'KM': return { backgroundColor: '#FFFF00', color: '#000000' };
       case 'A': case 'PB': case 'KK': return { backgroundColor: '#FF0000', color: '#FFFFFF' };
       case 'X': return { backgroundColor: '#7030A0', color: '#FFFFFF' };
       case 'F': return { backgroundColor: '#FFFFFF', color: '#FFFFFF' };
+      case '': return { backgroundColor: '#e5e7eb', color: 'transparent' }; // Veri yok
       default: return { backgroundColor: '#FFFFFF' };
     }
   };
 
   const calculateRowStats = (activity: AircraftActivity) => {
-    let bakim = 0, ariza = 0, olmadi = 0;
+    let bakim = 0, ariza = 0, olmadi = 0, faal = 0, missing = 0;
     let effectiveGFaal = 0;
     let currentStreak = 0;
 
     visibleDates.forEach(date => {
       const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-      const s = activity.dailyStatuses[dateStrKey] || '';
+      const s = activity.dailyStatuses[dateStrKey];
       
-      if (['B', 'BB', 'KM'].includes(s)) bakim++;
-      else if (['A', 'PB', 'KK'].includes(s)) ariza++;
-      else if (s === 'X') olmadi++;
+      if (s === undefined || s === '') {
+        missing++;
+      } else if (['B', 'BB', 'KM'].includes(s)) {
+        bakim++;
+      } else if (['A', 'PB', 'KK'].includes(s)) {
+        ariza++;
+      } else if (s === 'X') {
+        olmadi++;
+      } else if (s === 'F') {
+        faal++;
+      }
 
-      if (['B', 'BB', 'KM', 'A', 'PB', 'KK'].includes(s)) {
+      if (s && ['B', 'BB', 'KM', 'A', 'PB', 'KK'].includes(s)) {
         currentStreak++;
       } else {
         if (currentStreak >= 3) {
@@ -76,13 +86,13 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     }
 
     const totalGFaal = bakim + ariza + olmadi;
-    const totalFaal = totalDaysInMonth - totalGFaal;
+    const totalFaal = faal;
     
-    const baseDays = totalDaysInMonth - olmadi;
+    const baseDays = totalDaysInMonth - olmadi - missing;
     const effectiveFaal = baseDays - effectiveGFaal;
     const percentage = baseDays > 0 ? ((effectiveFaal / baseDays) * 100).toFixed(0) : "0";
     
-    return { bakim, ariza, olmadi, totalGFaal, totalFaal, percentage, effectiveGFaal };
+    return { bakim, ariza, olmadi, totalGFaal, totalFaal, percentage, effectiveGFaal, missing };
   };
 
   // TİP bazlı gruplandırma ve sıralama
@@ -155,7 +165,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
           <tbody>
             {Object.keys(groupedActivities).map((groupName, gIdx) => {
               const groupActs = groupedActivities[groupName];
-              let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupEffectiveGFaal = 0;
+              let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupEffectiveGFaal = 0, groupMissing = 0;
 
               return (
                 <React.Fragment key={gIdx}>
@@ -167,6 +177,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                     groupTotalGF += s.totalGFaal;
                     groupTotalF += s.totalFaal;
                     groupEffectiveGFaal += s.effectiveGFaal;
+                    groupMissing += s.missing;
 
                     return (
                       <tr key={idx} className="h-7 hover:bg-gray-50">
@@ -200,7 +211,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                     <td className="border border-black text-center bg-[#00b0f0] text-white" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>{groupTotalGF}</td>
                     <td className="border border-black text-center bg-[#ffc000]" style={{ backgroundColor: '#ffc000', color: '#000000' }}>{groupTotalF}</td>
                     <td className="border border-black text-center bg-gray-200" style={{ backgroundColor: '#e5e7eb' }}>
-                      {((groupActs.length * totalDaysInMonth - groupOlmadi) > 0 ? (((groupActs.length * totalDaysInMonth - groupOlmadi) - groupEffectiveGFaal) / (groupActs.length * totalDaysInMonth - groupOlmadi) * 100).toFixed(0) : "0")}%
+                      {((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) > 0 ? (((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) - groupEffectiveGFaal) / (groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) * 100).toFixed(0) : "0")}%
                     </td>
                   </tr>
                 </React.Fragment>
@@ -228,6 +239,10 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
         </div>
         <div className="text-[10px] font-bold text-red-600">
           ** 3 güne kadar olan gayrı faal durumlar (B, BB, KM, A, PB, KK) faaliyet oranına yansıtılmamıştır.
+        </div>
+        <div className="text-[10px] font-bold text-gray-500 mt-1 flex items-center">
+          <div className="w-3 h-3 bg-gray-200 border border-gray-300 mr-2 inline-block"></div>
+          Soluk alanlar veri tabanında bulunmamaktadır.
         </div>
       </div>
     </div>

@@ -40,6 +40,7 @@ const App = () => {
   const [historicalFleet, setHistoricalFleet] = useState<Aircraft[] | null>(null);
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [isGovdeSorguOpen, setIsGovdeSorguOpen] = useState(false);
+  const [isFetchingActivities, setIsFetchingActivities] = useState(false);
 
   const [authenticatedTypes, setAuthenticatedTypes] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<{ type: string, action: () => void } | null>(null);
@@ -404,8 +405,8 @@ const App = () => {
   }, []);
 
   const fetchPastLogs = () => {
-    if (!LOG_SCRIPT_URL) return;
-    fetch(LOG_SCRIPT_URL, {
+    if (!LOG_SCRIPT_URL) return Promise.resolve();
+    return fetch(LOG_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({ action: 'getFaaliyetLog' })
@@ -487,6 +488,11 @@ const App = () => {
       }
     })
     .catch(e => console.error("Log verisi çekilirken hata oluştu:", e));
+  };
+
+  const handleSearchActivities = () => {
+    setIsFetchingActivities(true);
+    fetchPastLogs().finally(() => setIsFetchingActivities(false));
   };
 
   const runGlobalSync = useCallback(async () => {
@@ -870,17 +876,22 @@ const App = () => {
           <>
             <div className="flex flex-col">
               <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Başlangıç Tarihi</label>
-              <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs" />
+              <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs [color-scheme:dark]" />
             </div>
             <div className="flex flex-col">
               <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Bitiş Tarihi</label>
-              <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs" />
+              <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs [color-scheme:dark]" />
+            </div>
+            <div className="flex flex-col justify-end">
+              <button onClick={handleSearchActivities} disabled={isFetchingActivities} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl disabled:opacity-50 h-[38px]">
+                {isFetchingActivities ? 'BEKLENİYOR...' : 'ARA'}
+              </button>
             </div>
           </>
         ) : (
           <div className="flex flex-col">
             <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Tarih</label>
-            <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs" />
+            <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs [color-scheme:dark]" />
           </div>
         )}
         <div className="flex items-center ml-auto bg-black/40 px-4 py-2.5 rounded-xl border border-white/10">
@@ -896,7 +907,15 @@ const App = () => {
 
       {showActivity ? (
         <div className="mb-24 animate-in fade-in duration-1000">
-           <div className="bg-white rounded-[2rem] p-4 shadow-2xl border-4 border-emerald-800/20 overflow-hidden">
+           <div className="bg-white rounded-[2rem] p-4 shadow-2xl border-4 border-emerald-800/20 overflow-hidden relative">
+             {isFetchingActivities && (
+               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center">
+                 <div className="flex flex-col items-center">
+                   <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                   <div className="text-emerald-800 font-black text-xl tracking-widest uppercase">Veri Bekleniyor...</div>
+                 </div>
+               </div>
+             )}
              <ActivityGrid 
                activities={filteredActivities} 
                startDate={new Date(filterStartDate)} 
