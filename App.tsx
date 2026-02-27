@@ -28,6 +28,46 @@ const App = () => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
   const [oplCheckStatus, setOplCheckStatus] = useState<Record<string, 'pending' | 'checking' | 'done'>>({});
+  
+  const [filterType, setFilterType] = useState('Tümü');
+  const [filterTail, setFilterTail] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
+  const [filterEndDate, setFilterEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
+  const [hideKazaKirim, setHideKazaKirim] = useState(true);
+
+  const [authenticatedTypes, setAuthenticatedTypes] = useState<string[]>([]);
+  const [pendingAction, setPendingAction] = useState<{ type: string, action: () => void } | null>(null);
+  const [authError, setAuthError] = useState('');
+
+  const requireAuth = (aircraftType: string, action: () => void) => {
+    if (authenticatedTypes.includes(aircraftType)) {
+      action();
+    } else {
+      setPendingAction({ type: aircraftType, action });
+      setAuthError('');
+    }
+  };
+
+  const handleTypeAuth = (password: string) => {
+    if (!pendingAction) return;
+    
+    const type = pendingAction.type;
+    const validPasswords: Record<string, string> = {
+      'AT-802': '802',
+      'Bell-429': '429',
+      'T-70': '70',
+      'C-650': '650',
+      'B-360': '360'
+    };
+
+    if (validPasswords[type] === password) {
+      setAuthenticatedTypes(prev => [...prev, type]);
+      pendingAction.action();
+      setPendingAction(null);
+    } else {
+      setAuthError('Hatalı Şifre');
+    }
+  };
 
   const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxh6SyGVZfoby2CYc7FNk3JJQQW-P4Uh-Wx4ZupaRydrpY74FDblcyQBGac9XrphnQW/exec";
   const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx-iI6f4MP_bh03IsxLC56bkJ_WV8OFt5rNAlxda6gzumO1bG838CFRdzA0H0jXKNS-7g/exec";
@@ -143,15 +183,107 @@ const App = () => {
   const exportTableToExcel = (tableId: string, filename: string) => {
     const table = document.getElementById(tableId);
     if (!table) return;
+    
+    const clonedTable = table.cloneNode(true) as HTMLElement;
+    
+    if (tableId === 'activity-table') {
+      const legendHtml = `
+        <tr><td colspan="5"></td></tr>
+        <tr><td colspan="5" style="font-weight: bold;">KISALTMALAR</td></tr>
+        <tr><td style="background-color: #FFFF00; color: #000000; border: 1px solid black;">B</td><td colspan="4" style="border: 1px solid black;">BAKIM</td></tr>
+        <tr><td style="background-color: #FFFF00; color: #000000; border: 1px solid black;">BB</td><td colspan="4" style="border: 1px solid black;">BAKIM BEKLER</td></tr>
+        <tr><td style="background-color: #FFFF00; color: #000000; border: 1px solid black;">KM</td><td colspan="4" style="border: 1px solid black;">KABUL MUAYENESİ</td></tr>
+        <tr><td style="background-color: #FF0000; color: #FFFFFF; border: 1px solid black;">A</td><td colspan="4" style="border: 1px solid black;">ARIZA</td></tr>
+        <tr><td style="background-color: #FF0000; color: #FFFFFF; border: 1px solid black;">PB</td><td colspan="4" style="border: 1px solid black;">PARÇA BEKLER</td></tr>
+        <tr><td style="background-color: #FF0000; color: #FFFFFF; border: 1px solid black;">KK</td><td colspan="4" style="border: 1px solid black;">KAZA KIRIM</td></tr>
+        <tr><td style="background-color: #7030A0; color: #FFFFFF; border: 1px solid black;">X</td><td colspan="4" style="border: 1px solid black;">OLMADIĞI GÜNLER</td></tr>
+        <tr><td colspan="10" style="color: red; font-weight: bold;">** 3 güne kadar olan gayrı faal durumlar faaliyet oranına yansıtılmamıştır.</td></tr>
+      `;
+      const tbody = clonedTable.querySelector('tbody');
+      if (tbody) {
+        tbody.insertAdjacentHTML('beforeend', legendHtml);
+      }
+    }
+
     const html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head><meta charset="UTF-8"></head>
-      <body>${table.outerHTML}</body>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          table { border-collapse: collapse; }
+          th, td { border: 1px solid black; text-align: center; vertical-align: middle; }
+        </style>
+      </head>
+      <body>${clonedTable.outerHTML}</body>
       </html>
     `;
     const url = 'data:application/vnd.ms-excel;base64,' + btoa(unescape(encodeURIComponent(html)));
     const link = document.createElement('a');
     link.download = filename + '.xls';
+    link.href = url;
+    link.click();
+  };
+
+  const exportFleetToExcel = () => {
+    const dateStr = new Date().toLocaleDateString('tr-TR');
+    
+    let html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
+          th, td { border: 1px solid black; padding: 5px; text-align: center; vertical-align: middle; font-size: 12px; }
+          .title-row { background-color: #f2f2f2; font-weight: bold; font-size: 14px; }
+          .header-row th { background-color: #d9d9d9; font-weight: bold; }
+          .date-text { color: red; font-weight: bold; text-align: right; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr>
+            <td colspan="7" class="date-text" style="border: none; text-align: right; color: red; font-weight: bold;">${dateStr}</td>
+          </tr>
+          <tr>
+            <td colspan="7" class="title-row" style="text-align: center; font-weight: bold; background-color: #f2f2f2;">OGM HAVA ARAÇLARI DURUM ÖZETLERİ</td>
+          </tr>
+          <tr class="header-row">
+            <th style="background-color: #d9d9d9;">ÇAĞRI KODU</th>
+            <th style="background-color: #d9d9d9;">KUYRUK NUMARASI</th>
+            <th style="background-color: #d9d9d9;">DURUM</th>
+            <th style="background-color: #d9d9d9;">DURUM AYRINTISI</th>
+            <th style="background-color: #d9d9d9;">KONUM</th>
+            <th style="background-color: #d9d9d9;">FAYDALI SAAT</th>
+            <th style="background-color: #d9d9d9;">AÇIKLAMA</th>
+          </tr>
+    `;
+
+    filteredFleet.forEach(aircraft => {
+      const aciklama = (aircraft.aciklama || '').replace(/\n/g, '<br/>');
+      const faydaliSaat = aircraft.faydaliSaat ? formatToHHMM(aircraft.faydaliSaat) : '';
+      
+      html += `
+        <tr>
+          <td style="background-color: #e6e6e6;">${aircraft.cagriKodu || ''}</td>
+          <td style="background-color: #e6e6e6;">${aircraft.kuyrukNo || ''}</td>
+          <td>${aircraft.durum || ''}</td>
+          <td>${aircraft.durumAyrintisi || ''}</td>
+          <td>${aircraft.konum || ''}</td>
+          <td style="mso-number-format:'\@';">${faydaliSaat}</td>
+          <td style="text-align: left; vertical-align: top;">${aciklama}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+        </table>
+      </body>
+      </html>
+    `;
+
+    const url = 'data:application/vnd.ms-excel;base64,' + btoa(unescape(encodeURIComponent(html)));
+    const link = document.createElement('a');
+    link.download = 'Genel_Hava_Araci_Durum_Raporu.xls';
     link.href = url;
     link.click();
   };
@@ -255,8 +387,96 @@ const App = () => {
     }
   }, []);
 
+  const fetchPastLogs = () => {
+    if (!LOG_SCRIPT_URL) return;
+    fetch(LOG_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'getFaaliyetLog' })
+    })
+    .then(res => res.json())
+    .then(logData => {
+      if (Array.isArray(logData) && logData.length > 0) {
+        setActivities(prevActivities => {
+          let newActivities = [...prevActivities];
+          
+          logData.forEach((logEntry: any) => {
+            const kuyrukNo = String(logEntry.kuyrukNo).trim();
+            const tarihStr = String(logEntry.tarih).trim();
+            const durumAyrintisi = String(logEntry.durum).trim().toUpperCase();
+            const analizKodu = logEntry.analizKodu ? String(logEntry.analizKodu).trim() : null;
+            
+            if (!kuyrukNo || !tarihStr) return;
+            
+            let dayNum = -1, monthNum = -1, yearNum = -1;
+            
+            if (tarihStr.includes('T') || (tarihStr.includes('-') && !tarihStr.includes('.'))) {
+              const d = new Date(tarihStr);
+              if (!isNaN(d.getTime())) {
+                dayNum = d.getDate();
+                monthNum = d.getMonth();
+                yearNum = d.getFullYear();
+              }
+            } else if (tarihStr.includes('.')) {
+              const parts = tarihStr.split('.');
+              if (parts.length === 3) {
+                dayNum = parseInt(parts[0], 10);
+                monthNum = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
+                yearNum = parseInt(parts[2], 10);
+              }
+            }
+            
+            if (dayNum !== -1) {
+              // Sadece mevcut ayın geçmiş günlerinin verilerini al (bugün hariç)
+              const now = new Date();
+              if (monthNum === now.getMonth() && yearNum === now.getFullYear() && dayNum !== now.getDate()) {
+                let code: DailyStatusCode = 'F'; // Varsayılan FAAL
+                
+                if (analizKodu) {
+                  code = analizKodu as DailyStatusCode;
+                } else {
+                  if (durumAyrintisi.includes('BAKIM')) {
+                    code = 'B';
+                  } else if (durumAyrintisi.includes('ARIZA') || durumAyrintisi.includes('PARÇA BEKLER') || durumAyrintisi.includes('KAZA KIRIM')) {
+                    code = 'A';
+                  } else if (durumAyrintisi.includes('OLMADIĞI GÜNLER')) {
+                    code = 'X';
+                  } else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') {
+                    code = 'B'; // Diğer gayrı faal durumlar için varsayılan
+                  }
+                }
+
+                const existsIdx = newActivities.findIndex(act => act.kuyrukNo === kuyrukNo);
+                if (existsIdx !== -1) {
+                  newActivities[existsIdx] = {
+                    ...newActivities[existsIdx],
+                    dailyStatuses: { ...newActivities[existsIdx].dailyStatuses, [dayNum]: code }
+                  };
+                } else {
+                  newActivities.push({
+                    kuyrukNo: kuyrukNo,
+                    cagriKodu: `ORMAN-${kuyrukNo.split('-')[1] || 'XX'}`,
+                    tip: logEntry.tip || 'Bilinmiyor',
+                    dailyStatuses: { [dayNum]: code }
+                  });
+                }
+              }
+            }
+          });
+          
+          return newActivities;
+        });
+      }
+    })
+    .catch(e => console.error("Log verisi çekilirken hata oluştu:", e));
+  };
+
   const runGlobalSync = useCallback(async () => {
     setIsSyncing(true);
+    
+    // Geçmiş logları beklemeden hemen çekmeye başla
+    fetchPastLogs();
+
     try {
       const fetchedFleet: Aircraft[] = [];
 
@@ -282,92 +502,6 @@ const App = () => {
           });
         } catch (err) {
           console.error("Log save error:", err);
-        }
-      }
-
-      // Sonra log tablosundan geçmiş faaliyet verilerini çek
-      if (LOG_SCRIPT_URL) {
-        try {
-          const response = await fetch(LOG_SCRIPT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ action: 'getFaaliyetLog' })
-          });
-          const logData = await response.json();
-          
-          if (Array.isArray(logData) && logData.length > 0) {
-            setActivities(prevActivities => {
-              let newActivities = [...prevActivities];
-              
-              logData.forEach((logEntry: any) => {
-                const kuyrukNo = String(logEntry.kuyrukNo).trim();
-                const tarihStr = String(logEntry.tarih).trim();
-                const durumAyrintisi = String(logEntry.durum).trim().toUpperCase();
-                const analizKodu = logEntry.analizKodu ? String(logEntry.analizKodu).trim() : null;
-                
-                if (!kuyrukNo || !tarihStr) return;
-                
-                let dayNum = -1, monthNum = -1, yearNum = -1;
-                
-                if (tarihStr.includes('T') || (tarihStr.includes('-') && !tarihStr.includes('.'))) {
-                  const d = new Date(tarihStr);
-                  if (!isNaN(d.getTime())) {
-                    dayNum = d.getDate();
-                    monthNum = d.getMonth();
-                    yearNum = d.getFullYear();
-                  }
-                } else if (tarihStr.includes('.')) {
-                  const parts = tarihStr.split('.');
-                  if (parts.length === 3) {
-                    dayNum = parseInt(parts[0], 10);
-                    monthNum = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
-                    yearNum = parseInt(parts[2], 10);
-                  }
-                }
-                
-                if (dayNum !== -1) {
-                  // Sadece mevcut ayın geçmiş günlerinin verilerini al (bugün hariç)
-                  const now = new Date();
-                  if (monthNum === now.getMonth() && yearNum === now.getFullYear() && dayNum !== now.getDate()) {
-                    let code: DailyStatusCode = 'F'; // Varsayılan FAAL
-                    
-                    if (analizKodu) {
-                      code = analizKodu as DailyStatusCode;
-                    } else {
-                      if (durumAyrintisi.includes('BAKIM')) {
-                        code = 'B';
-                      } else if (durumAyrintisi.includes('ARIZA') || durumAyrintisi.includes('PARÇA BEKLER') || durumAyrintisi.includes('KAZA KIRIM')) {
-                        code = 'A';
-                      } else if (durumAyrintisi.includes('OLMADIĞI GÜNLER')) {
-                        code = 'X';
-                      } else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') {
-                        code = 'B'; // Diğer gayrı faal durumlar için varsayılan
-                      }
-                    }
-
-                    const existsIdx = newActivities.findIndex(act => act.kuyrukNo === kuyrukNo);
-                    if (existsIdx !== -1) {
-                      newActivities[existsIdx] = {
-                        ...newActivities[existsIdx],
-                        dailyStatuses: { ...newActivities[existsIdx].dailyStatuses, [dayNum]: code }
-                      };
-                    } else {
-                      newActivities.push({
-                        kuyrukNo: kuyrukNo,
-                        cagriKodu: `ORMAN-${kuyrukNo.split('-')[1] || 'XX'}`,
-                        tip: logEntry.tip || 'Bilinmiyor',
-                        dailyStatuses: { [dayNum]: code }
-                      });
-                    }
-                  }
-                }
-              });
-              
-              return newActivities;
-            });
-          }
-        } catch (e) {
-          console.error("Log verisi çekilirken hata oluştu:", e);
         }
       }
 
@@ -460,7 +594,13 @@ const App = () => {
   const filteredFleet = useMemo(() => {
     const filtered = fleet.filter(a => {
       const s = searchTerm.toLowerCase();
-      return a.kuyrukNo.toLowerCase().includes(s) || a.konum.toLowerCase().includes(s) || (a.tip && a.tip.toLowerCase().includes(s));
+      const matchesSearch = a.kuyrukNo.toLowerCase().includes(s) || a.konum.toLowerCase().includes(s) || (a.tip && a.tip.toLowerCase().includes(s));
+      const matchesType = filterType === 'Tümü' || a.tip === filterType;
+      const matchesTail = filterTail === '' || a.kuyrukNo.toLowerCase().includes(filterTail.toLowerCase());
+      const isKazaKirim = a.assignedCode === 'KK' || a.durumAyrintisi?.toUpperCase().includes('KAZA KIRIM');
+      const matchesKazaKirim = hideKazaKirim ? !isKazaKirim : true;
+      
+      return matchesSearch && matchesType && matchesTail && matchesKazaKirim;
     });
 
     const order = ['Bell-429', 'AT-802', 'T-70'];
@@ -480,7 +620,27 @@ const App = () => {
       
       return typeA.localeCompare(typeB);
     });
-  }, [fleet, searchTerm]);
+  }, [fleet, searchTerm, filterType, filterTail, hideKazaKirim]);
+
+  const filteredActivities = useMemo(() => {
+    return activities.filter(a => {
+      const matchesType = filterType === 'Tümü' || a.tip === filterType;
+      const matchesTail = filterTail === '' || a.kuyrukNo.toLowerCase().includes(filterTail.toLowerCase());
+      
+      let hasKazaKirim = false;
+      if (hideKazaKirim) {
+        for (let day in a.dailyStatuses) {
+          if (a.dailyStatuses[day] === 'KK') {
+            hasKazaKirim = true;
+            break;
+          }
+        }
+      }
+      const matchesKazaKirim = hideKazaKirim ? !hasKazaKirim : true;
+
+      return matchesType && matchesTail && matchesKazaKirim;
+    });
+  }, [activities, filterType, filterTail, hideKazaKirim]);
 
   const toggleNote = (kuyrukNo: string) => {
     setExpandedNotes(prev => ({ ...prev, [kuyrukNo]: !prev[kuyrukNo] }));
@@ -495,7 +655,8 @@ const App = () => {
   };
 
   const handleLogin = (user: string, pass: string) => {
-    if (user === 'ogm' && pass === '1839') {
+    const validPasswords = ['802', '429', '70', '650', '360', '1839'];
+    if (user === 'ogm' && validPasswords.includes(pass)) {
       setIsAdminAuthenticated(true);
       setIsAuthModalOpen(false);
       setIsAdminOpen(true);
@@ -530,6 +691,11 @@ const App = () => {
 
   return (
     <Layout>
+      <div className="flex flex-col items-center justify-center mb-12 w-full">
+         <img src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExeDRxOWVlbDJkbmx6bmxsM203Z3g3bXBobGJsbDQyMDJ1M2h5MzZqcCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/n7frjzkahqcqyik0o3/giphy.gif" alt="Logo GIF" className="w-24 h-24 rounded-full object-cover border-4 border-emerald-500/30 shadow-2xl mb-6 ring-4 ring-emerald-500/30" />
+         <h1 className="text-3xl md:text-5xl font-black text-white tracking-widest uppercase text-center">HAVA ARAÇLARI YÖNETİM SİSTEMİ</h1>
+      </div>
+
       <div className="flex justify-between items-center mb-12">
          <div className="flex items-center space-x-6">
             <button 
@@ -549,7 +715,7 @@ const App = () => {
           </div>
           <div className="flex space-x-5">
             <button onClick={() => setShowActivity(!showActivity)} className={`px-10 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.4em] transition-all shadow-2xl border-2 ${showActivity ? 'bg-blue-600 text-white border-blue-500' : 'bg-white/10 text-white border-white/20'}`}>
-              {showActivity ? "ENVANTER LİSTESİ" : "FAALİYET ÇİZELGESİ"}
+              {showActivity ? "GENEL HAVA ARACI DURUM RAPORU" : "FAALİYET ÇİZELGESİ"}
             </button>
             <button 
               onClick={handleAdminClick} 
@@ -565,17 +731,47 @@ const App = () => {
           </div>
       </div>
 
-      <div className="mb-14"><Dashboard fleet={fleet} /></div>
+      <div className="mb-8 bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-wrap gap-4 items-end shadow-2xl backdrop-blur-md">
+        <div className="flex flex-col">
+          <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Hava Aracı Tipi</label>
+          <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs">
+            <option value="Tümü">Tümü</option>
+            <option value="AT-802">AT-802</option>
+            <option value="Bell-429">Bell-429</option>
+            <option value="T-70">T-70</option>
+            <option value="B-360">B-360</option>
+            <option value="C-650">C-650</option>
+          </select>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Kuyruk No</label>
+          <input type="text" value={filterTail} onChange={(e) => setFilterTail(e.target.value)} placeholder="Örn: OR-2021" className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs w-32" />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Başlangıç Tarihi</label>
+          <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs" />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Bitiş Tarihi</label>
+          <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs" />
+        </div>
+        <div className="flex items-center ml-auto bg-black/40 px-4 py-2.5 rounded-xl border border-white/10">
+          <input type="checkbox" id="hideKazaKirim" checked={hideKazaKirim} onChange={(e) => setHideKazaKirim(e.target.checked)} className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 focus:ring-2" />
+          <label htmlFor="hideKazaKirim" className="ml-2 text-xs font-black text-white uppercase tracking-widest cursor-pointer">Kaza Kırımları Gizle</label>
+        </div>
+      </div>
+
+      <div className="mb-14"><Dashboard fleet={filteredFleet} /></div>
 
       {showActivity ? (
         <div className="mb-24 animate-in fade-in duration-1000">
            <div className="bg-white rounded-[2rem] p-4 shadow-2xl border-4 border-emerald-800/20 overflow-hidden">
              <ActivityGrid 
-               activities={activities} 
-               startDate={new Date(new Date().getFullYear(), new Date().getMonth(), 1)} 
-               endDate={new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)} 
-               title={`${new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }).toUpperCase()}`} 
-               onExport={() => exportTableToExcel('activity-table', `OGM_Faaliyet_Raporu_${new Date().getMonth() + 1}_${new Date().getFullYear()}`)} 
+               activities={filteredActivities} 
+               startDate={new Date(filterStartDate)} 
+               endDate={new Date(filterEndDate)} 
+               title={`${new Date(filterStartDate).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }).toUpperCase()}`} 
+               onExport={() => exportTableToExcel('activity-table', `OGM_Faaliyet_Raporu_${new Date(filterStartDate).getMonth() + 1}_${new Date(filterStartDate).getFullYear()}`)} 
              />
            </div>
         </div>
@@ -583,13 +779,13 @@ const App = () => {
         <div className="mb-24 animate-in fade-in duration-1000">
           <div className="flex justify-between items-end mb-12 px-6">
              <div>
-                <h2 className="text-6xl font-black text-white uppercase tracking-tighter italic">ENVANTER LİSTESİ</h2>
+                <h2 className="text-6xl font-black text-white uppercase tracking-tighter italic">GENEL HAVA ARACI DURUM RAPORU</h2>
                 <p className="text-emerald-500 text-[10px] font-black uppercase tracking-[0.8em] mt-4 border-l-4 border-emerald-500 pl-4">Platform Bazlı Durum ve Gövde Uçuş Saati</p>
              </div>
              <div className="flex items-center space-x-6">
-                <button onClick={() => exportTableToExcel('inventory-table', 'Envanter_Listesi')} className="bg-emerald-700 hover:bg-emerald-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center">
+                <button onClick={exportFleetToExcel} className="bg-emerald-700 hover:bg-emerald-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center">
                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth={3}/></svg>
-                   ENVANTER EXCEL İNDİR
+                   EXCEL İNDİR
                 </button>
                 <div className="relative">
                   <input type="text" placeholder="Kuyruk, Tip veya Konum Ara..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-[400px] px-12 py-4 bg-black/60 text-white rounded-[2rem] border-2 border-white/10 outline-none font-bold focus:border-emerald-500 transition-all shadow-2xl backdrop-blur-xl" />
@@ -661,9 +857,48 @@ const App = () => {
         </div>
       )}
 
-      {selectedAircraft && <AircraftDetailModal aircraft={selectedAircraft} onClose={() => setSelectedAircraft(null)} />}
+      {selectedAircraft && (
+        <AircraftDetailModal 
+          aircraft={selectedAircraft} 
+          onClose={() => setSelectedAircraft(null)} 
+          onEdit={() => {
+            requireAuth(selectedAircraft.tip, () => {
+              setSelectedAircraft(null);
+              setCurrentView('update');
+            });
+          }}
+          onViewLogs={(openLogs) => {
+            requireAuth(selectedAircraft.tip, openLogs);
+          }}
+        />
+      )}
       {isAdminOpen && <AdminPanel notifications={notifications} initialData={fleet} onSave={(configs, data) => handleSyncFromExcel(data, configs[0].aircraftType)} onOverride={handleManualOverride} onClose={() => setIsAdminOpen(false)} />}
       
+      {pendingAction && (
+        <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">
+          <div className="bg-[#052e16] w-full max-w-md p-10 rounded-[3rem] border border-green-800/40 shadow-2xl">
+            <h2 className="text-white font-black text-2xl tracking-tighter uppercase mb-2">ŞİFRE GEREKLİ</h2>
+            <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-8">{pendingAction.type} tipi için yetkilendirme gerekiyor</p>
+            
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const formData = new FormData(e.currentTarget);
+              handleTypeAuth(formData.get('pass') as string);
+            }} className="space-y-6">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 ml-2">ŞİFRE</label>
+                <input name="pass" type="password" required className="w-full px-6 py-4 bg-black/40 border border-green-900/40 rounded-2xl text-white font-bold outline-none focus:border-emerald-500 transition-all" />
+                {authError && <p className="text-red-500 text-xs font-bold mt-2 ml-2">{authError}</p>}
+              </div>
+              <div className="pt-4 flex space-x-4">
+                <button type="button" onClick={() => setPendingAction(null)} className="flex-1 py-4 rounded-2xl border border-red-900/30 text-red-500 font-black text-[10px] uppercase tracking-widest">İPTAL</button>
+                <button type="submit" className="flex-1 py-4 rounded-2xl bg-emerald-600 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-900/50">ONAYLA</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {isAuthModalOpen && (
         <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">
           <div className="bg-[#052e16] w-full max-w-md p-10 rounded-[3rem] border border-green-800/40 shadow-2xl">

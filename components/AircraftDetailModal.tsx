@@ -7,9 +7,11 @@ import { fetchOPLData } from '../services/sheetService';
 interface AircraftDetailModalProps {
   aircraft: Aircraft;
   onClose: () => void;
+  onEdit: () => void;
+  onViewLogs: (openLogs: () => void) => void;
 }
 
-const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, onClose }) => {
+const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, onClose, onEdit, onViewLogs }) => {
   const [activePhoto, setActivePhoto] = useState(0);
   const [isLogRecordsOpen, setIsLogRecordsOpen] = useState(false);
   const [oplAlerts, setOplAlerts] = useState<string[]>([]);
@@ -362,6 +364,11 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, onC
                      </tbody>
                    </table>
                  </div>
+                 {isAT802 && (
+                   <div className="mt-2 text-[10px] font-bold text-red-500 italic">
+                     ** Hat bakımda yapılabilecek olan 25 ve 50 saatlik bakımlar dahil edilmemiştir.
+                   </div>
+                 )}
               </div>
 
               <div className="p-6 rounded-3xl border border-gray-100 bg-gray-50/50 flex-grow shadow-inner">
@@ -410,12 +417,12 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, onC
               
               <div className="mt-8 flex justify-end space-x-3">
                  <button 
-                   onClick={() => setIsLogRecordsOpen(true)}
+                   onClick={() => onViewLogs(() => setIsLogRecordsOpen(true))}
                    className="px-8 py-3 text-[11px] font-black text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all uppercase tracking-widest"
                  >
                    LOG KAYITLARI
                  </button>
-                 <button className="px-10 py-3 text-[11px] font-black text-white bg-[#1b5e20] hover:bg-[#154d1a] rounded-lg transition-all shadow-xl uppercase tracking-widest border border-emerald-900/30">DÜZENLE</button>
+                 <button onClick={onEdit} className="px-10 py-3 text-[11px] font-black text-white bg-[#1b5e20] hover:bg-[#154d1a] rounded-lg transition-all shadow-xl uppercase tracking-widest border border-emerald-900/30">DÜZENLE</button>
               </div>
             </div>
           </div>

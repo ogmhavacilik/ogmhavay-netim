@@ -33,21 +33,51 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     }
   };
 
+  const getStatusStyle = (code: DailyStatusCode): React.CSSProperties => {
+    switch (code) {
+      case 'B': case 'BB': case 'KM': return { backgroundColor: '#FFFF00', color: '#000000' };
+      case 'A': case 'PB': case 'KK': return { backgroundColor: '#FF0000', color: '#FFFFFF' };
+      case 'X': return { backgroundColor: '#7030A0', color: '#FFFFFF' };
+      case 'F': return { backgroundColor: '#FFFFFF', color: '#FFFFFF' };
+      default: return { backgroundColor: '#FFFFFF' };
+    }
+  };
+
   const calculateRowStats = (activity: AircraftActivity) => {
     let bakim = 0, ariza = 0, olmadi = 0;
+    let effectiveGFaal = 0;
+    let currentStreak = 0;
+
     visibleDates.forEach(date => {
       const day = date.getDate();
       const s = activity.dailyStatuses[day] || '';
+      
       if (['B', 'BB', 'KM'].includes(s)) bakim++;
       else if (['A', 'PB', 'KK'].includes(s)) ariza++;
       else if (s === 'X') olmadi++;
+
+      if (['B', 'BB', 'KM', 'A', 'PB', 'KK'].includes(s)) {
+        currentStreak++;
+      } else {
+        if (currentStreak >= 3) {
+          effectiveGFaal += currentStreak;
+        }
+        currentStreak = 0;
+      }
     });
-    
+
+    if (currentStreak >= 3) {
+      effectiveGFaal += currentStreak;
+    }
+
     const totalGFaal = bakim + ariza + olmadi;
     const totalFaal = totalDaysInMonth - totalGFaal;
-    const percentage = totalDaysInMonth > 0 ? ((totalFaal / totalDaysInMonth) * 100).toFixed(0) : "0";
     
-    return { bakim, ariza, olmadi, totalGFaal, totalFaal, percentage };
+    const baseDays = totalDaysInMonth - olmadi;
+    const effectiveFaal = baseDays - effectiveGFaal;
+    const percentage = baseDays > 0 ? ((effectiveFaal / baseDays) * 100).toFixed(0) : "0";
+    
+    return { bakim, ariza, olmadi, totalGFaal, totalFaal, percentage, effectiveGFaal };
   };
 
   // TİP bazlı gruplandırma ve sıralama
@@ -106,21 +136,21 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                    </div>
                 </th>
               ))}
-              <th colSpan={3} className="border border-black bg-[#00b0f0] text-white py-0.5 text-[8px] font-black uppercase tracking-tighter">TOPLAM G.FAAL</th>
-              <th rowSpan={2} className="border border-black bg-[#00b0f0] text-white px-0.5 w-12 text-[8px] font-black uppercase leading-tight">TOPLAM<br/>G.FAAL</th>
-              <th rowSpan={2} className="border border-black bg-[#ffc000] text-black px-0.5 w-12 text-[8px] font-black uppercase leading-tight">TOPLAM<br/>FAAL</th>
-              <th rowSpan={2} className="border border-black bg-gray-100 text-black px-0.5 w-16 text-[8px] font-black uppercase leading-tight">FAALİYET % **</th>
+              <th colSpan={3} className="border border-black bg-[#00b0f0] text-white py-0.5 text-[8px] font-black uppercase tracking-tighter" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>TOPLAM G.FAAL</th>
+              <th rowSpan={2} className="border border-black bg-[#00b0f0] text-white px-0.5 w-12 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>TOPLAM<br/>G.FAAL</th>
+              <th rowSpan={2} className="border border-black bg-[#ffc000] text-black px-0.5 w-12 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#ffc000', color: '#000000' }}>TOPLAM<br/>FAAL</th>
+              <th rowSpan={2} className="border border-black bg-gray-100 text-black px-0.5 w-16 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#f3f4f6', color: '#000000' }}>FAALİYET % **</th>
             </tr>
             <tr className="bg-white">
-              <th className="border border-black bg-[#ffff00] text-black w-10 text-[7.5px] py-1 font-black">Bakım</th>
-              <th className="border border-black bg-[#ff0000] text-white w-10 text-[7.5px] py-1 font-black">Arıza</th>
-              <th className="border border-black bg-[#7030a0] text-white w-10 text-[7.5px] py-1 font-black">Olmadığı</th>
+              <th className="border border-black bg-[#ffff00] text-black w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#ffff00', color: '#000000' }}>Bakım</th>
+              <th className="border border-black bg-[#ff0000] text-white w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#ff0000', color: '#ffffff' }}>Arıza</th>
+              <th className="border border-black bg-[#7030a0] text-white w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#7030a0', color: '#ffffff' }}>Olmadığı</th>
             </tr>
           </thead>
           <tbody>
             {Object.keys(groupedActivities).map((groupName, gIdx) => {
               const groupActs = groupedActivities[groupName];
-              let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0;
+              let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupEffectiveGFaal = 0;
 
               return (
                 <React.Fragment key={gIdx}>
@@ -131,6 +161,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                     groupOlmadi += s.olmadi;
                     groupTotalGF += s.totalGFaal;
                     groupTotalF += s.totalFaal;
+                    groupEffectiveGFaal += s.effectiveGFaal;
 
                     return (
                       <tr key={idx} className="h-7 hover:bg-gray-50">
@@ -140,30 +171,30 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                         {visibleDates.map((date, dIdx) => {
                           const status = act.dailyStatuses[date.getDate()] || '';
                           return (
-                            <td key={dIdx} className={`border border-black text-center text-[10px] ${getStatusClass(status)}`}>
+                            <td key={dIdx} className={`border border-black text-center text-[10px] ${getStatusClass(status)}`} style={getStatusStyle(status)}>
                               {status === 'F' ? '' : status}
                             </td>
                           );
                         })}
-                        <td className="border border-black text-center font-bold bg-[#ffffcc]">{s.bakim || '0'}</td>
-                        <td className="border border-black text-center font-bold bg-[#ffcccc]">{s.ariza || '0'}</td>
-                        <td className="border border-black text-center font-bold bg-[#e2efda]">{s.olmadi || '0'}</td>
-                        <td className="border border-black text-center font-bold bg-[#ddebf7]">{s.totalGFaal}</td>
-                        <td className="border border-black text-center font-bold bg-[#fff2cc]">{s.totalFaal}</td>
-                        <td className="border border-black text-center font-bold bg-gray-50">{s.percentage}%</td>
+                        <td className="border border-black text-center font-bold bg-[#ffffcc]" style={{ backgroundColor: '#ffffcc' }}>{s.bakim || '0'}</td>
+                        <td className="border border-black text-center font-bold bg-[#ffcccc]" style={{ backgroundColor: '#ffcccc' }}>{s.ariza || '0'}</td>
+                        <td className="border border-black text-center font-bold bg-[#e2efda]" style={{ backgroundColor: '#e2efda' }}>{s.olmadi || '0'}</td>
+                        <td className="border border-black text-center font-bold bg-[#ddebf7]" style={{ backgroundColor: '#ddebf7' }}>{s.totalGFaal}</td>
+                        <td className="border border-black text-center font-bold bg-[#fff2cc]" style={{ backgroundColor: '#fff2cc' }}>{s.totalFaal}</td>
+                        <td className="border border-black text-center font-bold bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>{s.percentage}%</td>
                       </tr>
                     );
                   })}
                   {/* GRUP TOPLAMI SATIRI */}
                   <tr className="h-6 bg-gray-100 font-black">
-                    <td colSpan={3 + totalDaysInMonth} className="border border-black text-right px-4 uppercase text-[8px]">TOPLAM</td>
-                    <td className="border border-black text-center bg-[#ffff00]">{groupBakim}</td>
-                    <td className="border border-black text-center bg-[#ff0000] text-white">{groupAriza}</td>
-                    <td className="border border-black text-center bg-[#7030a0] text-white">{groupOlmadi}</td>
-                    <td className="border border-black text-center bg-[#00b0f0] text-white">{groupTotalGF}</td>
-                    <td className="border border-black text-center bg-[#ffc000]">{groupTotalF}</td>
-                    <td className="border border-black text-center bg-gray-200">
-                      {((groupTotalF / (groupTotalF + groupTotalGF)) * 100).toFixed(0)}%
+                    <td colSpan={3 + totalDaysInMonth} className="border border-black text-right px-4 uppercase text-[8px]" style={{ backgroundColor: '#f3f4f6' }}>TOPLAM</td>
+                    <td className="border border-black text-center bg-[#ffff00]" style={{ backgroundColor: '#ffff00', color: '#000000' }}>{groupBakim}</td>
+                    <td className="border border-black text-center bg-[#ff0000] text-white" style={{ backgroundColor: '#ff0000', color: '#ffffff' }}>{groupAriza}</td>
+                    <td className="border border-black text-center bg-[#7030a0] text-white" style={{ backgroundColor: '#7030a0', color: '#ffffff' }}>{groupOlmadi}</td>
+                    <td className="border border-black text-center bg-[#00b0f0] text-white" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>{groupTotalGF}</td>
+                    <td className="border border-black text-center bg-[#ffc000]" style={{ backgroundColor: '#ffc000', color: '#000000' }}>{groupTotalF}</td>
+                    <td className="border border-black text-center bg-gray-200" style={{ backgroundColor: '#e5e7eb' }}>
+                      {((groupActs.length * totalDaysInMonth - groupOlmadi) > 0 ? (((groupActs.length * totalDaysInMonth - groupOlmadi) - groupEffectiveGFaal) / (groupActs.length * totalDaysInMonth - groupOlmadi) * 100).toFixed(0) : "0")}%
                     </td>
                   </tr>
                 </React.Fragment>
@@ -173,21 +204,25 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
         </table>
       </div>
 
-      {/* LEJANT ALANI */}
-      <div className="mt-6 flex flex-wrap gap-4 px-2">
-         <div className="flex flex-col space-y-1">
-            <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">B: BAKIM</div>
-            <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">BB: BAKIM BEKLER</div>
-            <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">KM: KABUL MUAYENESİ</div>
-         </div>
-         <div className="flex flex-col space-y-1">
-            <div className="bg-[#ff0000] text-white border border-black px-2 py-1 text-[9px] font-black w-40">A: ARIZA</div>
-            <div className="bg-[#ff0000] text-white border border-black px-2 py-1 text-[9px] font-black w-40">PB: PARÇA BEKLER</div>
-            <div className="bg-[#ff0000] text-white border border-black px-2 py-1 text-[9px] font-black w-40">KK: KAZA KIRIM</div>
-         </div>
-         <div className="flex flex-col space-y-1">
-            <div className="bg-[#7030a0] text-white border border-black px-2 py-1 text-[9px] font-black w-40">X: OLMADIĞI GÜNLER</div>
-         </div>
+      <div className="mt-6 flex flex-col px-2">
+        <div className="flex flex-wrap gap-4 mb-4">
+           <div className="flex flex-col space-y-1">
+              <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">B: BAKIM</div>
+              <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">BB: BAKIM BEKLER</div>
+              <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">KM: KABUL MUAYENESİ</div>
+           </div>
+           <div className="flex flex-col space-y-1">
+              <div className="bg-[#ff0000] text-white border border-black px-2 py-1 text-[9px] font-black w-40">A: ARIZA</div>
+              <div className="bg-[#ff0000] text-white border border-black px-2 py-1 text-[9px] font-black w-40">PB: PARÇA BEKLER</div>
+              <div className="bg-[#ff0000] text-white border border-black px-2 py-1 text-[9px] font-black w-40">KK: KAZA KIRIM</div>
+           </div>
+           <div className="flex flex-col space-y-1">
+              <div className="bg-[#7030a0] text-white border border-black px-2 py-1 text-[9px] font-black w-40">X: OLMADIĞI GÜNLER</div>
+           </div>
+        </div>
+        <div className="text-[10px] font-bold text-red-600">
+          ** 3 güne kadar olan gayrı faal durumlar (B, BB, KM, A, PB, KK) faaliyet oranına yansıtılmamıştır.
+        </div>
       </div>
     </div>
   );

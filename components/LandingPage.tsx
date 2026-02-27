@@ -22,9 +22,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ onViewDashboard, onViewUpdate
         className="z-10 text-center mb-16"
       >
         <img 
-          src="https://upload.wikimedia.org/wikipedia/tr/b/b2/Orman_Genel_M%C3%BCd%C3%BCrl%C3%BC%C4%9F%C3%BC_logo.png" 
-          alt="OGM Logo" 
-          className="w-32 h-32 mx-auto mb-8 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]"
+          src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExeDRxOWVlbDJkbmx6bmxsM203Z3g3bXBobGJsbDQyMDJ1M2h5MzZqcCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/n7frjzkahqcqyik0o3/giphy.gif" 
+          alt="Logo GIF" 
+          className="w-40 h-40 mx-auto mb-8 rounded-full object-cover shadow-[0_0_30px_rgba(16,185,129,0.5)] ring-4 ring-emerald-500/30"
         />
         <h1 className="text-5xl md:text-7xl font-black text-white tracking-tighter italic uppercase mb-4">
           HAVA ARAÇLARI <br /> <span className="text-emerald-500">YÖNETİM SİSTEMİ</span>
