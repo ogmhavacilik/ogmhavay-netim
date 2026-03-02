@@ -81,7 +81,7 @@ const App = () => {
   const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxcELr64A09o-x3jByNreNHbiurVHrNnGGV63XgQgKvr4kOz9gGqXLLINRRVAX8LcBHDQ/exec"; 
   const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzD1GdmzKz2Q3r1-Whq8ueFW9ixN6faTjHkOUdoLxoN2NIRY6hANFlrMXQcVTGk1ZILSg/exec";
   const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdmkAhcQgC6kqHtEKUCKfcc5JKphOzyt_VbOfuI5hv6qCuyRl-k6h46-gaIGakydo/exec";
-  const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzgBWsS3BDcfba2NM9CJi9W9Q5Dn0Fh5KO31wCb0vRygcH2z9F0FatqoxbZ5BotioPnrQ/exec";
+  const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyeSOuzExeG_vp7lbW1UStfhrMSGfsbddEX5Cfakg-Vv_eQnZCHRq4BGP6wq7VePMTiRg/exec";
   
   const initialSyncDone = useRef(false);
 
