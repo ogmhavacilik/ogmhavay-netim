@@ -205,7 +205,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
         </button>
 
         <div className="bg-white/5 border border-white/10 rounded-[2rem] md:rounded-[3rem] p-6 md:p-12 shadow-2xl backdrop-blur-xl">
-          <h2 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter italic mb-8">VERİ GÜNCELLEME</h2>
+          <h2 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter italic mb-8">HAVA ARACI GÜNLÜK DURUM GÜNCELLE</h2>
           
           <div className="mb-8 md:mb-12">
             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em] mb-4">HAVA ARACI SEÇİMİ</label>

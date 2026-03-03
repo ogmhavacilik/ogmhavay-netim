@@ -420,7 +420,7 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, onC
                    onClick={() => onViewLogs(() => setIsLogRecordsOpen(true))}
                    className="px-8 py-3 text-[11px] font-black text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all uppercase tracking-widest"
                  >
-                   LOG KAYITLARI
+                   GÜNCELLE
                  </button>
                  <button onClick={onEdit} className="px-10 py-3 text-[11px] font-black text-white bg-[#1b5e20] hover:bg-[#154d1a] rounded-lg transition-all shadow-xl uppercase tracking-widest border border-emerald-900/30">DÜZENLE</button>
               </div>

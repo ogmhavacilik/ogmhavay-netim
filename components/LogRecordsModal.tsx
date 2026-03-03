@@ -111,7 +111,7 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
                )}
                <button onClick={() => setView('maintenance')} className="bg-white w-96 p-12 rounded-[3.5rem] border-2 border-blue-100 shadow-xl hover:shadow-2xl hover:border-blue-500 transition-all flex flex-col items-center text-center space-y-6 transform hover:-translate-y-2">
                   <div className="bg-blue-50 p-6 rounded-[2rem] text-blue-700"><svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17v-2m3 2v-4m3 2v-6m-8-4h5h.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V19a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" strokeWidth={2}/></svg></div>
-                  <div><h3 className="text-2xl font-black text-blue-950 uppercase mb-2">BAKIM TAKİP</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">CANLI EXCEL BAĞLANTISI</p></div>
+                  <div><h3 className="text-2xl font-black text-blue-950 uppercase mb-2">HAVA GÜNLÜK DURUMLARI</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">CANLI EXCEL BAĞLANTISI</p></div>
                </button>
             </div>
           ) : view === 'maintenance' ? (

@@ -47,7 +47,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onViewDashboard, onViewUpdate
               </svg>
             </div>
             <div>
-              <h3 className="text-3xl font-black text-white uppercase mb-2">DURUM VE FAALİYET</h3>
+              <h3 className="text-3xl font-black text-white uppercase mb-2">HAVA ARACI GÜNLÜK DURUMLARI VE FAALİYET ÇİZELGESİ</h3>
               <p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Envanter ve Operasyonel İzleme</p>
             </div>
           </div>
@@ -67,7 +67,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onViewDashboard, onViewUpdate
               </svg>
             </div>
             <div>
-              <h3 className="text-3xl font-black text-white uppercase mb-2">VERİ GÜNCELLEME</h3>
+              <h3 className="text-3xl font-black text-white uppercase mb-2">HAVA ARACI GÜNLÜK DURUM GÜNCELLE</h3>
               <p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Teknik Veri ve Durum Girişi</p>
             </div>
           </div>
