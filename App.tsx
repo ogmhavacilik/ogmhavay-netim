@@ -77,7 +77,7 @@ const App = () => {
   };
 
   const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxh6SyGVZfoby2CYc7FNk3JJQQW-P4Uh-Wx4ZupaRydrpY74FDblcyQBGac9XrphnQW/exec";
-  const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx-iI6f4MP_bh03IsxLC56bkJ_WV8OFt5rNAlxda6gzumO1bG838CFRdzA0H0jXKNS-7g/exec";
+  const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbygfmKdFmbQS2CFbgF7IbfSWH117TFhWas2NzBHSSA5ci1CXOoew4qPrZFzVwNUMMhZ8Q/exec";
   const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxcELr64A09o-x3jByNreNHbiurVHrNnGGV63XgQgKvr4kOz9gGqXLLINRRVAX8LcBHDQ/exec"; 
   const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzD1GdmzKz2Q3r1-Whq8ueFW9ixN6faTjHkOUdoLxoN2NIRY6hANFlrMXQcVTGk1ZILSg/exec";
   const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdmkAhcQgC6kqHtEKUCKfcc5JKphOzyt_VbOfuI5hv6qCuyRl-k6h46-gaIGakydo/exec";
@@ -236,7 +236,7 @@ const App = () => {
     const targetDate = new Date(filterDate);
     const dateStr = targetDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const fileNameDate = dateStr.replace(/\./g, '-');
-    const fileName = isHistorical ? `Genel_Rapor_${fileNameDate}.xls` : 'Genel_Hava_Araci_Durum_Raporu.xls';
+    const fileName = isHistorical ? `Envanter_Rapor_${fileNameDate}.xls` : 'Envanter_Hava_Araci_Durum_Raporu.xls';
     
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -840,7 +840,7 @@ const App = () => {
           </div>
           <div className="flex space-x-5">
             <button onClick={() => setShowActivity(!showActivity)} className={`px-10 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.4em] transition-all shadow-2xl border-2 ${showActivity ? 'bg-blue-600 text-white border-blue-500' : 'bg-white/10 text-white border-white/20'}`}>
-              {showActivity ? "GENEL HAVA ARACI DURUM RAPORU" : "FAALİYET ÇİZELGESİ"}
+              {showActivity ? "ENVANTER HAVA ARACI DURUM RAPORU" : "FAALİYET ÇİZELGESİ"}
             </button>
             <button 
               onClick={handleAdminClick} 
@@ -929,7 +929,7 @@ const App = () => {
         <div className="mb-24 animate-in fade-in duration-1000">
           <div className="flex justify-between items-end mb-12 px-6">
              <div>
-                <h2 className="text-6xl font-black text-white uppercase tracking-tighter italic">GENEL HAVA ARACI DURUM RAPORU</h2>
+                <h2 className="text-6xl font-black text-white uppercase tracking-tighter italic">ENVANTER HAVA ARACI DURUM RAPORU</h2>
                 {historicalFleet !== null && (
                   <div className="mt-4 bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-2 rounded-xl inline-block font-black text-xs uppercase tracking-widest">
                     Bu rapor geçmiş tarihli veridir.

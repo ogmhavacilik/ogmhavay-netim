@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Aircraft, OPLItem } from '../types';
 import { fetchOPLData } from '../services/sheetService';
+import * as XLSX from 'xlsx';
 
 interface LogRecordsModalProps {
   aircraft: Aircraft;
@@ -8,9 +9,11 @@ interface LogRecordsModalProps {
 }
 
 const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) => {
-  const [view, setView] = useState<'menu' | 'opl' | 'maintenance'>('menu');
+  const [view, setView] = useState<'menu' | 'opl' | 'maintenance' | 'sheet'>('menu');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadComplete, setUploadComplete] = useState<boolean>(false);
   const [oplData, setOplData] = useState<OPLItem[]>([]);
   const [dynamicHeaders, setDynamicHeaders] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -20,12 +23,20 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
   const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwRDij5IctLSM5u-xILc4fYk_KA_bM6GB41EB5OZw0moWGcUKeFu2P_y_SOk4VSNE7g0g/exec";
   const OPL_SHEET_ID = "1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4";
 
-  const MAINTENANCE_URLS: Record<string, string> = {
-    'AT-802': 'https://docs.google.com/spreadsheets/d/1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4/edit?hl=tr&gid=1682612983',
-    'Bell-429': 'https://docs.google.com/spreadsheets/d/1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ/edit?gid=84538314',
-    'T-70': 'https://docs.google.com/spreadsheets/d/10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw/edit?hl=tr&gid=1432056659#gid=1432056659',
-    'B-360': 'https://docs.google.com/spreadsheets/d/1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0/edit?gid=1887341953#gid=1887341953',
-    'C-650': 'https://docs.google.com/spreadsheets/d/1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE/edit?hl=tr&gid=1394131583#gid=1394131583'
+  const SHEET_IDS: Record<string, string> = {
+    'AT-802': '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4',
+    'Bell-429': '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ',
+    'T-70': '10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw',
+    'B-360': '1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0',
+    'C-650': '1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE'
+  };
+
+  const SCRIPT_URLS: Record<string, string> = {
+    'AT-802': 'https://script.google.com/macros/s/AKfycbygfmKdFmbQS2CFbgF7IbfSWH117TFhWas2NzBHSSA5ci1CXOoew4qPrZFzVwNUMMhZ8Q/exec',
+    'Bell-429': 'https://script.google.com/macros/s/AKfycbxh6SyGVZfoby2CYc7FNk3JJQQW-P4Uh-Wx4ZupaRydrpY74FDblcyQBGac9XrphnQW/exec',
+    'T-70': 'https://script.google.com/macros/s/AKfycbxcELr64A09o-x3jByNreNHbiurVHrNnGGV63XgQgKvr4kOz9gGqXLLINRRVAX8LcBHDQ/exec',
+    'B-360': 'https://script.google.com/macros/s/AKfycbzD1GdmzKz2Q3r1-Whq8ueFW9ixN6faTjHkOUdoLxoN2NIRY6hANFlrMXQcVTGk1ZILSg/exec',
+    'C-650': 'https://script.google.com/macros/s/AKfycbzdmkAhcQgC6kqHtEKUCKfcc5JKphOzyt_VbOfuI5hv6qCuyRl-k6h46-gaIGakydo/exec'
   };
 
   const handleFetchOPL = async () => {
@@ -64,6 +75,99 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
       setOplData([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setErrorMsg(null);
+    setUploadProgress(0);
+    setUploadComplete(false);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          setUploadProgress(10);
+          const base64String = (event.target?.result as string).split(',')[1];
+
+          const scriptUrl = SCRIPT_URLS[aircraft.tip || 'AT-802'];
+          const sheetId = SHEET_IDS[aircraft.tip || 'AT-802'];
+
+          if (!scriptUrl || !sheetId) {
+            throw new Error("Bu uçak tipi için yapılandırma bulunamadı.");
+          }
+
+          setUploadProgress(30);
+
+          const progressInterval = setInterval(() => {
+            setUploadProgress(prev => {
+              if (prev >= 90) {
+                clearInterval(progressInterval);
+                return 90;
+              }
+              return prev + 10;
+            });
+          }, 500);
+
+          const response = await fetch(scriptUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8',
+            },
+            redirect: 'follow',
+            body: JSON.stringify({
+              action: 'replaceEntireSpreadsheet',
+              sheetId: sheetId,
+              fileData: base64String
+            })
+          });
+
+          clearInterval(progressInterval);
+          setUploadProgress(100);
+
+          if (!response.ok) {
+            throw new Error(`HTTP Hatası: ${response.status} ${response.statusText}`);
+          }
+
+          const textResult = await response.text();
+          let result;
+          try {
+            result = JSON.parse(textResult);
+          } catch (e) {
+            throw new Error("Sunucudan geçersiz yanıt alındı: " + textResult.substring(0, 100));
+          }
+
+          if (result.success) {
+            setUploadComplete(true);
+            setTimeout(() => {
+              window.location.reload();
+            }, 2000);
+          } else {
+            setErrorMsg("Hata: " + result.error);
+            setLoading(false);
+          }
+        } catch (err: any) {
+          setErrorMsg("Dosya yüklenirken hata oluştu: " + err.message);
+          setLoading(false);
+        } finally {
+          e.target.value = '';
+        }
+      };
+      
+      reader.onerror = () => {
+        setErrorMsg("Dosya okunamadı.");
+        setLoading(false);
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      setErrorMsg("Dosya yüklenirken hata oluştu: " + err.message);
+      setLoading(false);
+      e.target.value = '';
     }
   };
 
@@ -109,15 +213,89 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
                     <div><h3 className="text-2xl font-black text-emerald-950 uppercase mb-2">ÖMÜRLÜ PARÇA LİSTESİ</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">KESİN FİLTRELEME AKTİF</p></div>
                  </button>
                )}
-               <button onClick={() => setView('maintenance')} className="bg-white w-96 p-12 rounded-[3.5rem] border-2 border-blue-100 shadow-xl hover:shadow-2xl hover:border-blue-500 transition-all flex flex-col items-center text-center space-y-6 transform hover:-translate-y-2">
-                  <div className="bg-blue-50 p-6 rounded-[2rem] text-blue-700"><svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17v-2m3 2v-4m3 2v-6m-8-4h5h.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V19a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" strokeWidth={2}/></svg></div>
-                  <div><h3 className="text-2xl font-black text-blue-950 uppercase mb-2">HAVA GÜNLÜK DURUMLARI</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">CANLI EXCEL BAĞLANTISI</p></div>
+               <button onClick={() => setView('sheet')} className="bg-white w-96 p-12 rounded-[3.5rem] border-2 border-blue-100 shadow-xl hover:shadow-2xl hover:border-blue-500 transition-all flex flex-col items-center text-center space-y-6 transform hover:-translate-y-2">
+                  <div className="bg-blue-50 p-6 rounded-[2rem] text-blue-700"><svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></div>
+                  <div><h3 className="text-2xl font-black text-blue-950 uppercase mb-2">HAVA ARACI GÜNLÜK DURUMLARI</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">GÖRÜNTÜLE</p></div>
+               </button>
+               <button onClick={() => setView('maintenance')} className="bg-white w-96 p-12 rounded-[3.5rem] border-2 border-purple-100 shadow-xl hover:shadow-2xl hover:border-purple-500 transition-all flex flex-col items-center text-center space-y-6 transform hover:-translate-y-2">
+                  <div className="bg-purple-50 p-6 rounded-[2rem] text-purple-700"><svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg></div>
+                  <div><h3 className="text-2xl font-black text-purple-950 uppercase mb-2">ÇEVRİM DIŞI ÇALIŞ</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">İNDİR / YÜKLE EKRANI</p></div>
                </button>
             </div>
+          ) : view === 'sheet' ? (
+            <div className="flex flex-col h-full overflow-hidden animate-in fade-in duration-300">
+               <div className="p-4 bg-white border-b flex justify-between items-center shrink-0">
+                 <button onClick={() => setView('menu')} className="bg-gray-100 px-6 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-gray-200 transition-colors">GERİ DÖN</button>
+                 <h3 className="text-sm font-black text-blue-950 uppercase">{aircraft.kuyrukNo} - HAVA ARACI GÜNLÜK DURUMLARI</h3>
+                 <div className="w-20"></div>
+               </div>
+               <div className="flex-grow w-full h-full bg-gray-50">
+                 <iframe 
+                   src={`https://docs.google.com/spreadsheets/d/${SHEET_IDS[aircraft.tip || 'AT-802']}/edit?rm=minimal`} 
+                   className="w-full h-full border-0"
+                   title="Google Sheets View"
+                 />
+               </div>
+            </div>
           ) : view === 'maintenance' ? (
-             <div className="flex-grow flex flex-col animate-in fade-in duration-300">
-               <div className="p-4 bg-white border-b border-gray-200 flex justify-between items-center"><button onClick={() => setView('menu')} className="bg-gray-100 px-6 py-2 rounded-xl text-[10px] font-black uppercase">MENÜYE DÖN</button></div>
-               <iframe src={MAINTENANCE_URLS[aircraft.tip || 'AT-802']} className="flex-grow w-full border-0"></iframe>
+             <div className="flex-grow flex flex-col items-center justify-center p-10 space-y-8 animate-in fade-in duration-300">
+               <div className="text-center mb-8">
+                 <h2 className="text-3xl font-black text-blue-950 uppercase mb-4">OFFLINE ÇALIŞMA MODU</h2>
+                 <p className="text-gray-500 font-bold">Mevcut veriyi Excel olarak indirin, çevrimdışı düzenleyin ve ardından güncel dosyayı yükleyin.</p>
+               </div>
+               
+               <div className="flex space-x-8">
+                 <button 
+                   onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${SHEET_IDS[aircraft.tip || 'AT-802']}/export?format=xlsx`)}
+                   className="bg-white w-72 p-10 rounded-[3rem] border-2 border-emerald-100 shadow-xl hover:shadow-2xl hover:border-emerald-500 transition-all flex flex-col items-center text-center space-y-6 transform hover:-translate-y-2"
+                 >
+                    <div className="bg-emerald-50 p-6 rounded-[2rem] text-emerald-700">
+                      <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-emerald-950 uppercase mb-2">EXCEL İNDİR</h3>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">MEVCUT VERİYİ İNDİR</p>
+                    </div>
+                 </button>
+
+                 <label className="cursor-pointer bg-white w-72 p-10 rounded-[3rem] border-2 border-blue-100 shadow-xl hover:shadow-2xl hover:border-blue-500 transition-all flex flex-col items-center text-center space-y-6 transform hover:-translate-y-2">
+                    <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleFileUpload} />
+                    <div className="bg-blue-50 p-6 rounded-[2rem] text-blue-700">
+                      <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-blue-950 uppercase mb-2">EXCEL YÜKLE</h3>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">GÜNCEL VERİYİ YÜKLE</p>
+                    </div>
+                 </label>
+               </div>
+
+               {loading && !uploadComplete && (
+                 <div className="mt-8 flex flex-col items-center space-y-4 w-full max-w-md">
+                   <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
+                     <div className="bg-blue-600 h-4 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                   </div>
+                   <span className="text-xs font-black text-blue-900 uppercase">EXCEL YÜKLENİYOR... %{uploadProgress}</span>
+                 </div>
+               )}
+               {uploadComplete && (
+                 <div className="mt-8 flex flex-col items-center space-y-4">
+                   <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+                     <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                   </div>
+                   <span className="text-lg font-black text-green-700 uppercase">YÜKLEME TAMAMLANDI</span>
+                   <span className="text-xs font-bold text-gray-500 uppercase">Sayfa yenileniyor...</span>
+                 </div>
+               )}
+               {errorMsg && (
+                 <div className="mt-8 bg-red-100 text-red-700 px-6 py-4 rounded-xl font-bold text-sm">
+                   {errorMsg}
+                 </div>
+               )}
+
+               <button onClick={() => setView('menu')} className="mt-12 bg-gray-100 px-8 py-3 rounded-xl text-xs font-black uppercase hover:bg-gray-200 transition-colors">
+                 MENÜYE DÖN
+               </button>
              </div>
           ) : (
             <div className="flex flex-col h-full overflow-hidden animate-in fade-in duration-300">
