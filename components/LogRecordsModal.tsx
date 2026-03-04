@@ -183,6 +183,58 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
     });
   }, [oplData, searchTerm]);
 
+  const checkRowAlert = (row: any) => {
+    const findValue = (item: any, possibleKeys: string[]) => {
+      const keys = Object.keys(item);
+      const normalize = (s: string) => s.replace(/[\s_]/g, '').toUpperCase();
+      for (const pk of possibleKeys) {
+        const normalizedPk = normalize(pk);
+        const foundKey = keys.find(k => normalize(k) === normalizedPk);
+        if (foundKey) return item[foundKey];
+      }
+      return null;
+    };
+
+    const parseHour = (val: any): number | null => {
+      if (val === null || val === undefined || String(val).trim() === "" || String(val).toUpperCase() === "N/A") return null;
+      const s = String(val).trim().replace(',', '.');
+      if (s.includes(':')) {
+        const parts = s.split(':').map(Number);
+        if (parts.length >= 2) return (parts[0] || 0) + (parts[1] || 0) / 60;
+      }
+      const n = parseFloat(s);
+      return isNaN(n) ? null : n;
+    };
+
+    const parseDay = (val: any): number | null => {
+      if (val === null || val === undefined || String(val).trim() === "" || String(val).toUpperCase() === "N/A") return null;
+      const n = parseInt(String(val).trim());
+      return isNaN(n) ? null : n;
+    };
+
+    const kalanSaatRaw = findValue(row, ["DEĞİŞİME KALAN SAAT", "DEGISIME KALAN SAAT", "Değişime Kalan Saat"]);
+    const kalanGunRaw = findValue(row, ["DEĞİŞİME KALAN GÜN", "DEGISIME KALAN GUN", "Değişime Kalan Gün"]);
+
+    const kalanSaat = parseHour(kalanSaatRaw);
+    const kalanGun = parseDay(kalanGunRaw);
+
+    let hasAlert = false;
+    let alertCols: string[] = [];
+
+    if (kalanSaat !== null && kalanSaat <= 100) {
+      hasAlert = true;
+      const key = Object.keys(row).find(k => k.replace(/[\s_]/g, '').toUpperCase() === "DEĞİŞİMEKALANSAAT" || k.replace(/[\s_]/g, '').toUpperCase() === "DEGISIMEKALANSAAT");
+      if (key) alertCols.push(key);
+    }
+    if (kalanGun !== null && kalanGun <= 180) {
+      hasAlert = true;
+      const key = Object.keys(row).find(k => k.replace(/[\s_]/g, '').toUpperCase() === "DEĞİŞİMEKALANGÜN" || k.replace(/[\s_]/g, '').toUpperCase() === "DEGISIMEKALANGUN");
+      if (key) alertCols.push(key);
+    }
+
+    return { hasAlert, alertCols };
+  };
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md p-2 md:p-6">
       <div className="bg-white w-full max-w-[98%] h-[95vh] rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col border border-emerald-900/20">
@@ -325,18 +377,24 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
                              </tr>
                            </thead>
                            <tbody>
-                             {filteredData.map((row, rIdx) => (
-                               <tr key={rIdx} className="hover:bg-blue-50/50 transition-colors h-10">
-                                 <td className="px-3 py-1.5 border border-black text-[9px] font-black text-center text-orange-600 bg-orange-50/20 uppercase italic">
+                             {filteredData.map((row, rIdx) => {
+                               const { hasAlert, alertCols } = checkRowAlert(row);
+                               return (
+                               <tr key={rIdx} className={`transition-colors h-10 ${hasAlert ? 'bg-red-50/50 hover:bg-red-100/50 outline outline-2 outline-red-500 animate-pulse' : 'hover:bg-blue-50/50'}`}>
+                                 <td className={`px-3 py-1.5 border border-black text-[9px] font-black text-center uppercase italic ${hasAlert ? 'text-red-600 bg-red-100/50' : 'text-orange-600 bg-orange-50/20'}`}>
                                    {row['IS_MERGED_RECORD'] || ''}
                                  </td>
-                                 {dynamicHeaders.map((header, cIdx) => (
-                                   <td key={cIdx} className="px-3 py-1.5 border border-black text-[11px] font-bold text-gray-800 whitespace-nowrap overflow-hidden text-ellipsis">
+                                 {dynamicHeaders.map((header, cIdx) => {
+                                   const isAlertCol = alertCols.includes(header);
+                                   return (
+                                   <td key={cIdx} className={`px-3 py-1.5 border border-black text-[11px] font-bold whitespace-nowrap overflow-hidden text-ellipsis ${isAlertCol ? 'text-red-600 font-black bg-red-100/50' : (hasAlert ? 'text-red-900' : 'text-gray-800')}`}>
                                      {String(row[header] || '-')}
                                    </td>
-                                 ))}
+                                   );
+                                 })}
                                </tr>
-                             ))}
+                               );
+                             })}
                            </tbody>
                          </table>
                          {filteredData.length === 0 && <div className="p-20 text-center text-gray-400 font-black uppercase italic">BU UÇAĞA AİT KAYIT BULUNAMADI VEYA DİĞER UÇAKLAR ELENDİ</div>}
