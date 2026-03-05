@@ -11,6 +11,7 @@ import DataUpdateForm from './components/DataUpdateForm';
 import GovdeSorgulaModal from './components/GovdeSorgulaModal';
 import { Aircraft, Status, SheetConfig, AppNotification, DailyStatusCode, AircraftActivity } from './types';
 import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM } from './services/sheetService';
+import { exportAT802DailyStatusToPDF, exportAT802DailyStatusToExcel } from './services/pdfService';
 
 const App = () => {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
@@ -77,7 +78,7 @@ const App = () => {
   };
 
   const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxh6SyGVZfoby2CYc7FNk3JJQQW-P4Uh-Wx4ZupaRydrpY74FDblcyQBGac9XrphnQW/exec";
-  const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbygfmKdFmbQS2CFbgF7IbfSWH117TFhWas2NzBHSSA5ci1CXOoew4qPrZFzVwNUMMhZ8Q/exec";
+  const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw2iGBg_050z5ij-3XzoAUf3EnA21I75ClIDRBJl8rVLoTKsNwpxw6yjDlYSKIrzNjPuA/exec";
   const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxcELr64A09o-x3jByNreNHbiurVHrNnGGV63XgQgKvr4kOz9gGqXLLINRRVAX8LcBHDQ/exec"; 
   const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzD1GdmzKz2Q3r1-Whq8ueFW9ixN6faTjHkOUdoLxoN2NIRY6hANFlrMXQcVTGk1ZILSg/exec";
   const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdmkAhcQgC6kqHtEKUCKfcc5JKphOzyt_VbOfuI5hv6qCuyRl-k6h46-gaIGakydo/exec";
@@ -591,6 +592,31 @@ const App = () => {
         }
       });
 
+      // AT-802 Test Tarihi Kontrolleri
+      if (aircraft.tip === 'AT-802') {
+        const checkTestDate = (dateStr: string | undefined, label: string) => {
+          if (!dateStr || dateStr === '-') return;
+          const lastDate = new Date(dateStr);
+          if (isNaN(lastDate.getTime())) return;
+          
+          const nextDate = new Date(lastDate);
+          nextDate.setDate(nextDate.getDate() + 7);
+          
+          const today = new Date();
+          const diffTime = nextDate.getTime() - today.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (diffDays <= 2 && diffDays >= 0) {
+            alerts.push(`${label}: Haftalık çalışmaya son ${diffDays} gün kaldı!`);
+          } else if (diffDays < 0) {
+            alerts.push(`${label}: Haftalık çalışma tarihi geçti! (${Math.abs(diffDays)} gün gecikti)`);
+          }
+        };
+
+        checkTestDate(aircraft.frdsTestDate, 'FRDS');
+        checkTestDate(aircraft.motorRunDate, 'MOTOR ÇALIŞTIRMA');
+      }
+
       setFleet(prev => prev.map(a => a.kuyrukNo === aircraft.kuyrukNo ? { ...a, oplAlerts: alerts } : a));
       setOplCheckStatus(prev => ({ ...prev, [aircraft.kuyrukNo]: 'done' }));
     } catch (error) {
@@ -807,6 +833,7 @@ const App = () => {
         fleet={fleet}
         onBack={() => setCurrentView('landing')}
         onSuccess={() => {
+          setFilterType('AT-802');
           runGlobalSync();
           setCurrentView('dashboard');
         }}
@@ -938,6 +965,15 @@ const App = () => {
                 <p className="text-emerald-500 text-[10px] font-black uppercase tracking-[0.8em] mt-4 border-l-4 border-emerald-500 pl-4">Platform Bazlı Durum ve Gövde Uçuş Saati</p>
              </div>
              <div className="flex items-center space-x-6">
+                {filterType === 'AT-802' && (
+                  <button 
+                    onClick={() => exportAT802DailyStatusToExcel(AT802_SCRIPT_URL, '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4')}
+                    className="bg-red-700 hover:bg-red-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeWidth={3}/></svg>
+                    GÜNLÜK DURUM (EXCEL)
+                  </button>
+                )}
                 <button onClick={exportFleetToExcel} className="bg-emerald-700 hover:bg-emerald-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center">
                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth={3}/></svg>
                    EXCEL İNDİR

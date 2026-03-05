@@ -37,12 +37,22 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
 /**
  * Saat değerini HH:mm formatına çevirir
  */
-export const formatToHHMM = (totalHours: number | null): string => {
+export const formatToHHMM = (totalHours: number | null, aircraftType?: string): string => {
   if (totalHours === null) return '-';
+  
+  // C-650 Faydalı Saat should be integer
+  if (aircraftType === 'C-650') {
+    return Math.floor(Math.abs(totalHours)).toString();
+  }
+
   const hours = Math.floor(Math.abs(totalHours));
   const minutes = Math.round((Math.abs(totalHours) - hours) * 60);
   const sign = totalHours < 0 ? '-' : '';
-  return `${sign}${hours}:${minutes.toString().padStart(2, '0')}`;
+  
+  const result = `${sign}${hours}:${minutes.toString().padStart(2, '0')}`;
+  
+  // For B-360 and Bell-429, use comma if requested (handled in formatGovdeHour usually)
+  return result;
 };
 
 /**
@@ -56,22 +66,45 @@ const parseSingleCellToHour = (val: any, aircraftType: string): number | null =>
     d = new Date(val);
   } else if (val instanceof Date || (val && typeof val.getTime === 'function')) {
     d = new Date(val);
+  } else if (typeof val === 'string' && /^\d{1,2}\.\d{1,2}\.\d{4}/.test(val)) {
+    // Handle DD.MM.YYYY strings from getDisplayValues()
+    const parts = val.split(/[.\s:]+/);
+    if (parts.length >= 3) {
+      const day = parseInt(parts[0]);
+      const month = parseInt(parts[1]) - 1;
+      const year = parseInt(parts[2]);
+      const hour = parseInt(parts[3]) || 0;
+      const min = parseInt(parts[4]) || 0;
+      d = new Date(Date.UTC(year, month, day, hour, min));
+    }
   }
 
   if (d && !isNaN(d.getTime())) {
     const year = d.getUTCFullYear();
-    if (year === 1899 || year === 1900) {
+    if (year <= 1905) {
+      // Robust duration calculation: milliseconds since Sheets epoch (1899-12-30)
       const base = new Date(Date.UTC(1899, 11, 30, 0, 0, 0));
       const diffMs = d.getTime() - base.getTime();
-      const hours = diffMs / (1000 * 60 * 60);
-      return hours > 0 ? hours : null;
+      let totalHours = diffMs / (1000 * 60 * 60);
+      
+      // AT-802 9:57 (9.95h) correction for date-based durations
+      if (aircraftType === 'AT-802') {
+        totalHours -= 9.95;
+      }
+
+      return totalHours > 0 ? totalHours : null;
     }
   }
 
   if (typeof val === 'number') {
     if (val <= 0) return null;
-    if (val < 100 && aircraftType === 'AT-802') return val * 24;
-    return val;
+    let n = val;
+    // AT-802 correction for numeric hours (days or hours)
+    if (aircraftType === 'AT-802') {
+      if (n < 100) n = n * 24; // If it's days
+      n -= 9.95;
+    }
+    return n;
   }
 
   if (typeof val === 'string') {
@@ -81,11 +114,34 @@ const parseSingleCellToHour = (val: any, aircraftType: string): number | null =>
       if (parts.length >= 2) {
         const h = parts[0] || 0;
         const m = parts[1] || 0;
-        return h + m / 60;
+        let total = h + m / 60;
+        
+        // AT-802 correction for duration strings
+        if (aircraftType === 'AT-802' && total > 10) {
+          total -= 9.95;
+        }
+        
+        return total;
       }
     }
     const n = parseFloat(s);
-    if (!isNaN(n)) return n;
+    if (!isNaN(n)) {
+      let total = n;
+      // Special case for Bell-429: decimal part is literal minutes
+      if (aircraftType === 'Bell-429' && s.includes('.')) {
+        const parts = s.split('.');
+        const h = parseInt(parts[0]) || 0;
+        const m = parseInt(parts[1]) || 0;
+        total = h + m / 60;
+      }
+      
+      // AT-802 correction for numeric strings
+      if (aircraftType === 'AT-802' && total > 10) {
+        total -= 9.95;
+      }
+      
+      return total;
+    }
   }
 
   return null;
@@ -100,11 +156,33 @@ const formatGovdeHour = (val: any, aircraftType: string): string => {
   const raw = deepFlatten(val);
   if (raw === undefined || raw === null || String(raw).trim() === "" || String(raw).trim() === "0") return "-";
   
+  const s = String(raw).trim();
+
+  // For AT-802, if it looks like a date or a shifted duration, we must parse and correct it
+  if (aircraftType === 'AT-802') {
+    const parsed = parseSingleCellToHour(raw, aircraftType);
+    if (parsed !== null) {
+      return formatToHHMM(parsed, aircraftType);
+    }
+    return s;
+  }
+
+  if (aircraftType === 'B-360' || aircraftType === 'Bell-429') {
+    if (s.includes(':')) return s.replace(':', ',');
+    return s.replace('.', ',');
+  }
+
+  // For C-650, truncate if it's a number
+  if (aircraftType === 'C-650') {
+    const n = parseFloat(s.replace(',', '.'));
+    if (!isNaN(n)) return Math.floor(n).toString();
+  }
+
   const parsed = parseSingleCellToHour(raw, aircraftType);
   if (parsed !== null) {
-    return formatToHHMM(parsed);
+    return formatToHHMM(parsed, aircraftType);
   }
-  return String(raw).trim();
+  return s;
 };
 
 const formatValueToString = (val: any): string => {
@@ -189,7 +267,11 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         .map(cell => parseSingleCellToHour(cell, config.aircraftType))
         .filter((h): h is number => h !== null);
       const finalMinHour = validFaydaliHours.length > 0 ? Math.min(...validFaydaliHours) : null;
-      const hourInt = finalMinHour !== null ? Math.floor(finalMinHour) : null;
+      
+      // C-650 Faydalı Saat should be integer
+      const hourInt = (config.aircraftType === 'C-650' && finalMinHour !== null) 
+        ? Math.floor(finalMinHour) 
+        : (finalMinHour !== null ? Math.floor(finalMinHour) : null);
 
       const govdeStr = formatGovdeHour(item.govdeUcusSaati ?? item.E ?? item.e ?? item[4], config.aircraftType);
 

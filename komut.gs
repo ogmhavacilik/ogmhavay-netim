@@ -103,25 +103,37 @@ function doPost(e) {
     }
 
     // 🟢 ENVANTER AKSİYONU (App.tsx için)
+    if (action === "getRawData") {
+      var sheetName = params.sheetName;
+      var sheet = sheetName ? ss.getSheetByName(sheetName) : ss.getSheets()[0];
+      if (!sheet) return jsonError("Sayfa bulunamadı.");
+      var range = params.range || "A1:AL200";
+      var values = sheet.getRange(range).getDisplayValues();
+      return ContentService.createTextOutput(JSON.stringify(values)).setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (action === "getAircraftData") {
       var sheetName = params.sheetName;
       var sheet = sheetName ? ss.getSheetByName(sheetName) : ss.getSheets()[0];
       if (!sheet) return jsonError("Sayfa bulunamadı.");
       var mapping = params.mapping;
-      var fetchTech = params.fetchTechnicalDetails || false;
       var rawData = {};
+      
+      // Use getDisplayValues for everything to match what the user sees in the sheet
+      // This avoids timezone shifts and duration wrapping issues
       Object.keys(mapping).forEach(function(key) {
-        rawData[key] = sheet.getRange(mapping[key]).getValues();
+        rawData[key] = sheet.getRange(mapping[key]).getDisplayValues();
       });
+      
       var numRows = rawData.kuyrukNo.length;
       var inventoryResults = [];
 
       // AT-802 için Geliş Tarihi lookup tablosunu çek
       var lookupData = null;
-      if (fetchTech && params.aircraftType === 'AT-802') {
+      if (params.aircraftType === 'AT-802') {
         try {
           lookupData = {
-            keys: sheet.getRange("T24:T35").getValues(),
+            keys: sheet.getRange("T24:T35").getDisplayValues(),
             vals: sheet.getRange("U24:V35").getDisplayValues()
           };
         } catch (e) {}
@@ -136,7 +148,7 @@ function doPost(e) {
         
         if (item.kuyrukNo && String(item.kuyrukNo).trim() !== "") {
           // AT-802 için teknik detayları bireysel sayfalardan çek
-          if (fetchTech) {
+          if (params.fetchTechnicalDetails || params.aircraftType === 'AT-802') {
             var kNo = String(item.kuyrukNo).trim();
             var match = kNo.match(/OR-\d+/i);
             if (match) {
@@ -146,9 +158,9 @@ function doPost(e) {
             var techSheet = ss.getSheetByName(techSheetName);
             if (techSheet) {
               try {
-                item.govdeSN = techSheet.getRange("H10").getValue();
-                item.motor1SN = techSheet.getRange("H14").getValue();
-                item.uretimYili = techSheet.getRange("F7:H7").getDisplayValue(); // Kullanıcı F7:H7 dedi
+                item.govdeSN = techSheet.getRange("H10").getDisplayValue();
+                item.motor1SN = techSheet.getRange("H14").getDisplayValue();
+                item.uretimYili = techSheet.getRange("F7:H7").getDisplayValue();
                 
                 var frdsCell = "M10";
                 var motorCell = "J16";

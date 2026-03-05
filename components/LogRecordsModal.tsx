@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Aircraft, OPLItem } from '../types';
 import { fetchOPLData } from '../services/sheetService';
 import * as XLSX from 'xlsx';
@@ -171,19 +171,7 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
     }
   };
 
-  const filteredData = useMemo(() => {
-    if (!oplData || oplData.length === 0) return [];
-    const term = searchTerm.toLocaleLowerCase('tr-TR').trim();
-    if (!term) return oplData;
-    return oplData.filter((item) => {
-      return Object.entries(item).some(([key, val]) => {
-        if (key === 'IS_MERGED_RECORD') return false;
-        return String(val || "").toLocaleLowerCase('tr-TR').includes(term);
-      });
-    });
-  }, [oplData, searchTerm]);
-
-  const checkRowAlert = (row: any) => {
+  const checkRowAlert = useCallback((row: any) => {
     const findValue = (item: any, possibleKeys: string[]) => {
       const keys = Object.keys(item);
       const normalize = (s: string) => s.replace(/[\s_]/g, '').toUpperCase();
@@ -233,7 +221,31 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
     }
 
     return { hasAlert, alertCols };
-  };
+  }, []);
+
+  const filteredData = useMemo(() => {
+    if (!oplData || oplData.length === 0) return [];
+    
+    let processedData = oplData;
+    const term = searchTerm.toLocaleLowerCase('tr-TR').trim();
+    
+    if (term) {
+      processedData = oplData.filter((item) => {
+        return Object.entries(item).some(([key, val]) => {
+          if (key === 'IS_MERGED_RECORD') return false;
+          return String(val || "").toLocaleLowerCase('tr-TR').includes(term);
+        });
+      });
+    }
+
+    return [...processedData].sort((a, b) => {
+      const aAlert = checkRowAlert(a).hasAlert;
+      const bAlert = checkRowAlert(b).hasAlert;
+      if (aAlert && !bAlert) return -1;
+      if (!aAlert && bAlert) return 1;
+      return 0;
+    });
+  }, [oplData, searchTerm, checkRowAlert]);
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md p-2 md:p-6">
