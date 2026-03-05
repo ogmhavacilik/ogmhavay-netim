@@ -121,6 +121,25 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
     return d.toLocaleDateString('tr-TR');
   };
 
+  const getRemainingDays = (dateStr: string) => {
+    if (!dateStr) return null;
+    const lastDate = new Date(dateStr);
+    if (isNaN(lastDate.getTime())) return null;
+    
+    const nextDate = new Date(lastDate);
+    nextDate.setDate(nextDate.getDate() + 7);
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const nextDateMidnight = new Date(nextDate);
+    nextDateMidnight.setHours(0, 0, 0, 0);
+    
+    const diffTime = nextDateMidnight.getTime() - today.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays;
+  };
+
   useEffect(() => {
     const aircraft = fleet.find(a => a.kuyrukNo === selectedKuyruk);
     if (aircraft) {
@@ -520,12 +539,26 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                                 <div className="space-y-2">
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FRDS TESTİ HAFTALIK YAPILDIĞI TARİH</label>
                                   <input type="date" value={at802Data.frdsTest} onChange={e => setAt802Data({...at802Data, frdsTest: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                                  {at802Data.frdsTest && <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mt-1">BİR SONRAKİ TEST: {getNextDate(at802Data.frdsTest)}</div>}
+                                  {at802Data.frdsTest && (
+                                    <div className="mt-1 space-y-0.5">
+                                      <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">BİR SONRAKİ TEST: {getNextDate(at802Data.frdsTest)}</div>
+                                      <div className={`text-[10px] font-black uppercase tracking-widest ${getRemainingDays(at802Data.frdsTest)! < 0 ? 'text-red-400' : 'text-white/40'}`}>
+                                        KALAN GÜN SAYISI: {getRemainingDays(at802Data.frdsTest)! < 0 ? `${Math.abs(getRemainingDays(at802Data.frdsTest)!)} GÜN GEÇTİ` : `${getRemainingDays(at802Data.frdsTest)} GÜN`}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="space-y-2">
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">MOTOR ÇALIŞMASI YAPILDIĞI TARİH</label>
                                   <input type="date" value={at802Data.motorCalisma} onChange={e => setAt802Data({...at802Data, motorCalisma: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                                  {at802Data.motorCalisma && <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mt-1">BİR SONRAKİ ÇALIŞMA: {getNextDate(at802Data.motorCalisma)}</div>}
+                                  {at802Data.motorCalisma && (
+                                    <div className="mt-1 space-y-0.5">
+                                      <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">BİR SONRAKİ ÇALIŞMA: {getNextDate(at802Data.motorCalisma)}</div>
+                                      <div className={`text-[10px] font-black uppercase tracking-widest ${getRemainingDays(at802Data.motorCalisma)! < 0 ? 'text-red-400' : 'text-white/40'}`}>
+                                        KALAN GÜN SAYISI: {getRemainingDays(at802Data.motorCalisma)! < 0 ? `${Math.abs(getRemainingDays(at802Data.motorCalisma)!)} GÜN GEÇTİ` : `${getRemainingDays(at802Data.motorCalisma)} GÜN`}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>

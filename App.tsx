@@ -966,13 +966,22 @@ const App = () => {
              </div>
              <div className="flex items-center space-x-6">
                 {filterType === 'AT-802' && (
-                  <button 
-                    onClick={() => exportAT802DailyStatusToExcel(AT802_SCRIPT_URL, '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4')}
-                    className="bg-red-700 hover:bg-red-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center"
-                  >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeWidth={3}/></svg>
-                    GÜNLÜK DURUM (EXCEL)
-                  </button>
+                  <div className="flex space-x-3">
+                    <button 
+                      onClick={() => window.open('https://docs.google.com/spreadsheets/d/1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4/export?format=pdf&gid=1947812175&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false&range=A1:AF20', '_blank')}
+                      className="bg-red-700 hover:bg-red-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeWidth={3}/></svg>
+                      GÜNLÜK DURUM (PDF)
+                    </button>
+                    <button 
+                      onClick={() => window.open('https://docs.google.com/spreadsheets/d/1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4/export?format=xlsx&gid=1947812175', '_blank')}
+                      className="bg-emerald-700 hover:bg-emerald-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeWidth={3}/></svg>
+                      GÜNLÜK DURUM (EXCEL)
+                    </button>
+                  </div>
                 )}
                 <button onClick={exportFleetToExcel} className="bg-emerald-700 hover:bg-emerald-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center">
                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth={3}/></svg>
@@ -1006,7 +1015,7 @@ const App = () => {
                          <div className="font-black text-emerald-950 text-xl tracking-tighter group-hover:text-emerald-600 transition-colors flex items-center">
                            {a.kuyrukNo}
                            {hasOplAlert && (
-                             <span className="ml-3 bg-red-500 text-white text-[8px] px-2 py-0.5 rounded-full animate-bounce">
+                             <span className="ml-3 bg-red-600 text-white text-[8px] px-2 py-0.5 rounded-full animate-bounce shadow-[0_0_10px_rgba(220,38,38,0.5)]">
                                ÖPL ALERT!
                              </span>
                            )}

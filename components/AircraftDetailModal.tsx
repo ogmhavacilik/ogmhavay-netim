@@ -394,15 +394,15 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, onC
                         <div className="h-4 w-full bg-gray-100 rounded"></div>
                       </div>
                     ) : oplAlerts.length > 0 && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-sm">
-                        <h4 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2 flex items-center">
-                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeWidth={2.5}/></svg>
+                      <div className="bg-red-50/50 border border-red-100 rounded-2xl p-4 shadow-sm">
+                        <h4 className="text-[10px] font-black text-red-800 uppercase tracking-widest mb-2 flex items-center">
+                          <svg className="w-4 h-4 mr-1.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeWidth={2.5}/></svg>
                           BİLDİRİMLER (ÖPL ALERTLERİ)
                         </h4>
                         <ul className="space-y-1">
                           {oplAlerts.map((alert, idx) => (
-                            <li key={idx} className="text-[12px] font-bold text-amber-800 flex items-start">
-                              <span className="mr-1.5 mt-1 w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0"></span>
+                            <li key={idx} className="text-[12px] font-bold text-red-900 flex items-start">
+                              <span className="mr-1.5 mt-1.5 w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0"></span>
                               {alert}
                             </li>
                           ))}

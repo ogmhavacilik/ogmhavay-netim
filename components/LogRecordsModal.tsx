@@ -392,14 +392,14 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
                              {filteredData.map((row, rIdx) => {
                                const { hasAlert, alertCols } = checkRowAlert(row);
                                return (
-                               <tr key={rIdx} className={`transition-colors h-10 ${hasAlert ? 'bg-red-50/50 hover:bg-red-100/50 outline outline-2 outline-red-500 animate-pulse' : 'hover:bg-blue-50/50'}`}>
-                                 <td className={`px-3 py-1.5 border border-black text-[9px] font-black text-center uppercase italic ${hasAlert ? 'text-red-600 bg-red-100/50' : 'text-orange-600 bg-orange-50/20'}`}>
+                               <tr key={rIdx} className={`transition-colors h-10 ${hasAlert ? 'bg-red-900 hover:bg-red-800 outline outline-2 outline-red-500 animate-pulse' : 'hover:bg-blue-50/50'}`}>
+                                 <td className={`px-3 py-1.5 border border-black text-[9px] font-black text-center uppercase italic ${hasAlert ? 'text-white bg-red-800' : 'text-orange-600 bg-orange-50/20'}`}>
                                    {row['IS_MERGED_RECORD'] || ''}
                                  </td>
                                  {dynamicHeaders.map((header, cIdx) => {
                                    const isAlertCol = alertCols.includes(header);
                                    return (
-                                   <td key={cIdx} className={`px-3 py-1.5 border border-black text-[11px] font-bold whitespace-nowrap overflow-hidden text-ellipsis ${isAlertCol ? 'text-red-600 font-black bg-red-100/50' : (hasAlert ? 'text-red-900' : 'text-gray-800')}`}>
+                                   <td key={cIdx} className={`px-3 py-1.5 border border-black text-[11px] font-bold whitespace-nowrap overflow-hidden text-ellipsis ${isAlertCol ? 'text-white font-black bg-red-700' : (hasAlert ? 'text-red-100' : 'text-gray-800')}`}>
                                      {String(row[header] || '-')}
                                    </td>
                                    );
