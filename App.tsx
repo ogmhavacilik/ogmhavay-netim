@@ -968,7 +968,7 @@ const App = () => {
                 {filterType === 'AT-802' && (
                   <div className="flex space-x-3">
                     <button 
-                      onClick={() => window.open('https://docs.google.com/spreadsheets/d/1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4/export?format=pdf&gid=1947812175&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false&range=A1:AF20', '_blank')}
+                      onClick={() => window.open('https://docs.google.com/spreadsheets/d/1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4/export?format=pdf&gid=1947812175&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false&range=A1:AL20', '_blank')}
                       className="bg-red-700 hover:bg-red-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center"
                     >
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeWidth={3}/></svg>
