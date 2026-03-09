@@ -114,15 +114,15 @@ const App = () => {
       sheetName: 'GÜNLÜK DURUM',
       appsScriptUrl: AT802_SCRIPT_URL,
       mapping: { 
-        kuyrukNo: 'B3:B14', 
-        durum: 'C3:C14', 
-        durumAyrintisi: 'D3:D14', 
-        konum: 'E3:E14', 
-        faydaliSaat: 'V3:AI14', 
-        aciklama: 'AL3:AL14',   
-        govdeUcusSaati: 'F3:F14',
-        gelisTarihi: 'U24:V35',
-        gelisKuyrukNo: 'T24:T35'
+        kuyrukNo: 'B3:B16', 
+        durum: 'C3:C16', 
+        durumAyrintisi: 'D3:D16', 
+        konum: 'E3:E16', 
+        faydaliSaat: 'V3:AI16', 
+        aciklama: 'AL3:AL16',   
+        govdeUcusSaati: 'F3:F16',
+        gelisTarihi: 'U24:V39',
+        gelisKuyrukNo: 'T24:T39'
       }
     },
     {
