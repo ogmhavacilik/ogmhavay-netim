@@ -1,4 +1,5 @@
 import { SheetConfig, Aircraft, Status, StatusType, DailyStatusCode, OPLItem } from '../types';
+import { getCallSignByTail } from '../constants';
 
 /**
  * Durum metinlerini analiz ederek faaliyet kodunu belirler.
@@ -86,12 +87,6 @@ const parseSingleCellToHour = (val: any, aircraftType: string): number | null =>
       const base = new Date(Date.UTC(1899, 11, 30, 0, 0, 0));
       const diffMs = d.getTime() - base.getTime();
       let totalHours = diffMs / (1000 * 60 * 60);
-      
-      // AT-802 9:57 (9.95h) correction for date-based durations
-      if (aircraftType === 'AT-802') {
-        totalHours -= 9.95;
-      }
-
       return totalHours > 0 ? totalHours : null;
     }
   }
@@ -102,7 +97,6 @@ const parseSingleCellToHour = (val: any, aircraftType: string): number | null =>
     // AT-802 correction for numeric hours (days or hours)
     if (aircraftType === 'AT-802') {
       if (n < 100) n = n * 24; // If it's days
-      n -= 9.95;
     }
     return n;
   }
@@ -116,11 +110,6 @@ const parseSingleCellToHour = (val: any, aircraftType: string): number | null =>
         const m = parts[1] || 0;
         let total = h + m / 60;
         
-        // AT-802 correction for duration strings
-        if (aircraftType === 'AT-802' && total > 10) {
-          total -= 9.95;
-        }
-        
         return total;
       }
     }
@@ -133,11 +122,6 @@ const parseSingleCellToHour = (val: any, aircraftType: string): number | null =>
         const h = parseInt(parts[0]) || 0;
         const m = parseInt(parts[1]) || 0;
         total = h + m / 60;
-      }
-      
-      // AT-802 correction for numeric strings
-      if (aircraftType === 'AT-802' && total > 10) {
-        total -= 9.95;
       }
       
       return total;
@@ -224,7 +208,9 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
 
     const result = await response.json();
     
-    const data = result && result.success && Array.isArray(result.data) ? result.data : (Array.isArray(result) ? result : []);
+    const data = (result && (result.success || result.status === 'success') && Array.isArray(result.data)) 
+      ? result.data 
+      : (Array.isArray(result) ? result : []);
     
     if (data.length === 0) return [];
 
@@ -277,7 +263,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
 
       const aircraft: Partial<Aircraft> = {
         kuyrukNo: kuyrukNo,
-        cagriKodu: `ORMAN-${kuyrukNo.split('-')[1] || 'XX'}`,
+        cagriKodu: getCallSignByTail(kuyrukNo),
         durum: (analysis.code !== 'F') ? Status.GAYRI_FAAL : Status.FAAL,
         durumTipi: (analysis.code === 'B' || analysis.code === 'BB') ? StatusType.BAKIM : 
                    (analysis.code === 'A' || analysis.code === 'PB') ? StatusType.ARIZA : StatusType.NONE,
@@ -323,7 +309,21 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
 
           return [`https://picsum.photos/seed/${kuyrukNo}/800/600`];
         })(),
-        platformTipi: config.aircraftType === 'Bell-429' ? 'H' : 'S-A',
+        platformTipi: (function() {
+          if (config.aircraftType === 'Bell-429') return 'H';
+          if (config.aircraftType === 'T-70') return 'H';
+          if (config.aircraftType === 'B-360') return 'S-L';
+          if (config.aircraftType === 'C-650') return 'S-L';
+          if (config.aircraftType === 'AT-802') {
+             const tail = cleanKuyrukNo;
+             if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return 'D-A';
+             if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return 'S-A';
+             if (tail === 'OR-2036') return 'D-L';
+             if (tail === 'OR-2038') return 'S-L';
+             return 'S-A';
+          }
+          return 'S-A';
+        })(),
         tip: config.aircraftType,
         assignedCode: analysis.code,
         aiInterpretation: analysis.interpretation,

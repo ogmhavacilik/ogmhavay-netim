@@ -10,6 +10,16 @@ import LandingPage from './components/LandingPage';
 import DataUpdateForm from './components/DataUpdateForm';
 import GovdeSorgulaModal from './components/GovdeSorgulaModal';
 import { Aircraft, Status, SheetConfig, AppNotification, DailyStatusCode, AircraftActivity } from './types';
+import { 
+  BELL_SCRIPT_URL, 
+  AT802_SCRIPT_URL, 
+  T70_SCRIPT_URL, 
+  B360_SCRIPT_URL, 
+  C650_SCRIPT_URL, 
+  LOG_SCRIPT_URL,
+  MAIL_LOG_SHEET_ID,
+  getCallSignByTail
+} from './constants';
 import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM } from './services/sheetService';
 import { exportAT802DailyStatusToPDF, exportAT802DailyStatusToExcel } from './services/pdfService';
 
@@ -77,13 +87,6 @@ const App = () => {
     }
   };
 
-  const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxh6SyGVZfoby2CYc7FNk3JJQQW-P4Uh-Wx4ZupaRydrpY74FDblcyQBGac9XrphnQW/exec";
-  const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw2iGBg_050z5ij-3XzoAUf3EnA21I75ClIDRBJl8rVLoTKsNwpxw6yjDlYSKIrzNjPuA/exec";
-  const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxcELr64A09o-x3jByNreNHbiurVHrNnGGV63XgQgKvr4kOz9gGqXLLINRRVAX8LcBHDQ/exec"; 
-  const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzD1GdmzKz2Q3r1-Whq8ueFW9ixN6faTjHkOUdoLxoN2NIRY6hANFlrMXQcVTGk1ZILSg/exec";
-  const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdmkAhcQgC6kqHtEKUCKfcc5JKphOzyt_VbOfuI5hv6qCuyRl-k6h46-gaIGakydo/exec";
-  const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyeSOuzExeG_vp7lbW1UStfhrMSGfsbddEX5Cfakg-Vv_eQnZCHRq4BGP6wq7VePMTiRg/exec";
-  
   const initialSyncDone = useRef(false);
 
   const SHEET_CONFIGS: SheetConfig[] = [
@@ -239,6 +242,39 @@ const App = () => {
     const fileNameDate = dateStr.replace(/\./g, '-');
     const fileName = isHistorical ? `Envanter_Rapor_${fileNameDate}.xls` : 'Envanter_Hava_Araci_Durum_Raporu.xls';
     
+    // Custom sort order based on Platform Type
+    const typeOrder = ['C-650', 'B-360', 'Bell-429', 'AT-802', 'T-70'];
+    
+    const sortedFleet = [...filteredFleet].sort((a, b) => {
+      const indexA = typeOrder.indexOf(a.tip || '');
+      const indexB = typeOrder.indexOf(b.tip || '');
+      
+      if (indexA !== indexB) {
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        return (a.tip || '').localeCompare(b.tip || '');
+      }
+
+      // Same type, sort by ORMAN-XX
+      const getOrder = (cagriKodu: string) => {
+        const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
+        if (match) return parseInt(match[1]);
+        return 999;
+      };
+      return getOrder(a.cagriKodu) - getOrder(b.cagriKodu);
+    });
+
+    const getAbbreviation = (kuyrukNo: string) => {
+      const tail = String(kuyrukNo).trim().toUpperCase();
+      if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return ' (DA)';
+      if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return ' (SA)';
+      if (tail === 'OR-2036') return ' (DL)';
+      if (tail === 'OR-2038') return ' (SL)';
+      if (tail === 'OR-1020') return ' (H)';
+      return '';
+    };
+
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
@@ -270,24 +306,44 @@ const App = () => {
           </tr>
     `;
 
-    filteredFleet.forEach(aircraft => {
+    sortedFleet.forEach(aircraft => {
       const aciklama = (aircraft.aciklama || '').replace(/\n/g, '<br/>');
       const faydaliSaat = aircraft.faydaliSaat ? formatToHHMM(aircraft.faydaliSaat) : '';
+      const abbr = getAbbreviation(aircraft.kuyrukNo);
       
       html += `
         <tr>
           <td style="background-color: #e6e6e6;">${aircraft.cagriKodu || ''}</td>
-          <td style="background-color: #e6e6e6;">${aircraft.kuyrukNo || ''}</td>
-          <td>${aircraft.durum || ''}</td>
+          <td style="background-color: #e6e6e6;">${aircraft.kuyrukNo || ''}<span style="color: red; font-weight: bold;">${abbr}</span></td>
+          <td style="background-color: ${aircraft.durum === Status.FAAL ? '#c6efce' : '#ffc7ce'}; color: ${aircraft.durum === Status.FAAL ? '#006100' : '#9c0006'}; font-weight: bold;">${aircraft.durum || ''}</td>
           <td>${aircraft.durumAyrintisi || ''}</td>
           <td>${aircraft.konum || ''}</td>
-          <td style="mso-number-format:'\@';">${faydaliSaat}</td>
-          <td style="text-align: left; vertical-align: top;">${aciklama}</td>
+          <td style="mso-number-format:'\@'; font-weight: bold; color: #0000ff;">${faydaliSaat}</td>
+          <td style="text-align: left; vertical-align: top; font-style: italic; font-size: 10px;">${aciklama}</td>
         </tr>
       `;
     });
 
     html += `
+          <tr><td colspan="7" style="border: none;">&nbsp;</td></tr>
+          <tr>
+            <td colspan="7" style="border: none; text-align: left; font-weight: bold;">KISALTMALAR:</td>
+          </tr>
+          <tr>
+            <td colspan="7" style="border: none; text-align: left;">(DA): DUAL AMFİBİ</td>
+          </tr>
+          <tr>
+            <td colspan="7" style="border: none; text-align: left;">(SA): SINGLE AMFİBİ</td>
+          </tr>
+          <tr>
+            <td colspan="7" style="border: none; text-align: left;">(DL): DUAL LAND</td>
+          </tr>
+          <tr>
+            <td colspan="7" style="border: none; text-align: left;">(SL): SINGLE LAND</td>
+          </tr>
+          <tr>
+            <td colspan="7" style="border: none; text-align: left;">(H): HELİTAK</td>
+          </tr>
         </table>
       </body>
       </html>
@@ -388,7 +444,7 @@ const App = () => {
           } else {
             newActivities.push({
               kuyrukNo: incoming.kuyrukNo || '',
-              cagriKodu: incoming.cagriKodu || `ORMAN-${incoming.kuyrukNo?.split('-')[1] || 'XX'}`,
+              cagriKodu: incoming.cagriKodu || getCallSignByTail(incoming.kuyrukNo || ''),
               tip: incoming.tip || platform,
               dailyStatuses: { [currentDateStr]: newCode }
             });
@@ -409,82 +465,94 @@ const App = () => {
     if (!LOG_SCRIPT_URL) return Promise.resolve();
     return fetch(LOG_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'getFaaliyetLog' })
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ 
+        action: 'getFaaliyetLog',
+        sheetId: MAIL_LOG_SHEET_ID
+      })
     })
     .then(res => res.json())
-    .then(logData => {
+    .then(result => {
+      console.log("Past logs result:", result);
+      const logData = result.data || (Array.isArray(result) ? result : []);
       if (Array.isArray(logData) && logData.length > 0) {
         setActivities(prevActivities => {
-          let newActivities = [...prevActivities];
+          // Use a Map to avoid duplicates and ensure we merge correctly
+          const activityMap = new Map<string, AircraftActivity>();
           
+          // Initialize with current activities
+          prevActivities.forEach(act => activityMap.set(act.kuyrukNo, { ...act }));
+
+          const now = new Date();
+          const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
           logData.forEach((logEntry: any) => {
-            const kuyrukNo = String(logEntry.kuyrukNo).trim();
-            const tarihStr = String(logEntry.tarih).trim();
-            const durumAyrintisi = String(logEntry.durum).trim().toUpperCase();
-            const analizKodu = logEntry.analizKodu ? String(logEntry.analizKodu).trim() : null;
-            
-            if (!kuyrukNo || !tarihStr) return;
-            
-            let dayNum = -1, monthNum = -1, yearNum = -1;
-            
-            if (tarihStr.includes('T') || (tarihStr.includes('-') && !tarihStr.includes('.'))) {
-              const d = new Date(tarihStr);
-              if (!isNaN(d.getTime())) {
-                dayNum = d.getDate();
-                monthNum = d.getMonth();
-                yearNum = d.getFullYear();
-              }
-            } else if (tarihStr.includes('.')) {
-              const parts = tarihStr.split('.');
-              if (parts.length === 3) {
-                dayNum = parseInt(parts[0], 10);
-                monthNum = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
-                yearNum = parseInt(parts[2], 10);
-              }
-            }
-            
-            if (dayNum !== -1) {
-              const dateStrKey = `${yearNum}-${String(monthNum + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-              const now = new Date();
-              const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            try {
+              const kuyrukNo = String(logEntry.kuyrukNo || '').trim();
+              if (!kuyrukNo) return;
+
+              const tarihStr = String(logEntry.tarih || '').trim();
+              const durumAyrintisi = String(logEntry.durum || '').trim().toUpperCase();
+              const analizKodu = logEntry.analizKodu ? String(logEntry.analizKodu).trim() : null;
+
+              let dayNum = -1, monthNum = -1, yearNum = -1;
               
-              if (dateStrKey !== todayStr) {
-                let code: DailyStatusCode = 'F'; // Varsayılan FAAL
+              if (tarihStr.includes('T') || (tarihStr.includes('-') && !tarihStr.includes('.'))) {
+                const d = new Date(tarihStr);
+                if (!isNaN(d.getTime())) {
+                  dayNum = d.getDate();
+                  monthNum = d.getMonth();
+                  yearNum = d.getFullYear();
+                }
+              } else if (tarihStr.includes('/')) {
+                const parts = tarihStr.split('/');
+                if (parts.length === 3) {
+                  dayNum = parseInt(parts[0], 10);
+                  monthNum = parseInt(parts[1], 10) - 1;
+                  yearNum = parseInt(parts[2], 10);
+                }
+              } else if (tarihStr.includes('.')) {
+                const parts = tarihStr.split('.');
+                if (parts.length === 3) {
+                  dayNum = parseInt(parts[0], 10);
+                  monthNum = parseInt(parts[1], 10) - 1;
+                  yearNum = parseInt(parts[2], 10);
+                }
+              }
+
+              if (dayNum !== -1) {
+                const dateStrKey = `${yearNum}-${String(monthNum + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
                 
-                if (analizKodu) {
-                  code = analizKodu as DailyStatusCode;
-                } else {
-                  if (durumAyrintisi.includes('BAKIM')) {
-                    code = 'B';
-                  } else if (durumAyrintisi.includes('ARIZA') || durumAyrintisi.includes('PARÇA BEKLER') || durumAyrintisi.includes('KAZA KIRIM')) {
-                    code = 'A';
-                  } else if (durumAyrintisi.includes('OLMADIĞI GÜNLER')) {
-                    code = 'X';
-                  } else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') {
-                    code = 'B'; // Diğer gayrı faal durumlar için varsayılan
+                if (dateStrKey !== todayStr) {
+                  let code: DailyStatusCode = 'F';
+                  if (analizKodu) {
+                    code = analizKodu as DailyStatusCode;
+                  } else {
+                    if (durumAyrintisi.includes('BAKIM')) code = 'B';
+                    else if (durumAyrintisi.includes('ARIZA') || durumAyrintisi.includes('PARÇA BEKLER') || durumAyrintisi.includes('KAZA KIRIM')) code = 'A';
+                    else if (durumAyrintisi.includes('OLMADIĞI GÜNLER')) code = 'X';
+                    else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') code = 'B';
+                  }
+
+                  let act = activityMap.get(kuyrukNo);
+                  if (act) {
+                    act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
+                  } else {
+                    activityMap.set(kuyrukNo, {
+                      kuyrukNo: kuyrukNo,
+                      cagriKodu: getCallSignByTail(kuyrukNo),
+                      tip: logEntry.tip || 'Bilinmiyor',
+                      dailyStatuses: { [dateStrKey]: code }
+                    });
                   }
                 }
-
-                const existsIdx = newActivities.findIndex(act => act.kuyrukNo === kuyrukNo);
-                if (existsIdx !== -1) {
-                  newActivities[existsIdx] = {
-                    ...newActivities[existsIdx],
-                    dailyStatuses: { ...newActivities[existsIdx].dailyStatuses, [dateStrKey]: code }
-                  };
-                } else {
-                  newActivities.push({
-                    kuyrukNo: kuyrukNo,
-                    cagriKodu: `ORMAN-${kuyrukNo.split('-')[1] || 'XX'}`,
-                    tip: logEntry.tip || 'Bilinmiyor',
-                    dailyStatuses: { [dateStrKey]: code }
-                  });
-                }
               }
+            } catch (err) {
+              console.error("Error processing log entry:", logEntry, err);
             }
           });
-          
-          return newActivities;
+
+          return Array.from(activityMap.values());
         });
       }
     })
@@ -522,8 +590,12 @@ const App = () => {
         try {
           await fetch(LOG_SCRIPT_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ action: 'saveLogs', fleetData: fetchedFleet })
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ 
+              action: 'saveLogs', 
+              sheetId: MAIL_LOG_SHEET_ID,
+              fleetData: fetchedFleet 
+            })
           });
         } catch (err) {
           console.error("Log save error:", err);
@@ -651,12 +723,13 @@ const App = () => {
     const fetchHistory = async () => {
       setIsFetchingHistory(true);
       try {
-        const url = "https://script.google.com/macros/s/AKfycbxh6SyGVZfoby2CYc7FNk3JJQQW-P4Uh-Wx4ZupaRydrpY74FDblcyQBGac9XrphnQW/exec";
-        const res = await fetch(url, {
+        const res = await fetch(LOG_SCRIPT_URL, {
           method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
             action: 'getAircraftData',
-            sheetId: '1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg',
+            sheetId: MAIL_LOG_SHEET_ID,
+            sheetName: 'Envanter Log',
             mapping: {
               id: 'A2:A10000',
               tarih: 'B2:B10000',
@@ -667,8 +740,7 @@ const App = () => {
               konum: 'G2:G10000',
               durum: 'H2:H10000',
               durumAyrintisi: 'I2:I10000',
-              aciklama: 'J2:J10000',
-              analizKodu: 'K2:K10000'
+              aciklama: 'J2:J10000'
             }
           })
         });
@@ -715,7 +787,7 @@ const App = () => {
 
           return {
             kuyrukNo: row.kuyrukNo || '',
-            cagriKodu: `ORMAN-${(row.kuyrukNo || '').split('-')[1] || 'XX'}`,
+            cagriKodu: getCallSignByTail(row.kuyrukNo || ''),
             tip: row.tip || '',
             durum: row.durum || '',
             durumAyrintisi: row.durumAyrintisi || '',
@@ -754,7 +826,7 @@ const App = () => {
       return matchesSearch && matchesType && matchesTail && matchesKazaKirim;
     });
 
-    const order = ['Bell-429', 'AT-802', 'T-70'];
+    const order = ['C-650', 'B-360', 'Bell-429', 'AT-802', 'T-70'];
 
     return filtered.sort((a, b) => {
       const typeA = a.tip || '';
@@ -763,15 +835,27 @@ const App = () => {
       const indexA = order.indexOf(typeA);
       const indexB = order.indexOf(typeB);
       
-      if (indexA !== -1 && indexB !== -1) {
-        return indexA - indexB;
+      if (indexA !== indexB) {
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        return typeA.localeCompare(typeB);
       }
-      if (indexA !== -1) return -1;
-      if (indexB !== -1) return 1;
+
+      // Same type, sort by ORMAN-XX or Kuyruk No for AT-802
+      const getOrder = (cagriKodu: string) => {
+        const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
+        if (match) return parseInt(match[1]);
+        return 999;
+      };
+
+      if (typeA === 'AT-802') {
+        return a.kuyrukNo.localeCompare(b.kuyrukNo);
+      }
       
-      return typeA.localeCompare(typeB);
+      return getOrder(a.cagriKodu) - getOrder(b.cagriKodu);
     });
-  }, [fleet, searchTerm, filterType, filterTail, hideKazaKirim]);
+  }, [fleet, historicalFleet, searchTerm, filterType, filterTail, hideKazaKirim]);
 
   const filteredActivities = useMemo(() => {
     return activities.filter(a => {
@@ -1011,23 +1095,31 @@ const App = () => {
                   const hasOplAlert = a.oplAlerts && a.oplAlerts.length > 0 && !isKazaKirim;
                   return (
                     <tr key={i} className={`hover:bg-slate-50 transition-all group ${hasOplAlert ? 'animate-pulse bg-red-50/30' : ''} ${historicalFleet !== null ? 'opacity-60 cursor-default' : 'cursor-pointer active:scale-[0.99]'}`}>
-                      <td className="px-8 py-6" onClick={() => historicalFleet === null && setSelectedAircraft(a)}>
-                         <div className="font-black text-emerald-950 text-xl tracking-tighter group-hover:text-emerald-600 transition-colors flex items-center">
-                           {a.kuyrukNo}
-                           {hasOplAlert && (
-                             <span className="ml-3 bg-red-600 text-white text-[8px] px-2 py-0.5 rounded-full animate-bounce shadow-[0_0_10px_rgba(220,38,38,0.5)]">
-                               ÖPL ALERT!
+                        <td className="px-8 py-6" onClick={() => historicalFleet === null && setSelectedAircraft(a)}>
+                           <div className="font-black text-emerald-950 text-xl tracking-tighter group-hover:text-emerald-600 transition-colors flex items-center">
+                             {a.kuyrukNo}
+                             <span className="text-red-600 ml-1">
+                               {(() => {
+                                 const tail = String(a.kuyrukNo).trim().toUpperCase();
+                                 if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return '(D-A)';
+                                 if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return '(S-A)';
+                                 if (tail === 'OR-2036') return '(D-L)';
+                                 if (tail === 'OR-2038') return '(S-L)';
+                                 if (tail === 'OR-1020') return '(H)';
+                                 return '';
+                               })()}
                              </span>
-                           )}
-                         </div>
-                         <div className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full w-fit uppercase mt-1">{a.tip}</div>
-                      </td>
+                             {hasOplAlert && (
+                               <span className="ml-3 bg-red-600 text-white text-[8px] px-2 py-0.5 rounded-full animate-bounce shadow-[0_0_10px_rgba(220,38,38,0.5)]">
+                                 ÖPL ALERT!
+                               </span>
+                             )}
+                           </div>
+                           <div className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full w-fit uppercase mt-1">{a.cagriKodu} | {a.tip}</div>
+                        </td>
                       <td className="px-8 py-6 text-center select-none" onDoubleClick={() => historicalFleet === null && setSelectedAircraft(a)}>
                           <span className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase border-2 shadow-sm transition-transform active:scale-95 block ${a.durum === Status.FAAL ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                             {a.durum}
-                            {a.durum === Status.GAYRI_FAAL && a.durumAyrintisi && a.durumAyrintisi !== '-' && (
-                              <span className="ml-1 opacity-70">({a.durumAyrintisi})</span>
-                            )}
                           </span>
                           {/* GÖVDE BİLGİSİ LİSTEDE GÖRÜNSÜN */}
                           <div className="mt-2 text-[10px] font-black text-gray-500 uppercase tracking-tighter bg-gray-100/50 py-1 rounded">
@@ -1060,6 +1152,7 @@ const App = () => {
       {selectedAircraft && (
         <AircraftDetailModal 
           aircraft={selectedAircraft} 
+          activities={activities}
           onClose={() => setSelectedAircraft(null)} 
           onEdit={() => {
             requireAuth(selectedAircraft.tip, () => {

@@ -1,10 +1,50 @@
 
 import { PlatformType, Status, StatusType, Aircraft, AircraftActivity } from './types';
 
+export const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxh6SyGVZfoby2CYc7FNk3JJQQW-P4Uh-Wx4ZupaRydrpY74FDblcyQBGac9XrphnQW/exec";
+export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyHRNLX4AZhUAeFW-gULdm0I0ahlvk9joNVTSyOIpUH4TISTJrtJPlAoW4C8lQzPZqQug/exec";
+export const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxcELr64A09o-x3jByNreNHbiurVHrNnGGV63XgQgKvr4kOz9gGqXLLINRRVAX8LcBHDQ/exec"; 
+export const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzD1GdmzKz2Q3r1-Whq8ueFW9ixN6faTjHkOUdoLxoN2NIRY6hANFlrMXQcVTGk1ZILSg/exec";
+export const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdmkAhcQgC6kqHtEKUCKfcc5JKphOzyt_VbOfuI5hv6qCuyRl-k6h46-gaIGakydo/exec";
+export const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzZs5jkpCL56QPBEPUY4482zjymHlwWi7A_YBggXGOhZqAbHnGbxVdtzVOnae_buluD4A/exec";
+export const MAIL_LOG_SHEET_ID = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
+
+export const getCallSignByTail = (tail: string): string => {
+  const mapping: Record<string, string> = {
+    'OR-0177': 'ORMAN-01',
+    'OR-1839': 'ORMAN-02',
+    'OR-3125': 'ORMAN-03',
+    'OR-3126': 'ORMAN-04',
+    'OR-3127': 'ORMAN-05',
+    'OR-3131': 'ORMAN-06',
+    'OR-3133': 'ORMAN-07',
+    'OR-3192': 'ORMAN-08',
+    'OR-2021': 'ORMAN-21',
+    'OR-2022': 'ORMAN-22',
+    'OR-2023': 'ORMAN-23',
+    'OR-2024': 'ORMAN-24',
+    'OR-2025': 'ORMAN-25',
+    'OR-2026': 'ORMAN-26',
+    'OR-2027': 'ORMAN-27',
+    'OR-2028': 'ORMAN-28',
+    'OR-2029': 'ORMAN-29',
+    'OR-2030': 'ORMAN-30',
+    'OR-2031': 'ORMAN-31',
+    'OR-2036': 'ORMAN-36',
+    'OR-2037': 'ORMAN-37',
+    'OR-2038': 'ORMAN-38',
+    'OR-1018': 'ORMAN-18',
+    'OR-1019': 'ORMAN-19',
+    'OR-1020': 'ORMAN-20',
+  };
+  return mapping[tail] || `ORMAN-${tail.split('-')[1] || 'XX'}`;
+};
+
 export const MOCK_AIRCRAFT: Aircraft[] = [
   {
     cagriKodu: 'ORMAN-01',
     kuyrukNo: 'OR-0177',
+    tip: 'C-650',
     platformTipi: PlatformType.H,
     durum: Status.FAAL,
     durumTipi: StatusType.NONE,
@@ -22,27 +62,129 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     photos: ['https://picsum.photos/seed/or0177/800/600']
   },
   {
-    cagriKodu: 'ORMAN-08',
-    kuyrukNo: 'OR-3192',
-    platformTipi: PlatformType.SA,
-    durum: Status.GAYRI_FAAL,
-    durumTipi: StatusType.BAKIM,
-    durumAyrintisi: '200H / YILLIK',
+    cagriKodu: 'ORMAN-02',
+    kuyrukNo: 'OR-1839',
+    tip: 'B-360',
+    platformTipi: PlatformType.H,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
     konum: 'ANKARA',
-    faydaliSaat: 19,
-    durumBaslangic: '2025-02-05',
-    aciklama: 'YILLIK BAKIM BAŞLANGIÇ TARİHİ: 05.02.2026. TAHMİNİ BİTİŞ TARİHİ: 20.02.2026',
-    guncellemeTarihi: '2025-05-12 10:00',
-    seriNo: 'SN-3192',
+    faydaliSaat: 45,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-1839',
     motor: 'PT6A',
-    uretimYili: 2020,
+    uretimYili: 2022,
     base: 'Etimesgut',
-    maintenanceHours: [{ bakimTuru: '200H', kalanSaat: 19 }],
-    photos: ['https://picsum.photos/seed/or3192/800/600']
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-03',
+    kuyrukNo: 'OR-3125',
+    tip: 'Bell-429',
+    platformTipi: PlatformType.H,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 120,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-3125',
+    motor: 'PT6A',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-04',
+    kuyrukNo: 'OR-3126',
+    tip: 'Bell-429',
+    platformTipi: PlatformType.H,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 88,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-3126',
+    motor: 'PT6A',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-05',
+    kuyrukNo: 'OR-3127',
+    tip: 'Bell-429',
+    platformTipi: PlatformType.H,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 150,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-3127',
+    motor: 'PT6A',
+    uretimYili: 2023,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-06',
+    kuyrukNo: 'OR-3131',
+    tip: 'Bell-429',
+    platformTipi: PlatformType.H,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 200,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-3131',
+    motor: 'PT6A',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-07',
+    kuyrukNo: 'OR-3133',
+    tip: 'Bell-429',
+    platformTipi: PlatformType.H,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 180,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-3133',
+    motor: 'PT6A',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
   },
   {
     cagriKodu: 'ORMAN-21',
     kuyrukNo: 'OR-2021',
+    tip: 'AT-802',
     platformTipi: PlatformType.DA,
     durum: Status.GAYRI_FAAL,
     durumTipi: StatusType.DIGER,
@@ -60,8 +202,229 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     photos: ['https://picsum.photos/seed/or2021/800/600']
   },
   {
+    cagriKodu: 'ORMAN-22',
+    kuyrukNo: 'OR-2022',
+    tip: 'AT-802',
+    platformTipi: PlatformType.DA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2022',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-23',
+    kuyrukNo: 'OR-2023',
+    tip: 'AT-802',
+    platformTipi: PlatformType.DA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2023',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-24',
+    kuyrukNo: 'OR-2024',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2024',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-25',
+    kuyrukNo: 'OR-2025',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2025',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-26',
+    kuyrukNo: 'OR-2026',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2026',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-27',
+    kuyrukNo: 'OR-2027',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2027',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-28',
+    kuyrukNo: 'OR-2028',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2028',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-29',
+    kuyrukNo: 'OR-2029',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2029',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-30',
+    kuyrukNo: 'OR-2030',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2030',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-31',
+    kuyrukNo: 'OR-2031',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2031',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-36',
+    kuyrukNo: 'OR-2036',
+    tip: 'AT-802',
+    platformTipi: PlatformType.DA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2036',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
     cagriKodu: 'ORMAN-37',
     kuyrukNo: 'OR-2037',
+    tip: 'AT-802',
     platformTipi: PlatformType.DA,
     durum: Status.GAYRI_FAAL,
     durumTipi: StatusType.ARIZA,
@@ -79,8 +442,69 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     photos: ['https://picsum.photos/seed/or2037/800/600']
   },
   {
+    cagriKodu: 'ORMAN-38',
+    kuyrukNo: 'OR-2038',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-2038',
+    motor: 'PT6A-67F',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-08',
+    kuyrukNo: 'OR-3192',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: Status.GAYRI_FAAL,
+    durumTipi: StatusType.BAKIM,
+    durumAyrintisi: '200H / YILLIK',
+    konum: 'ANKARA',
+    faydaliSaat: 19,
+    durumBaslangic: '2025-02-05',
+    aciklama: 'YILLIK BAKIM BAŞLANGIÇ TARİHİ: 05.02.2026. TAHMİNİ BİTİŞ TARİHİ: 20.02.2026',
+    guncellemeTarihi: '2025-05-12 10:00',
+    seriNo: 'SN-3192',
+    motor: 'PT6A',
+    uretimYili: 2020,
+    base: 'Etimesgut',
+    maintenanceHours: [{ bakimTuru: '200H', kalanSaat: 19 }],
+    photos: ['https://picsum.photos/seed/or3192/800/600']
+  },
+  {
+    cagriKodu: 'ORMAN-18',
+    kuyrukNo: 'OR-1018',
+    tip: 'T-70',
+    platformTipi: PlatformType.H,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-1018',
+    motor: 'T700',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
     cagriKodu: 'ORMAN-19',
     kuyrukNo: 'OR-1019',
+    tip: 'T-70',
     platformTipi: PlatformType.SA,
     durum: Status.GAYRI_FAAL,
     durumTipi: StatusType.ARIZA,
@@ -96,50 +520,178 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     base: 'Etimesgut',
     maintenanceHours: [{ bakimTuru: '200H', kalanSaat: 33 }],
     photos: ['https://picsum.photos/seed/or1019/800/600']
+  },
+  {
+    cagriKodu: 'ORMAN-20',
+    kuyrukNo: 'OR-1020',
+    tip: 'T-70',
+    platformTipi: PlatformType.H,
+    durum: Status.FAAL,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: 'ANKARA',
+    faydaliSaat: 100,
+    durumBaslangic: '2025-01-01',
+    aciklama: '',
+    guncellemeTarihi: '2025-05-12 09:00',
+    seriNo: 'SN-1020',
+    motor: 'T700',
+    uretimYili: 2021,
+    base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
   }
 ];
 
 export const MOCK_ACTIVITY_GRID: AircraftActivity[] = [
   {
-    kuyrukNo: 'OR-2021',
-    cagriKodu: 'ORMAN-21',
-    tip: 'AT-802',
-    dailyStatuses: { 1: 'PB', 2: 'PB', 3: 'PB', 4: 'PB', 5: 'PB', 6: 'PB', 7: 'PB', 23: 'B', 24: 'B', 25: 'B' }
-  },
-  {
-    kuyrukNo: 'OR-2022',
-    cagriKodu: 'ORMAN-22',
-    tip: 'AT-802',
-    dailyStatuses: { 1: 'PB', 2: 'PB', 3: 'PB', 4: 'PB', 10: 'B', 11: 'B', 12: 'B', 13: 'B' }
-  },
-  {
-    kuyrukNo: 'OR-2027',
-    cagriKodu: 'ORMAN-27',
-    tip: 'AT-802',
-    dailyStatuses: { 1: 'X', 2: 'X', 3: 'X', 4: 'X', 5: 'X', 30: 'KM', 31: 'KM' }
-  },
-  {
-    kuyrukNo: 'OR-1019',
-    cagriKodu: 'ORMAN-19',
-    tip: 'T-70',
-    dailyStatuses: { 1: 'B', 2: 'B', 3: 'B', 4: 'B', 5: 'B', 6: 'B', 14: 'B' }
-  },
-  {
     kuyrukNo: 'OR-0177',
     cagriKodu: 'ORMAN-01',
     tip: 'C-650',
-    dailyStatuses: { 1: 'B', 2: 'B', 3: 'B', 4: 'B', 5: 'B', 6: 'B', 7: 'B', 8: 'B' }
+    dailyStatuses: { '2025-05-01': 'B', '2025-05-02': 'B', '2025-05-03': 'B' }
   },
   {
     kuyrukNo: 'OR-1839',
     cagriKodu: 'ORMAN-02',
     tip: 'B-360',
-    dailyStatuses: { }
+    dailyStatuses: { '2025-05-05': 'F', '2025-05-06': 'F' }
   },
   {
     kuyrukNo: 'OR-3125',
     cagriKodu: 'ORMAN-03',
     tip: 'Bell-429',
-    dailyStatuses: { }
+    dailyStatuses: { '2025-05-01': 'F' }
+  },
+  {
+    kuyrukNo: 'OR-3126',
+    cagriKodu: 'ORMAN-04',
+    tip: 'Bell-429',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-3127',
+    cagriKodu: 'ORMAN-05',
+    tip: 'Bell-429',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-3131',
+    cagriKodu: 'ORMAN-06',
+    tip: 'Bell-429',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-3133',
+    cagriKodu: 'ORMAN-07',
+    tip: 'Bell-429',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-2021',
+    cagriKodu: 'ORMAN-21',
+    tip: 'AT-802',
+    dailyStatuses: { '2025-05-01': 'PB', '2025-05-02': 'PB', '2025-05-03': 'PB' }
+  },
+  {
+    kuyrukNo: 'OR-2022',
+    cagriKodu: 'ORMAN-22',
+    tip: 'AT-802',
+    dailyStatuses: { '2025-05-01': 'F', '2025-05-02': 'F' }
+  },
+  {
+    kuyrukNo: 'OR-2023',
+    cagriKodu: 'ORMAN-23',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-2024',
+    cagriKodu: 'ORMAN-24',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-2025',
+    cagriKodu: 'ORMAN-25',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-2026',
+    cagriKodu: 'ORMAN-26',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-2027',
+    cagriKodu: 'ORMAN-27',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-2028',
+    cagriKodu: 'ORMAN-28',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-2029',
+    cagriKodu: 'ORMAN-29',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-2030',
+    cagriKodu: 'ORMAN-30',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-2031',
+    cagriKodu: 'ORMAN-31',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-2036',
+    cagriKodu: 'ORMAN-36',
+    tip: 'AT-802',
+    dailyStatuses: { '2025-05-10': 'B' }
+  },
+  {
+    kuyrukNo: 'OR-2037',
+    cagriKodu: 'ORMAN-37',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-2038',
+    cagriKodu: 'ORMAN-38',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-3192',
+    cagriKodu: 'ORMAN-08',
+    tip: 'AT-802',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-1018',
+    cagriKodu: 'ORMAN-18',
+    tip: 'T-70',
+    dailyStatuses: {}
+  },
+  {
+    kuyrukNo: 'OR-1019',
+    cagriKodu: 'ORMAN-19',
+    tip: 'T-70',
+    dailyStatuses: { '2025-05-01': 'B', '2025-05-02': 'B' }
+  },
+  {
+    kuyrukNo: 'OR-1020',
+    cagriKodu: 'ORMAN-20',
+    tip: 'T-70',
+    dailyStatuses: { '2025-05-01': 'F' }
   }
 ];

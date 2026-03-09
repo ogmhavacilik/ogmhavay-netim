@@ -8,7 +8,7 @@ function doPost(e) {
     if (!e || !e.postData || !e.postData.contents) return jsonError("Post verisi alınamadı.");
     var params = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.openById(params.sheetId);
-    var action = params.action || "getAircraftData";
+    var action = (params.action || "getAircraftData").toString().trim();
 
     // -----------------------------------------------------
     // 🔵 AKSİYON: ÖPL VERİSİ (ARŞİV) SORGULAMA
@@ -100,6 +100,156 @@ function doPost(e) {
         }
       }
       return jsonSuccess(results);
+    }
+
+    // -----------------------------------------------------
+    // 🟠 AKSİYON: MAİL ALICI YÖNETİMİ
+    // -----------------------------------------------------
+    if (action === "saveMailRecipient") {
+      var mailSheet = findSheet(ss, "mail log");
+      if (!mailSheet) {
+        mailSheet = ss.insertSheet("mail log");
+        mailSheet.appendRow(["ID", "PERSONEL ADI", "PERSONEL MAİL ADRESİ", "MAİL GÖNDERME TÜRÜ", "SAAT", "GÜN SEÇENEĞİ", "GÖNDERİLECEK MAİLİN EKİ"]);
+        mailSheet.getRange("A1:G1").setFontWeight("bold").setBackground("#d9ead3").setBorder(true, true, true, true, true, true);
+      }
+      
+      var id = params.id || Utilities.getUuid();
+      var name = params.name || "";
+      var email = params.email || "";
+      var type = params.type || "MANUEL";
+      var time = params.time || "";
+      var days = params.days || "";
+      var attachments = params.attachments || "";
+      
+      mailSheet.appendRow([id, name, email, type, time, days, attachments]);
+      return jsonSuccess({ id: id });
+    }
+
+    // 🔵 AKSİYON: FAALİYET LOGU ÇEKME
+    if (action === "getFaaliyetLog") {
+      var faalLogSheet = findSheet(ss, "Faaliyet Log");
+      if (!faalLogSheet) return jsonSuccess([]);
+      
+      var data = faalLogSheet.getDataRange().getValues();
+      var results = [];
+      for (var i = 1; i < data.length; i++) {
+        var row = data[i];
+        var tarihVal = row[1];
+        var tarihStr = "";
+        if (tarihVal instanceof Date) {
+          tarihStr = Utilities.formatDate(tarihVal, Session.getScriptTimeZone(), "dd.MM.yyyy");
+        } else {
+          tarihStr = String(tarihVal).trim();
+        }
+
+        results.push({
+          id: row[0],
+          tarih: tarihStr,
+          kuyrukNo: row[2],
+          tip: row[3],
+          durum: row[4],
+          analizKodu: row[5] || ''
+        });
+      }
+      return jsonSuccess(results);
+    }
+
+    // 🔵 AKSİYON: SİSTEM LOGLARI (ENVANTER VE FAALİYET)
+    if (action === "saveSystemLogs" || action === "saveLogs") {
+      var fleetData = params.fleetData;
+      if (!fleetData || fleetData.length === 0) return jsonError("Log verisi boş.");
+
+      var envLogSheet = findSheet(ss, "Envanter Log");
+      if (!envLogSheet) {
+        envLogSheet = ss.insertSheet("Envanter Log");
+        envLogSheet.appendRow(["ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Açıklama"]);
+        envLogSheet.getRange("A1:J1").setFontWeight("bold").setBackground("#cfe2f3").setBorder(true, true, true, true, true, true);
+      }
+
+      var faalLogSheet = findSheet(ss, "Faaliyet Log");
+      if (!faalLogSheet) {
+        faalLogSheet = ss.insertSheet("Faaliyet Log");
+        faalLogSheet.appendRow(["ID", "Tarih", "Kuyruk No", "Tip", "Günlük Durum (Faal/Gayrı Faal vb.)", "Analiz Kodu"]);
+        faalLogSheet.getRange("A1:F1").setFontWeight("bold").setBackground("#fff2cc").setBorder(true, true, true, true, true, true);
+      }
+
+      var bugun = new Date();
+      var tarihStr = Utilities.formatDate(bugun, Session.getScriptTimeZone(), "dd.MM.yyyy");
+      
+      fleetData.forEach(function(aircraft) {
+        var kNo = String(aircraft.kuyrukNo || "").trim();
+        if (!kNo) return;
+
+        var envKey = tarihStr + "_" + kNo;
+        envLogSheet.appendRow([
+          envKey, tarihStr, kNo, aircraft.tip || "", aircraft.govdeUcusSaati || "", 
+          aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
+          aircraft.durumAyrintisi || "", aircraft.aciklama || ""
+        ]);
+
+        faalLogSheet.appendRow([
+          envKey, tarihStr, kNo, aircraft.tip || "", aircraft.durumAyrintisi || "", aircraft.assignedCode || "F"
+        ]);
+      });
+
+      return jsonSuccess("Loglar kaydedildi.");
+    }
+
+    if (action === "getMailRecipients") {
+      var mailSheet = findSheet(ss, "mail log");
+      if (!mailSheet) return jsonSuccess([]);
+      
+      var data = mailSheet.getDataRange().getDisplayValues();
+      var headers = data[0];
+      var recipients = [];
+      
+      for (var i = 1; i < data.length; i++) {
+        var obj = {};
+        for (var j = 0; j < headers.length; j++) {
+          obj[headers[j]] = data[i][j];
+        }
+        recipients.push(obj);
+      }
+      return jsonSuccess(recipients);
+    }
+
+    if (action === "deleteMailRecipient") {
+      var mailSheet = findSheet(ss, "mail log");
+      if (!mailSheet) return jsonError("Sayfa bulunamadı.");
+      
+      var idToDelete = params.id;
+      var data = mailSheet.getDataRange().getValues();
+      for (var i = 1; i < data.length; i++) {
+        if (data[i][0] == idToDelete) {
+          mailSheet.deleteRow(i + 1);
+          return jsonSuccess("Silindi");
+        }
+      }
+      return jsonError("Alıcı bulunamadı.");
+    }
+
+    if (action === "sendManualEmail") {
+      var recipientId = params.id;
+      var mailSheet = findSheet(ss, "mail log");
+      if (!mailSheet) return jsonError("Alıcı listesi bulunamadı.");
+      
+      var data = mailSheet.getDataRange().getDisplayValues();
+      var headers = data[0];
+      var recipient = null;
+      for (var i = 1; i < data.length; i++) {
+        if (data[i][0] == recipientId) {
+          recipient = {};
+          for (var j = 0; j < headers.length; j++) {
+            recipient[headers[j]] = data[i][j];
+          }
+          break;
+        }
+      }
+      
+      if (!recipient) return jsonError("Alıcı bulunamadı.");
+      
+      sendReportEmail(recipient);
+      return jsonSuccess("E-posta gönderildi.");
     }
 
     // 🟢 ENVANTER AKSİYONU (App.tsx için)
@@ -309,13 +459,15 @@ function doPost(e) {
       
       return jsonSuccess("Veriler güncellendi.");
     }
+    
+    return jsonError("Bilinmeyen işlem: " + action);
   } catch (err) {
     return jsonError(err.toString());
   }
 }
 
-function jsonError(msg) { return ContentService.createTextOutput(JSON.stringify({success: false, error: msg})).setMimeType(ContentService.MimeType.JSON); }
-function jsonSuccess(data) { return ContentService.createTextOutput(JSON.stringify({success: true, data: data})).setMimeType(ContentService.MimeType.JSON); }
+function jsonError(msg) { return ContentService.createTextOutput(JSON.stringify({status: 'error', success: false, error: msg})).setMimeType(ContentService.MimeType.JSON); }
+function jsonSuccess(data) { return ContentService.createTextOutput(JSON.stringify({status: 'success', success: true, data: data})).setMimeType(ContentService.MimeType.JSON); }
 
 function getFirstNonEmpty(sheet, rangeStr) {
   try {
@@ -357,4 +509,101 @@ function findSheet(ss, name) {
   }
   return null;
 }
+function sendDailyReports() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var mailSheet = findSheet(ss, "mail log");
+  if (!mailSheet) return;
+  
+  var data = mailSheet.getDataRange().getDisplayValues();
+  var headers = data[0];
+  var now = new Date();
+  var currentDay = ["PAZAR", "PAZARTESİ", "SALI", "ÇARŞAMBA", "PERŞEMBE", "CUMA", "CUMARTESİ"][now.getDay()];
+  var currentTime = Utilities.formatDate(now, Session.getScriptTimeZone(), "HH:mm");
+  
+  for (var i = 1; i < data.length; i++) {
+    var recipient = {};
+    for (var j = 0; j < headers.length; j++) {
+      recipient[headers[j]] = data[i][j];
+    }
+    
+    if (recipient["MAİL GÖNDERME TÜRÜ"] === "OTOMATİK") {
+      var days = recipient["GÜN SEÇENEĞİ"].toUpperCase();
+      var time = recipient["SAAT"];
+      
+      var shouldSend = false;
+      if (days.includes("HER GÜN")) shouldSend = true;
+      else if (days.includes(currentDay)) shouldSend = true;
+      
+      if (shouldSend && time) {
+        var diff = Math.abs(timeToMinutes(currentTime) - timeToMinutes(time));
+        if (diff > 15) shouldSend = false;
+      }
+      
+      if (shouldSend) {
+        sendReportEmail(recipient);
+      }
+    }
+  }
+}
+
+function timeToMinutes(timeStr) {
+  var parts = timeStr.split(':');
+  return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+}
+
+function sendReportEmail(recipient) {
+  var attachments = [];
+  var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg"; // Merkezi Log Tablosu ID
+  var selectedReports = recipient["GÖNDERİLECEK MAİLİN EKİ"] || "";
+  
+  if (selectedReports.includes("ENVANTER HAVA ARACI DURUM RAPORU")) {
+    attachments.push(getSheetAsExcel(logSsId, "Envanter_Raporu.xlsx"));
+  }
+  
+  if (selectedReports.includes("FAALİYET ÇİZELGESİ")) {
+    attachments.push(getSheetAsExcel(logSsId, "Faaliyet_Cizelgesi.xlsx")); 
+  }
+
+  if (selectedReports.includes("HAVA ARACI EXCELİ (ONLİNE)")) {
+    var platformIds = {
+      "Bell-429": "1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ",
+      "AT-802": "1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4",
+      "T-70": "10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw",
+      "B-360": "1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0",
+      "C-650": "1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE"
+    };
+    
+    for (var platform in platformIds) {
+      try {
+        attachments.push(getSheetAsExcel(platformIds[platform], platform + "_Online_Excel.xlsx"));
+      } catch (e) {
+        console.error("Error attaching " + platform + ": " + e.toString());
+      }
+    }
+  }
+  
+  var body = "Sayın " + recipient["PERSONEL ADI"] + ",\n\n" +
+             "Günlük hava aracı durum raporları ekte sunulmuştur.\n\n" +
+             "İyi çalışmalar.";
+             
+  MailApp.sendEmail({
+    to: recipient["PERSONEL MAİL ADRESİ"],
+    subject: "OGM Hava Aracı Durum Raporu - " + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy"),
+    body: body,
+    attachments: attachments
+  });
+}
+
+function getSheetAsExcel(ssId, name) {
+  var url = "https://docs.google.com/spreadsheets/d/" + ssId + "/export?format=xlsx";
+  var token = ScriptApp.getOAuthToken();
+  var response = UrlFetchApp.fetch(url, {
+    headers: {
+      'Authorization': 'Bearer ' + token
+    },
+    muteHttpExceptions: true
+  });
+  return response.getBlob().setName(name);
+}
+
 function doGet() { return ContentService.createTextOutput("OGM Servis Aktif."); }

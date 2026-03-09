@@ -3,6 +3,8 @@ import { Aircraft, OPLItem } from '../types';
 import { fetchOPLData } from '../services/sheetService';
 import * as XLSX from 'xlsx';
 
+import { BELL_SCRIPT_URL, AT802_SCRIPT_URL, T70_SCRIPT_URL, B360_SCRIPT_URL, C650_SCRIPT_URL } from '../constants';
+
 interface LogRecordsModalProps {
   aircraft: Aircraft;
   onClose: () => void;
@@ -20,9 +22,6 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
 
   const hasOPLSupport = aircraft.tip !== 'Bell-429' && aircraft.tip !== 'T-70' && aircraft.tip !== 'B-360' && aircraft.tip !== 'C-650';
 
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwRDij5IctLSM5u-xILc4fYk_KA_bM6GB41EB5OZw0moWGcUKeFu2P_y_SOk4VSNE7g0g/exec";
-  const OPL_SHEET_ID = "1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4";
-
   const SHEET_IDS: Record<string, string> = {
     'AT-802': '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4',
     'Bell-429': '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ',
@@ -32,11 +31,11 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
   };
 
   const SCRIPT_URLS: Record<string, string> = {
-    'AT-802': 'https://script.google.com/macros/s/AKfycbygfmKdFmbQS2CFbgF7IbfSWH117TFhWas2NzBHSSA5ci1CXOoew4qPrZFzVwNUMMhZ8Q/exec',
-    'Bell-429': 'https://script.google.com/macros/s/AKfycbxh6SyGVZfoby2CYc7FNk3JJQQW-P4Uh-Wx4ZupaRydrpY74FDblcyQBGac9XrphnQW/exec',
-    'T-70': 'https://script.google.com/macros/s/AKfycbxcELr64A09o-x3jByNreNHbiurVHrNnGGV63XgQgKvr4kOz9gGqXLLINRRVAX8LcBHDQ/exec',
-    'B-360': 'https://script.google.com/macros/s/AKfycbzD1GdmzKz2Q3r1-Whq8ueFW9ixN6faTjHkOUdoLxoN2NIRY6hANFlrMXQcVTGk1ZILSg/exec',
-    'C-650': 'https://script.google.com/macros/s/AKfycbzdmkAhcQgC6kqHtEKUCKfcc5JKphOzyt_VbOfuI5hv6qCuyRl-k6h46-gaIGakydo/exec'
+    'AT-802': AT802_SCRIPT_URL,
+    'Bell-429': BELL_SCRIPT_URL,
+    'T-70': T70_SCRIPT_URL,
+    'B-360': B360_SCRIPT_URL,
+    'C-650': C650_SCRIPT_URL
   };
 
   const handleFetchOPL = async () => {
@@ -45,8 +44,10 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
     setErrorMsg(null);
     setView('opl');
     try {
+      const scriptUrl = SCRIPT_URLS[aircraft.tip || 'AT-802'];
+      const sheetId = SHEET_IDS[aircraft.tip || 'AT-802'];
       const kuyruk = aircraft ? aircraft.kuyrukNo : "";
-      const data = await fetchOPLData(SCRIPT_URL, OPL_SHEET_ID, kuyruk);
+      const data = await fetchOPLData(scriptUrl, sheetId, kuyruk);
       
       if (data && data.length > 0) {
         const cleanKuyruk = kuyruk.replace(/[-\s]/g, "").toUpperCase();

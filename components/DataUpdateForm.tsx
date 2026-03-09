@@ -205,7 +205,19 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
     setIsSubmitting(true);
     setMessage(null);
 
-    let finalData = { ...formData, ...at802Data };
+    let finalData: Record<string, any> = selectedAircraft.tip === 'AT-802' 
+      ? { ...formData, ...at802Data } 
+      : { ...formData };
+    
+    // B-360 ve C-650 için boş verilerin silinmesini engelle
+    if (selectedAircraft.tip === 'B-360' || selectedAircraft.tip === 'C-650') {
+      Object.keys(finalData).forEach(key => {
+        if (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined) {
+          delete finalData[key];
+        }
+      });
+    }
+
     if (selectedAircraft.tip === 'Bell-429') {
       if (finalData.govdeUcusSaati) {
         finalData.govdeUcusSaati = finalData.govdeUcusSaati.replace(':', ',').replace('.', ',');
@@ -304,7 +316,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                 >
                   <option value="">Kuyruk Numarası Seçiniz...</option>
                   {filteredFleet.map(a => (
-                    <option key={a.kuyrukNo} value={a.kuyrukNo}>{a.kuyrukNo}</option>
+                    <option key={a.kuyrukNo} value={a.kuyrukNo}>{a.kuyrukNo} ({a.cagriKodu})</option>
                   ))}
                 </select>
               </div>

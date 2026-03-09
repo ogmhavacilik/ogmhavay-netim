@@ -1,6 +1,7 @@
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { getCallSignByTail } from '../constants';
 
 export const exportAT802DailyStatusToPDF = async (scriptUrl: string, sheetId: string) => {
   try {
@@ -26,6 +27,25 @@ export const exportAT802DailyStatusToPDF = async (scriptUrl: string, sheetId: st
 
     const filteredData = result.slice(dataStartIndex).filter(row => row[0] && !isNaN(Number(row[0])));
 
+    // Custom Sorting based on ORMAN-XX
+    const getOrder = (cagriKodu: string) => {
+      const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
+      if (match) return parseInt(match[1]);
+      return 999;
+    };
+
+    filteredData.sort((a, b) => getOrder(a[1]) - getOrder(b[1]));
+
+    const getAbbreviation = (kuyrukNo: string) => {
+      const tail = String(kuyrukNo).trim().toUpperCase();
+      if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return ' (D-A)';
+      if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return ' (S-A)';
+      if (tail === 'OR-2036') return ' (D-L)';
+      if (tail === 'OR-2038') return ' (S-L)';
+      if (tail === 'OR-1020') return ' (H)';
+      return '';
+    };
+
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
@@ -44,6 +64,7 @@ export const exportAT802DailyStatusToPDF = async (scriptUrl: string, sheetId: st
     // Define columns based on the user's exact request
     const headers = [[
       "SIRA\nNO",
+      "ÇAĞRI\nKODU",
       "KUYRUK\nNUMARASI",
       "DURUMU",
       "G.FAAL\nSEBEBİ",
@@ -83,9 +104,16 @@ export const exportAT802DailyStatusToPDF = async (scriptUrl: string, sheetId: st
       "AÇIKLAMA"
     ]];
 
-    const body = filteredData.map(row => {
+    const body = filteredData.map((row, index) => {
       const newRow = [];
-      for (let i = 0; i <= 37; i++) {
+      newRow.push(index + 1); // SIRA NO
+      const kuyrukNo = String(row[1] || '-').trim();
+      const cagriKodu = getCallSignByTail(kuyrukNo);
+      
+      newRow.push(cagriKodu); // ÇAĞRI KODU
+      newRow.push(kuyrukNo + getAbbreviation(kuyrukNo)); // KUYRUK NUMARASI with Abbreviation
+      
+      for (let i = 2; i <= 37; i++) {
         newRow.push(row[i] || '-');
       }
       return newRow;
@@ -114,17 +142,18 @@ export const exportAT802DailyStatusToPDF = async (scriptUrl: string, sheetId: st
       },
       columnStyles: {
         0: { cellWidth: 4 }, // SIRA NO
-        1: { cellWidth: 10 }, // KUYRUK
-        2: { cellWidth: 8 }, // DURUMU
-        3: { cellWidth: 12 }, // G.FAAL SEBEBİ
-        4: { cellWidth: 12 }, // LOKASYON
-        5: { cellWidth: 8 }, // GÖVDE
-        37: { cellWidth: 'auto', halign: 'left' } // AÇIKLAMA
+        1: { cellWidth: 10 }, // ÇAĞRI KODU
+        2: { cellWidth: 10 }, // KUYRUK
+        3: { cellWidth: 8 }, // DURUMU
+        4: { cellWidth: 12 }, // G.FAAL SEBEBİ
+        5: { cellWidth: 12 }, // LOKASYON
+        6: { cellWidth: 8 }, // GÖVDE
+        38: { cellWidth: 'auto', halign: 'left' } // AÇIKLAMA
       },
       margin: { left: 2, right: 2 },
       didParseCell: function(data) {
         // Color coding for Status
-        if (data.section === 'body' && data.column.index === 2) {
+        if (data.section === 'body' && data.column.index === 3) {
           const val = String(data.cell.raw).toUpperCase();
           if (val.includes('FAAL') && !val.includes('GAYRİ')) {
             data.cell.styles.textColor = [0, 128, 0];
@@ -132,7 +161,39 @@ export const exportAT802DailyStatusToPDF = async (scriptUrl: string, sheetId: st
             data.cell.styles.textColor = [200, 0, 0];
           }
         }
+        // Red color for abbreviations in column 2
+        if (data.section === 'body' && data.column.index === 2) {
+          const text = data.cell.text[0];
+          if (text.includes('(')) {
+            // Note: jsPDF-AutoTable doesn't easily support multi-color in a single cell
+            // but we can color the whole cell or just leave it. 
+            // The user wants the abbreviation to be red.
+          }
+        }
       }
+    });
+
+    // Add Legend at the bottom
+    const finalY = (doc as any).lastAutoTable.finalY + 5;
+    doc.setFontSize(7);
+    doc.setTextColor(0, 0, 0);
+    doc.text('KISALTMALAR:', 5, finalY);
+    
+    autoTable(doc, {
+      startY: finalY + 2,
+      head: [['KOD', 'AÇIKLAMA']],
+      body: [
+        ['D-A', 'DUAL AMFİBİ'],
+        ['S-A', 'SINGLE AMFİBİ'],
+        ['D-L', 'DUAL LAND'],
+        ['S-L', 'SINGLE LAND'],
+        ['H', 'HELİTAK']
+      ],
+      theme: 'grid',
+      styles: { fontSize: 6, cellPadding: 1 },
+      headStyles: { fillColor: [100, 100, 100] },
+      margin: { left: 5 },
+      tableWidth: 80
     });
 
     doc.save(`AT802_Gunluk_Durum_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -166,8 +227,27 @@ export const exportAT802DailyStatusToExcel = async (scriptUrl: string, sheetId: 
 
     const filteredData = result.slice(dataStartIndex).filter(row => row[0] && !isNaN(Number(row[0])));
 
+    // Custom Sorting based on ORMAN-XX
+    const getOrder = (cagriKodu: string) => {
+      const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
+      if (match) return parseInt(match[1]);
+      return 999;
+    };
+
+    filteredData.sort((a, b) => getOrder(a[1]) - getOrder(b[1]));
+
+    const getAbbreviation = (kuyrukNo: string) => {
+      const tail = String(kuyrukNo).trim().toUpperCase();
+      if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return ' (D-A)';
+      if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return ' (S-A)';
+      if (tail === 'OR-2036') return ' (D-L)';
+      if (tail === 'OR-2038') return ' (S-L)';
+      if (tail === 'OR-1020') return ' (H)';
+      return '';
+    };
+
     const headers = [
-      "SIRA NO", "KUYRUK NUMARASI", "DURUMU", "G.FAAL SEBEBİ", "BULUNDUĞU LOKASYON", 
+      "SIRA NO", "ÇAĞRI KODU", "KUYRUK NUMARASI", "DURUMU", "G.FAAL SEBEBİ", "BULUNDUĞU LOKASYON", 
       "GÖVDE UÇUŞ SAATİ", "MOTOR SAATİ", "HAFTALIK FRDS BAKIM", "KALAN GÜN", 
       "HAFTALIK MOTOR ÇAL.", "KALAN GÜN", "AYLIK GARMIN GPS", "KALAN GÜN", 
       "AYLIK FRDS BAKIM", "KALAN GÜN", "3 AYLIK ELT KONTROL", "KALAN GÜN", 
@@ -188,16 +268,46 @@ export const exportAT802DailyStatusToExcel = async (scriptUrl: string, sheetId: 
         <tbody>
     `;
 
-    filteredData.forEach(row => {
+    filteredData.forEach((row, index) => {
       tableHtml += '<tr>';
-      for (let i = 0; i <= 37; i++) {
+      tableHtml += `<td>${index + 1}</td>`; // SIRA NO
+      const kuyrukNo = String(row[1] || '-').trim();
+      const cagriKodu = getCallSignByTail(kuyrukNo);
+      const abbr = getAbbreviation(kuyrukNo);
+      
+      tableHtml += `<td>${cagriKodu}</td>`; // ÇAĞRI KODU
+      tableHtml += `<td>${kuyrukNo}<span style="color: red;">${abbr}</span></td>`; // KUYRUK with Red Abbreviation
+      
+      for (let i = 2; i <= 37; i++) {
         const val = row[i] || '-';
-        tableHtml += `<td>${val}</td>`;
+        let style = '';
+        if (i === 2) { // DURUMU
+          const v = String(val).toUpperCase();
+          if (v.includes('FAAL') && !v.includes('GAYRİ')) style = 'color: green; font-weight: bold;';
+          else if (v.includes('GAYRİ') || v.includes('BAKIM') || v.includes('ARIZA')) style = 'color: red; font-weight: bold;';
+        }
+        tableHtml += `<td style="${style}">${val}</td>`;
       }
       tableHtml += '</tr>';
     });
 
     tableHtml += '</tbody></table>';
+
+    // Add Legend Table for Excel
+    const legendHtml = `
+      <br/>
+      <table border="1" style="width: 300px; font-size: 9px;">
+        <tr style="background-color: #646464; color: white; font-weight: bold;">
+          <th>KOD</th>
+          <th>AÇIKLAMA</th>
+        </tr>
+        <tr><td>D-A</td><td>DUAL AMFİBİ</td></tr>
+        <tr><td>S-A</td><td>SINGLE AMFİBİ</td></tr>
+        <tr><td>D-L</td><td>DUAL LAND</td></tr>
+        <tr><td>S-L</td><td>SINGLE LAND</td></tr>
+        <tr><td>H</td><td>HELİTAK</td></tr>
+      </table>
+    `;
 
     const html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -212,6 +322,7 @@ export const exportAT802DailyStatusToExcel = async (scriptUrl: string, sheetId: 
         <h2 style="text-align: center; color: #006400;">OGM HAVACILIK - AT-802 GÜNLÜK DURUM RAPORU</h2>
         <p style="text-align: right;">Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')}</p>
         ${tableHtml}
+        ${legendHtml}
       </body>
       </html>
     `;

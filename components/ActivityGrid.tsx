@@ -103,20 +103,34 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
       groups[act.tip].push(act);
     });
     
-    // Sıralama: 1-Bell-429, 2-AT-802, 3-T-70
-    const order = ['Bell-429', 'AT-802', 'T-70'];
+    // Sıralama: C-650, B-360, Bell-429, AT-802, T-70
+    const order = ['C-650', 'B-360', 'Bell-429', 'AT-802', 'T-70'];
     const sortedGroups: { [key: string]: AircraftActivity[] } = {};
     
+    const getOrder = (cagriKodu: string) => {
+      const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
+      if (match) return parseInt(match[1]);
+      return 999;
+    };
+
     order.forEach(tip => {
       if (groups[tip]) {
-        sortedGroups[tip] = groups[tip];
+        if (tip === 'AT-802') {
+          sortedGroups[tip] = groups[tip].sort((a, b) => a.kuyrukNo.localeCompare(b.kuyrukNo));
+        } else {
+          sortedGroups[tip] = groups[tip].sort((a, b) => getOrder(a.cagriKodu) - getOrder(b.cagriKodu));
+        }
       }
     });
     
     // Diğer tipler varsa sona ekle
     Object.keys(groups).forEach(tip => {
       if (!order.includes(tip)) {
-        sortedGroups[tip] = groups[tip];
+        if (tip === 'AT-802') {
+          sortedGroups[tip] = groups[tip].sort((a, b) => a.kuyrukNo.localeCompare(b.kuyrukNo));
+        } else {
+          sortedGroups[tip] = groups[tip].sort((a, b) => getOrder(a.cagriKodu) - getOrder(b.cagriKodu));
+        }
       }
     });
     
@@ -141,8 +155,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
         <table id="activity-table" className="w-full border-collapse border-[1.5px] border-black text-[10px] bg-white font-sans">
           <thead>
             <tr className="bg-white">
-              <th rowSpan={2} className="border border-black px-1 py-1 w-[110px] uppercase font-black text-[9px]">ÇAĞRI KODU</th>
-              <th rowSpan={2} className="border border-black px-1 py-1 w-[100px] uppercase font-black text-[9px]">KUYRUK NO</th>
+              <th rowSpan={2} className="border border-black px-1 py-1 w-[110px] uppercase font-black text-[9px]">KUYRUK NO</th>
+              <th rowSpan={2} className="border border-black px-1 py-1 w-[100px] uppercase font-black text-[9px]">ÇAĞRI KODU</th>
               <th rowSpan={2} className="border border-black px-1 py-1 w-[120px] uppercase font-black text-[9px]">HAVA ARACI TİPİ</th>
               {visibleDates.map((date, idx) => (
                 <th key={idx} rowSpan={2} className="border border-black w-8 text-center font-bold min-w-[32px] text-[8px] bg-white h-16">
@@ -181,8 +195,21 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
 
                     return (
                       <tr key={idx} className="h-7 hover:bg-gray-50">
+                        <td className="border border-black text-center font-bold px-1">
+                          {act.kuyrukNo}
+                          <span className="text-red-600 ml-1">
+                            {(() => {
+                              const tail = String(act.kuyrukNo).trim().toUpperCase();
+                              if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return '(D-A)';
+                              if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return '(S-A)';
+                              if (tail === 'OR-2036') return '(D-L)';
+                              if (tail === 'OR-2038') return '(S-L)';
+                              if (tail === 'OR-1020') return '(H)';
+                              return '';
+                            })()}
+                          </span>
+                        </td>
                         <td className="border border-black text-center font-bold px-1">{act.cagriKodu}</td>
-                        <td className="border border-black text-center font-bold px-1">{act.kuyrukNo}</td>
                         <td className="border border-black text-center px-1 font-bold">{act.tip}</td>
                         {visibleDates.map((date, dIdx) => {
                           const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;

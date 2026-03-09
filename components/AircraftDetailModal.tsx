@@ -1,17 +1,18 @@
 
 import React, { useState, useEffect } from 'react';
-import { Aircraft, Status, OPLItem } from '../types';
+import { Aircraft, Status, OPLItem, AircraftActivity } from '../types';
 import LogRecordsModal from './LogRecordsModal';
 import { fetchOPLData } from '../services/sheetService';
 
 interface AircraftDetailModalProps {
   aircraft: Aircraft;
+  activities: AircraftActivity[];
   onClose: () => void;
   onEdit: () => void;
   onViewLogs: (openLogs: () => void) => void;
 }
 
-const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, onClose, onEdit, onViewLogs }) => {
+const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, activities, onClose, onEdit, onViewLogs }) => {
   const [activePhoto, setActivePhoto] = useState(0);
   const [isLogRecordsOpen, setIsLogRecordsOpen] = useState(false);
   const [oplAlerts, setOplAlerts] = useState<string[]>([]);
@@ -21,6 +22,32 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, onC
   const isT70 = aircraft.tip === 'T-70';
   const isB360OrC650 = aircraft.tip === 'B-360' || aircraft.tip === 'C-650';
   const isAT802 = aircraft.tip === 'AT-802';
+
+  const getNonFunctionalStartDate = () => {
+    const activity = activities.find(a => a.kuyrukNo === aircraft.kuyrukNo);
+    if (!activity) return null;
+    
+    const statuses = activity.dailyStatuses;
+    const dates = Object.keys(statuses).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    
+    if (dates.length === 0) return null;
+    
+    let startDate = null;
+    // En son tarihten geriye doğru bakıyoruz
+    for (const date of dates) {
+      const status = statuses[date];
+      if (status && status !== 'F') {
+        startDate = date;
+      } else {
+        // Eğer Faal (F) bulursak duruyoruz, çünkü kesintisiz seriyi arıyoruz
+        break;
+      }
+    }
+    
+    return startDate ? startDate.split('-').reverse().join('.') : null;
+  };
+
+  const nonFunctionalStartDate = getNonFunctionalStartDate();
 
   useEffect(() => {
     const loadOPL = async () => {
@@ -309,6 +336,27 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, onC
                       <span className="text-gray-400 font-bold uppercase tracking-tighter">Konum:</span>
                       <span className="font-black text-gray-900 uppercase">{aircraft.konum}</span>
                     </div>
+
+                    <div className="mt-6 p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+                       <div className="text-[10px] font-black text-emerald-800 uppercase tracking-widest mb-1">HAVA ARACI MODELİ</div>
+                       <div className="text-sm font-black text-emerald-900">
+                         {isAT802 ? (
+                           aircraft.platformTipi === 'DA' || aircraft.platformTipi === 'D-A' ? 'DA : DUAL AMFİBİ' : 
+                           aircraft.platformTipi === 'SA' || aircraft.platformTipi === 'S-A' ? 'SA : SINGLE AMFİBİ' :
+                           aircraft.platformTipi === 'DL' || aircraft.platformTipi === 'D-L' ? 'DL : DUAL LAND' :
+                           aircraft.platformTipi === 'SL' || aircraft.platformTipi === 'S-L' ? 'SL : SINGLE LAND' :
+                           aircraft.platformTipi
+                         ) : isBell429 ? (
+                           'BELL 429 GLOBALRANGER'
+                         ) : isT70 ? (
+                           'T-70 GENEL MAKSAT HELİKOPTERİ'
+                         ) : aircraft.tip === 'B-360' ? (
+                           'BEECHCRAFT KING AIR 360'
+                         ) : aircraft.tip === 'C-650' ? (
+                           'CESSNA CITATION VII'
+                         ) : aircraft.tip}
+                       </div>
+                    </div>
                     
                     {!isBell429 && !isT70 && !isB360OrC650 && (
                       <div className="mt-8 pt-6 border-t-2 border-emerald-50">
@@ -372,20 +420,21 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, onC
               </div>
 
               <div className="p-6 rounded-3xl border border-gray-100 bg-gray-50/50 flex-grow shadow-inner">
-                 <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4">MEVCUT DURUM</h3>
-                 <div className="flex items-center mb-6">
-                    <div className={`w-3.5 h-3.5 rounded-full mr-3 ${aircraft.durum === Status.FAAL ? 'bg-green-500 shadow-green-500/30' : 'bg-red-500 shadow-red-500/30'}`}></div>
-                    <span className={`text-3xl font-black tracking-tighter ${aircraft.durum === Status.FAAL ? 'text-green-600' : 'text-red-600'}`}>
-                      {aircraft.durum}
-                      {aircraft.durum === Status.GAYRI_FAAL && aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' && (
-                        <span className="ml-2 text-xl opacity-80">({aircraft.durumAyrintisi})</span>
-                      )}
-                    </span>
+  <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4">MEVCUT DURUM</h3>
+  <div className="flex items-center mb-6">
+    <div className={`w-3.5 h-3.5 rounded-full mr-3 ${aircraft.durum === Status.FAAL ? 'bg-green-500 shadow-green-500/30' : 'bg-red-500 shadow-red-500/30'}`}></div>
+    
+    <span className={`text-3xl font-black tracking-tighter ${aircraft.durum === Status.FAAL ? 'text-green-600' : 'text-red-600'}`}>
+      {aircraft.durum === Status.GAYRI_FAAL 
+        ? `GAYRI FAAL (${aircraft.durumAyrintisi})`
+        : aircraft.durum
+      }
+    </span>
                  </div>
                  <div className="space-y-4">
                     <div className="flex items-center text-[11px] font-bold text-gray-400 uppercase tracking-widest">
                        <span className="mr-2 opacity-50">BAŞLANGIÇ:</span>
-                       <span className="text-gray-700">{aircraft.durumBaslangic}</span>
+                       <span className="text-gray-700">{aircraft.durumBaslangic ? aircraft.durumBaslangic.split('-').reverse().join('.') : '-'}</span>
                     </div>
 
                     {isLoadingOPL ? (
