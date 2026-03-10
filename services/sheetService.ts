@@ -10,7 +10,11 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   const detail = String(item.durumAyrintisi || '').toLocaleLowerCase('tr-TR').trim();
   const desc = String(item.aciklama || '').toLocaleLowerCase('tr-TR').trim();
   const durumStr = String(item.durum || '').toLocaleUpperCase('tr-TR').trim();
-  const fullText = `${detail} ${desc}`;
+  const fullText = `${detail} ${desc} ${durumStr.toLocaleLowerCase('tr-TR')}`;
+
+  if (fullText.includes('kabul muayenelerı') || fullText.includes('kabul muayeneleri')) {
+    return { code: 'KM', interpretation: 'Kabul Muayeneleri.' };
+  }
 
   if (fullText.includes('kaza') || fullText.includes('kırım') || fullText.includes('hasar')) 
     return { code: 'KK', interpretation: 'Kaza/Kırım tespiti.' };
@@ -265,7 +269,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         kuyrukNo: kuyrukNo,
         cagriKodu: getCallSignByTail(kuyrukNo),
         durum: (analysis.code !== 'F') ? Status.GAYRI_FAAL : Status.FAAL,
-        durumTipi: (analysis.code === 'B' || analysis.code === 'BB') ? StatusType.BAKIM : 
+        durumTipi: (analysis.code === 'B' || analysis.code === 'BB' || analysis.code === 'KM') ? StatusType.BAKIM : 
                    (analysis.code === 'A' || analysis.code === 'PB') ? StatusType.ARIZA : StatusType.NONE,
         durumAyrintisi: String(item.durumAyrintisi || '-'),
         konum: String(item.konum || 'ANKARA'),

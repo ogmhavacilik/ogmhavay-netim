@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { SheetConfig, Aircraft, AppNotification, DailyStatusCode } from '../types';
 import { fetchAircraftDataFromAppsScript } from '../services/sheetService';
 import { getMailRecipients, saveMailRecipient, deleteMailRecipient, MailRecipient, sendManualEmail, testMail } from '../src/services/mailService';
+import { generateFleetExcelHtml } from '../src/services/excelService';
 
 interface AdminPanelProps {
   onSave: (configs: SheetConfig[], data: Partial<Aircraft>[]) => void;
@@ -17,6 +18,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
   const [activeSubTab, setActiveSubTab] = useState('notifications'); 
   const [previewData, setPreviewData] = useState<any[]>(initialData);
   const [isLoading, setIsLoading] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [editingCode, setEditingCode] = useState<{ kuyrukNo: string, code: string } | null>(null);
   const [recipients, setRecipients] = useState<MailRecipient[]>([]);
   const [newRecipient, setNewRecipient] = useState<Omit<MailRecipient, 'id'>>({
@@ -71,9 +73,39 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
   };
 
   const handleManualSend = async (id: string) => {
-    const success = await sendManualEmail(id);
+    const recipient = recipients.find(r => r.id === id);
+    if (!recipient) return;
+
+    if (!recipient.attachments) {
+      if (!confirm('Bu alıcının seçili raporu yok. Yine de boş mail göndermek istiyor musunuz?')) {
+        return;
+      }
+    }
+
+    setSendingId(id);
+    
+    const customAttachments: { name: string, data: string, mimeType: string }[] = [];
+    
+    // If recipient wants "ENVANTER RAPORU", generate it from current previewData
+    if (recipient.attachments.includes('ENVANTER RAPORU')) {
+      const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const html = generateFleetExcelHtml(previewData as Aircraft[], dateStr);
+      
+      // Convert HTML string to base64 for Apps Script
+      // We use btoa(unescape(encodeURIComponent(html))) as in App.tsx
+      const base64Data = btoa(unescape(encodeURIComponent(html)));
+      
+      customAttachments.push({
+        name: 'ENVANTER RAPORU.xls',
+        data: base64Data,
+        mimeType: 'application/vnd.ms-excel'
+      });
+    }
+
+    const success = await sendManualEmail(id, customAttachments);
+    setSendingId(null);
     if (success) {
-      alert('E-posta gönderim kuyruğuna alındı.');
+      alert('Raporlar başarıyla gönderildi.');
     } else {
       alert('E-posta gönderilirken hata oluştu.');
     }
@@ -343,6 +375,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
                       <h1 className="text-white text-3xl font-black uppercase italic">Otomail Sistemi</h1>
                       <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mt-2">Rapor Gönderim ve Alıcı Yönetimi</p>
                    </div>
+                   <button 
+                      onClick={handleTestMail}
+                      className="text-emerald-500 hover:text-emerald-400 font-black text-[10px] uppercase tracking-widest border border-emerald-500/30 px-4 py-2 rounded-xl hover:bg-emerald-500/10 transition-all"
+                   >
+                      EKİ TEST MAİLİ GÖNDER
+                   </button>
                 </div>
                 <div className="bg-[#021a0c] p-10 flex-1 overflow-y-auto custom-scrollbar rounded-b-[3rem]">
                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
@@ -408,9 +446,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
                                </div>
                             </div>
                             <div>
-                               <label className="block text-[10px] font-black text-gray-700 uppercase tracking-widest mb-4 ml-2">EKLENECEK RAPORLAR</label>
+                               <label className="block text-[10px] font-black text-gray-700 uppercase tracking-widest mb-4 ml-2 flex justify-between">
+                                  <span>EKLENECEK RAPORLAR</span>
+                                  <span className="text-emerald-500 lowercase italic font-normal">en az birini seçiniz</span>
+                               </label>
                                <div className="space-y-3">
-                                  {['ENVANTER HAVA ARACI DURUM RAPORU', 'FAALİYET ÇİZELGESİ', 'HAVA ARACI EXCELİ (ONLİNE)'].map(report => (
+                                  {['ENVANTER RAPORU', 'FAALİYET ÇİZELGESİ', 'HAVA ARACI EXCELİ (ONLİNE)'].map(report => (
                                     <label key={report} className="flex items-center space-x-3 bg-black/20 px-4 py-3 rounded-xl border border-white/5 cursor-pointer hover:bg-white/5 transition-all">
                                        <input 
                                          type="checkbox" 
@@ -442,6 +483,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
                                      <th className="pb-4">AD SOYAD</th>
                                      <th className="pb-4">MAİL</th>
                                      <th className="pb-4">TÜR</th>
+                                     <th className="pb-4">RAPORLAR</th>
                                      <th className="pb-4">İŞLEM</th>
                                   </tr>
                                </thead>
@@ -455,12 +497,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
                                              {r.type} {r.type === 'OTOMATİK' && `(${r.time})`}
                                           </span>
                                        </td>
+                                       <td className="py-4">
+                                          <div className="flex flex-wrap gap-1">
+                                             {r.attachments ? r.attachments.split(',').map((att, idx) => (
+                                               <span key={idx} className="bg-white/5 text-[7px] px-1.5 py-0.5 rounded border border-white/10 opacity-60" title={att}>
+                                                 {att.split(' ').map(w => w[0]).join('')}
+                                               </span>
+                                             )) : <span className="text-red-500 text-[7px] font-bold">YOK</span>}
+                                          </div>
+                                       </td>
                                        <td className="py-4 flex space-x-3">
                                           <button 
                                             onClick={() => handleManualSend(r.id)}
-                                            className="text-emerald-500 hover:text-emerald-400 font-black text-[9px] uppercase tracking-widest"
+                                            disabled={sendingId === r.id}
+                                            className="text-emerald-500 hover:text-emerald-400 font-black text-[9px] uppercase tracking-widest disabled:opacity-50 flex items-center"
                                           >
-                                            GÖNDER
+                                            {sendingId === r.id && (
+                                              <div className="w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mr-2"></div>
+                                            )}
+                                            {sendingId === r.id ? 'Exceller hazırlanıyor...' : 'GÖNDER'}
                                           </button>
                                           <button 
                                             onClick={() => handleDeleteRecipient(r.id)}

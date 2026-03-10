@@ -154,45 +154,16 @@ function doPost(e) {
       return jsonSuccess(results);
     }
 
-    // 🔵 AKSİYON: SİSTEM LOGLARI (ENVANTER VE FAALİYET)
-    if (action === "saveSystemLogs" || action === "saveLogs") {
+    // 🔵 AKSİYON: SİSTEM LOGLARI (ENVANTER VE FAALİYET) - GERÇEK ZAMANLI GÜNCELLEME
+    if (action === "saveSystemLogs" || action === "saveLogs" || action === "updateLogEntry") {
       var fleetData = params.fleetData;
+      if (!fleetData) {
+        // Tekil uçak güncelleniyorsa diziye çevir
+        if (params.aircraft) fleetData = [params.aircraft];
+      }
       if (!fleetData || fleetData.length === 0) return jsonError("Log verisi boş.");
-
-      var envLogSheet = findSheet(ss, "Envanter Log");
-      if (!envLogSheet) {
-        envLogSheet = ss.insertSheet("Envanter Log");
-        envLogSheet.appendRow(["ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Açıklama"]);
-        envLogSheet.getRange("A1:J1").setFontWeight("bold").setBackground("#cfe2f3").setBorder(true, true, true, true, true, true);
-      }
-
-      var faalLogSheet = findSheet(ss, "Faaliyet Log");
-      if (!faalLogSheet) {
-        faalLogSheet = ss.insertSheet("Faaliyet Log");
-        faalLogSheet.appendRow(["ID", "Tarih", "Kuyruk No", "Tip", "Günlük Durum (Faal/Gayrı Faal vb.)", "Analiz Kodu"]);
-        faalLogSheet.getRange("A1:F1").setFontWeight("bold").setBackground("#fff2cc").setBorder(true, true, true, true, true, true);
-      }
-
-      var bugun = new Date();
-      var tarihStr = Utilities.formatDate(bugun, Session.getScriptTimeZone(), "dd.MM.yyyy");
-      
-      fleetData.forEach(function(aircraft) {
-        var kNo = String(aircraft.kuyrukNo || "").trim();
-        if (!kNo) return;
-
-        var envKey = tarihStr + "_" + kNo;
-        envLogSheet.appendRow([
-          envKey, tarihStr, kNo, aircraft.tip || "", aircraft.govdeUcusSaati || "", 
-          aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
-          aircraft.durumAyrintisi || "", aircraft.aciklama || ""
-        ]);
-
-        faalLogSheet.appendRow([
-          envKey, tarihStr, kNo, aircraft.tip || "", aircraft.durumAyrintisi || "", aircraft.assignedCode || "F"
-        ]);
-      });
-
-      return jsonSuccess("Loglar kaydedildi.");
+      saveLogsToSheets(ss, fleetData);
+      return jsonSuccess("Loglar güncellendi.");
     }
 
     if (action === "getMailRecipients") {
@@ -229,7 +200,7 @@ function doPost(e) {
     }
 
     if (action === "sendManualEmail") {
-      var recipientId = params.id;
+      var recipientId = String(params.id || "").trim();
       var mailSheet = findSheet(ss, "mail log");
       if (!mailSheet) return jsonError("Alıcı listesi bulunamadı.");
       
@@ -237,7 +208,7 @@ function doPost(e) {
       var headers = data[0];
       var recipient = null;
       for (var i = 1; i < data.length; i++) {
-        if (data[i][0] == recipientId) {
+        if (String(data[i][0]).trim() === recipientId) {
           recipient = {};
           for (var j = 0; j < headers.length; j++) {
             recipient[headers[j]] = data[i][j];
@@ -246,7 +217,7 @@ function doPost(e) {
         }
       }
       
-      if (!recipient) return jsonError("Alıcı bulunamadı.");
+      if (!recipient) return jsonError("Alıcı bulunamadı. Aranan ID: " + recipientId);
       
       sendReportEmail(recipient);
       return jsonSuccess("E-posta gönderildi.");
@@ -515,7 +486,7 @@ function sendDailyReports() {
   if (!mailSheet) return;
   
   var data = mailSheet.getDataRange().getDisplayValues();
-  var headers = data[0];
+  var headers = data[0].map(function(h) { return String(h).trim(); });
   var now = new Date();
   var currentDay = ["PAZAR", "PAZARTESİ", "SALI", "ÇARŞAMBA", "PERŞEMBE", "CUMA", "CUMARTESİ"][now.getDay()];
   var currentTime = Utilities.formatDate(now, Session.getScriptTimeZone(), "HH:mm");
@@ -554,16 +525,20 @@ function timeToMinutes(timeStr) {
 function sendReportEmail(recipient) {
   var attachments = [];
   var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg"; // Merkezi Log Tablosu ID
-  var selectedReports = recipient["GÖNDERİLECEK MAİLİN EKİ"] || "";
+  var selectedReports = String(recipient["GÖNDERİLECEK MAİLİN EKİ"] || "").trim();
   
-  if (selectedReports.includes("ENVANTER HAVA ARACI DURUM RAPORU")) {
-    attachments.push(getSheetAsExcel(logSsId, "Envanter_Raporu.xlsx"));
-  }
+  console.log("Sending email to: " + recipient["PERSONEL MAİL ADRESİ"]);
   
-  if (selectedReports.includes("FAALİYET ÇİZELGESİ")) {
-    attachments.push(getSheetAsExcel(logSsId, "Faaliyet_Cizelgesi.xlsx")); 
+  if (selectedReports.includes("ENVANTER RAPORU") || selectedReports.includes("ENVANTER HAVA ARACI DURUM RAPORU")) {
+    var blob = generateFormattedEnvanterExcel(logSsId);
+    if (blob) attachments.push(blob);
   }
 
+  if (selectedReports.includes("FAALİYET ÇİZELGESİ")) {
+    var blob = generateFormattedFaaliyetExcel(logSsId);
+    if (blob) attachments.push(blob);
+  }
+  
   if (selectedReports.includes("HAVA ARACI EXCELİ (ONLİNE)")) {
     var platformIds = {
       "Bell-429": "1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ",
@@ -575,12 +550,15 @@ function sendReportEmail(recipient) {
     
     for (var platform in platformIds) {
       try {
-        attachments.push(getSheetAsExcel(platformIds[platform], platform + "_Online_Excel.xlsx"));
+        var blob = getSheetAsExcel(platformIds[platform], platform + "_Online_Excel.xlsx");
+        if (blob) attachments.push(blob);
       } catch (e) {
         console.error("Error attaching " + platform + ": " + e.toString());
       }
     }
   }
+  
+  console.log("Total attachments: " + attachments.length);
   
   var body = "Sayın " + recipient["PERSONEL ADI"] + ",\n\n" +
              "Günlük hava aracı durum raporları ekte sunulmuştur.\n\n" +
@@ -595,15 +573,646 @@ function sendReportEmail(recipient) {
 }
 
 function getSheetAsExcel(ssId, name) {
-  var url = "https://docs.google.com/spreadsheets/d/" + ssId + "/export?format=xlsx";
-  var token = ScriptApp.getOAuthToken();
-  var response = UrlFetchApp.fetch(url, {
-    headers: {
-      'Authorization': 'Bearer ' + token
-    },
-    muteHttpExceptions: true
-  });
-  return response.getBlob().setName(name);
+  try {
+    var url = "https://docs.google.com/spreadsheets/d/" + ssId + "/export?format=xlsx";
+    var token = ScriptApp.getOAuthToken();
+    var response = UrlFetchApp.fetch(url, {
+      headers: {
+        'Authorization': 'Bearer ' + token
+      },
+      muteHttpExceptions: true
+    });
+    
+    if (response.getResponseCode() !== 200) {
+      console.error("Error fetching spreadsheet " + ssId + " (" + name + "): " + response.getContentText());
+      return null;
+    }
+    
+    return response.getBlob().setName(name);
+  } catch (e) {
+    console.error("Exception in getSheetAsExcel for " + ssId + " (" + name + "): " + e.toString());
+    return null;
+  }
 }
 
-function doGet() { return ContentService.createTextOutput("OGM Servis Aktif."); }
+/**
+ * Gece yarısı otomatik loglama yapan fonksiyon.
+ * Bu fonksiyonun her gece 00:00 - 01:00 arasında çalışacak şekilde tetiklenmesi gerekir.
+ */
+function performDailyMidnightLogging() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var platformConfigs = [
+    { type: 'Bell-429', id: '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ', range: 'A3:O8', map: {kNo:0, durum:12, detail:13, desc:14, loc:11, gHour:4, fHour:8} },
+    { type: 'AT-802', id: '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4', sheet: 'GÜNLÜK DURUM', range: 'B3:AL16', map: {kNo:0, durum:1, detail:2, desc:35, loc:3, gHour:4, fHour:20} },
+    { type: 'T-70', id: '10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw', range: 'A4:S6', map: {kNo:0, durum:16, detail:17, desc:18, loc:15, gHour:4, fHour:13} },
+    { type: 'B-360', id: '1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0', range: 'A3:P10', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} },
+    { type: 'C-650', id: '1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE', range: 'A3:P10', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} }
+  ];
+
+  var fleetData = [];
+
+  platformConfigs.forEach(function(config) {
+    try {
+      var pSs = SpreadsheetApp.openById(config.id);
+      var pSheet = config.sheet ? pSs.getSheetByName(config.sheet) : pSs.getSheets()[0];
+      var values = pSheet.getRange(config.range).getDisplayValues();
+      
+      values.forEach(function(row) {
+        var kNo = row[config.map.kNo];
+        if (kNo && kNo.trim() !== "") {
+          var item = {
+            kuyrukNo: kNo,
+            tip: config.type,
+            durum: row[config.map.durum],
+            durumAyrintisi: row[config.map.detail],
+            aciklama: row[config.map.desc],
+            konum: row[config.map.loc],
+            govdeUcusSaati: row[config.map.gHour],
+            faydaliSaat: row[config.map.fHour]
+          };
+          item.assignedCode = analyzeStatusGS(item);
+          fleetData.push(item);
+        }
+      });
+    } catch (e) {
+      console.error("Error logging " + config.type + ": " + e.toString());
+    }
+  });
+
+  if (fleetData.length > 0) {
+    saveLogsToSheets(ss, fleetData);
+    console.log("Daily midnight logs saved successfully. Total aircraft: " + fleetData.length);
+  }
+}
+
+function analyzeStatusGS(item) {
+  if (!item) return 'F';
+  
+  var detail = String(item.durumAyrintisi || '').toLowerCase().trim();
+  var desc = String(item.aciklama || '').toLowerCase().trim();
+  var durumStr = String(item.durum || '').toUpperCase().trim();
+  var fullText = detail + " " + desc + " " + durumStr.toLowerCase();
+
+  if (fullText.indexOf('kabul muayenelerı') !== -1 || fullText.indexOf('kabul muayeneleri') !== -1) {
+    return 'KM';
+  }
+  if (fullText.indexOf('kaza') !== -1 || fullText.indexOf('kırım') !== -1 || fullText.indexOf('hasar') !== -1) 
+    return 'KK';
+  if (fullText.indexOf('parça') !== -1 && (fullText.indexOf('bekle') !== -1 || fullText.indexOf('sipariş') !== -1)) {
+    return 'PB';
+  }
+  if (fullText.indexOf('bakım') !== -1 || fullText.indexOf('yıllık') !== -1 || fullText.indexOf('periyodik') !== -1 || /\b\d+h\b/.test(fullText)) {
+    if (fullText.indexOf('bekliyor') !== -1 || fullText.indexOf('sıra') !== -1) {
+      return 'BB';
+    }
+    return 'B';
+  }
+  if (fullText.indexOf('arıza') !== -1 || fullText.indexOf('problem') !== -1) 
+    return 'A';
+  var isGayriFaalExplicit = durumStr.indexOf('GAYRİ') !== -1 || durumStr.indexOf('GAYRI') !== -1 || durumStr.indexOf('G.FAAL') !== -1;
+  if (isGayriFaalExplicit) return 'X';
+  return 'F';
+}
+
+function saveLogsToSheets(ss, fleetData) {
+  var envLogSheet = findSheet(ss, "Envanter Log");
+  if (!envLogSheet) {
+    envLogSheet = ss.insertSheet("Envanter Log");
+    envLogSheet.appendRow(["ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Açıklama"]);
+    envLogSheet.getRange("A1:J1").setFontWeight("bold").setBackground("#cfe2f3").setBorder(true, true, true, true, true, true);
+  }
+
+  var faalLogSheet = findSheet(ss, "Faaliyet Log");
+  if (!faalLogSheet) {
+    faalLogSheet = ss.insertSheet("Faaliyet Log");
+    faalLogSheet.appendRow(["ID", "Tarih", "Kuyruk No", "Tip", "Günlük Durum (Faal/Gayrı Faal vb.)", "Analiz Kodu"]);
+    faalLogSheet.getRange("A1:F1").setFontWeight("bold").setBackground("#fff2cc").setBorder(true, true, true, true, true, true);
+  }
+
+  var bugun = new Date();
+  var tarihStr = Utilities.formatDate(bugun, Session.getScriptTimeZone(), "dd.MM.yyyy");
+  
+  // Mevcut ID'leri ve satır numaralarını al (Hızlı güncelleme için)
+  var lastRow = envLogSheet.getLastRow();
+  var envData = lastRow > 1 ? envLogSheet.getRange(2, 1, lastRow - 1, 3).getValues() : [];
+  var envIdMap = {};
+  for (var i = 0; i < envData.length; i++) {
+    var id = String(envData[i][0]);
+    envIdMap[id] = i + 2; // ID -> Row Index
+  }
+
+  var faalLastRow = faalLogSheet.getLastRow();
+  var faalData = faalLastRow > 1 ? faalLogSheet.getRange(2, 1, faalLastRow - 1, 1).getValues() : [];
+  var faalIdMap = {};
+  for (var i = 0; i < faalData.length; i++) {
+    var id = String(faalData[i][0]);
+    faalIdMap[id] = i + 2;
+  }
+  
+  fleetData.forEach(function(aircraft) {
+    var kNo = String(aircraft.kuyrukNo || "").trim();
+    if (!kNo) return;
+
+    var envKey = tarihStr + "_" + kNo;
+    var assignedCode = aircraft.assignedCode || analyzeStatusGS(aircraft);
+    
+    // ENVANTER LOG GÜNCELLE VEYA EKLE
+    if (envIdMap[envKey]) {
+      var row = envIdMap[envKey];
+      envLogSheet.getRange(row, 4, 1, 7).setValues([[
+        aircraft.tip || "", aircraft.govdeUcusSaati || "", 
+        aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
+        aircraft.durumAyrintisi || "", aircraft.aciklama || ""
+      ]]);
+    } else {
+      envLogSheet.appendRow([
+        envKey, tarihStr, kNo, aircraft.tip || "", aircraft.govdeUcusSaati || "", 
+        aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
+        aircraft.durumAyrintisi || "", aircraft.aciklama || ""
+      ]);
+      // Update map so we don't append again in the same batch
+      envIdMap[envKey] = envLogSheet.getLastRow();
+    }
+
+    // FAALİYET LOG GÜNCELLE VEYA EKLE
+    if (faalIdMap[envKey]) {
+      var row = faalIdMap[envKey];
+      faalLogSheet.getRange(row, 4, 1, 3).setValues([[
+        aircraft.tip || "", aircraft.durumAyrintisi || "", assignedCode
+      ]]);
+    } else {
+      faalLogSheet.appendRow([
+        envKey, tarihStr, kNo, aircraft.tip || "", aircraft.durumAyrintisi || "", assignedCode
+      ]);
+      faalIdMap[envKey] = faalLogSheet.getLastRow();
+    }
+  });
+}
+
+/**
+ * Formatted Excel Generation for Envanter - Matches App.tsx exportFleetToExcel
+ */
+function generateFormattedEnvanterExcel(ssId) {
+  try {
+    var ss = SpreadsheetApp.openById(ssId);
+    
+    // Fetch fresh data from all platforms to match the app's "EXCEL İNDİR" behavior
+    var platformConfigs = [
+      { type: 'C-650', id: '1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE', range: 'A3:P10', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} },
+      { type: 'B-360', id: '1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0', range: 'A3:P10', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} },
+      { type: 'Bell-429', id: '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ', range: 'A3:O8', map: {kNo:0, durum:12, detail:13, desc:14, loc:11, gHour:4, fHour:8} },
+      { type: 'AT-802', id: '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4', sheet: 'GÜNLÜK DURUM', range: 'B3:AL16', map: {kNo:0, durum:1, detail:2, desc:35, loc:3, gHour:4, fHourStart:20, fHourEnd:33} },
+      { type: 'T-70', id: '10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw', range: 'A4:S6', map: {kNo:0, durum:16, detail:17, desc:18, loc:15, gHour:4, fHour:13} }
+    ];
+
+    var fleetData = [];
+    platformConfigs.forEach(function(config) {
+      try {
+        var pSs = SpreadsheetApp.openById(config.id);
+        var pSheet = config.sheet ? pSs.getSheetByName(config.sheet) : pSs.getSheets()[0];
+        var values = pSheet.getRange(config.range).getDisplayValues();
+        var rawValues = pSheet.getRange(config.range).getValues();
+        
+        values.forEach(function(row, rIdx) {
+          var kNo = row[config.map.kNo];
+          if (kNo && kNo.trim() !== "") {
+            var faydaliSaat = null;
+            if (config.type === 'AT-802') {
+              // Find min value in V3:AI16 range
+              var minVal = null;
+              for (var c = config.map.fHourStart; c <= config.map.fHourEnd; c++) {
+                var val = rawValues[rIdx][c];
+                var parsed = parseSingleCellToHourGS(val, config.type);
+                if (parsed !== null) {
+                  if (minVal === null || parsed < minVal) minVal = parsed;
+                }
+              }
+              faydaliSaat = minVal;
+            } else {
+              faydaliSaat = parseSingleCellToHourGS(rawValues[rIdx][config.map.fHour], config.type);
+            }
+
+            var item = {
+              kuyrukNo: kNo,
+              tip: config.type,
+              durum: row[config.map.durum],
+              durumAyrintisi: row[config.map.detail],
+              aciklama: row[config.map.desc],
+              konum: row[config.map.loc],
+              govdeUcusSaati: row[config.map.gHour],
+              faydaliSaat: faydaliSaat
+            };
+            fleetData.push(item);
+          }
+        });
+      } catch (e) {
+        console.error("Error fetching " + config.type + " for Excel: " + e.toString());
+      }
+    });
+
+    if (fleetData.length === 0) return null;
+
+    // Sort fleetData: C-650, B-360, Bell-429, AT-802, T-70 then ORMAN-XX
+    var typeOrder = ['C-650', 'B-360', 'Bell-429', 'AT-802', 'T-70'];
+    fleetData.sort(function(a, b) {
+      var indexA = typeOrder.indexOf(a.tip);
+      var indexB = typeOrder.indexOf(b.tip);
+      if (indexA !== indexB) {
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        return a.tip.localeCompare(b.tip);
+      }
+      
+      var getOrder = function(kNo) {
+        var cagri = getCallSignByTailGS(kNo);
+        var match = String(cagri).match(/ORMAN-(\d+)/i);
+        if (match) return parseInt(match[1]);
+        return 999;
+      };
+      return getOrder(a.kuyrukNo) - getOrder(b.kuyrukNo);
+    });
+
+    var tempSs = SpreadsheetApp.create("Envanter_Raporu_Temp");
+    var tempSheet = tempSs.getSheets()[0];
+    
+    var bugun = new Date();
+    var tarihStr = Utilities.formatDate(bugun, Session.getScriptTimeZone(), "dd.MM.yyyy");
+    
+    // Date Row
+    tempSheet.getRange("G1").setValue(tarihStr).setFontColor("red").setFontWeight("bold").setHorizontalAlignment("right");
+    
+    // Title Row
+    tempSheet.getRange("A2:G2").merge().setValue("OGM HAVA ARAÇLARI DURUM ÖZETLERİ").setBackground("#f2f2f2").setFontWeight("bold").setHorizontalAlignment("center");
+    
+    // Header Row
+    var headers = ["ÇAĞRI KODU", "KUYRUK NUMARASI", "DURUM", "DURUM AYRINTISI", "KONUM", "FAYDALI SAAT", "AÇIKLAMA"];
+    tempSheet.getRange("A3:G3").setValues([headers]).setBackground("#d9d9d9").setFontWeight("bold").setHorizontalAlignment("center").setBorder(true, true, true, true, true, true);
+    
+    var startRow = 4;
+    fleetData.forEach(function(item, idx) {
+      var currentRow = startRow + idx;
+      var kNo = item.kuyrukNo;
+      var cagriKodu = getCallSignByTailGS(kNo);
+      var analysisCode = analyzeStatusGS(item);
+      var isFaal = (analysisCode === 'F');
+      var durumText = item.durum || (isFaal ? "FAAL" : "GAYRİ FAAL");
+      
+      var abbr = getAbbreviationGS(kNo);
+      var faydaliSaatFormatted = formatToHHMMGS(item.faydaliSaat, item.tip);
+      
+      // Rich Text for Kuyruk No with Red Abbreviation
+      var kNoValue = SpreadsheetApp.newRichTextValue()
+        .setText(kNo + abbr)
+        .build();
+      
+      if (abbr) {
+        kNoValue = SpreadsheetApp.newRichTextValue()
+          .setText(kNo + abbr)
+          .setTextStyle(kNo.length, (kNo + abbr).length, SpreadsheetApp.newTextStyle().setForegroundColor("red").setBold(true).build())
+          .build();
+      }
+
+      var rowData = [
+        cagriKodu,
+        "", // Placeholder for kNoValue
+        durumText,
+        item.durumAyrintisi,
+        item.konum,
+        faydaliSaatFormatted,
+        item.aciklama
+      ];
+      
+      var range = tempSheet.getRange(currentRow, 1, 1, 7);
+      range.setValues([rowData]);
+      range.setBorder(true, true, true, true, true, true);
+      
+      // Set Rich Text for Kuyruk No
+      tempSheet.getRange(currentRow, 2).setRichTextValue(kNoValue);
+      
+      // Styling
+      tempSheet.getRange(currentRow, 1, 1, 2).setBackground("#e6e6e6");
+      
+      var durumCell = tempSheet.getRange(currentRow, 3);
+      if (isFaal) {
+        durumCell.setBackground("#c6efce").setFontColor("#006100").setFontWeight("bold");
+      } else {
+        durumCell.setBackground("#ffc7ce").setFontColor("#9c0006").setFontWeight("bold");
+      }
+      
+      var faydaliCell = tempSheet.getRange(currentRow, 6);
+      faydaliCell.setNumberFormat("@").setFontColor("#0000ff").setFontWeight("bold");
+      
+      var aciklamaCell = tempSheet.getRange(currentRow, 7);
+      aciklamaCell.setFontStyle("italic").setFontSize(10).setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true);
+    });
+    
+    var lastDataRow = startRow + fleetData.length;
+    var footerRow = lastDataRow + 2;
+    
+    tempSheet.getRange(footerRow, 1).setValue("KISALTMALAR:").setFontWeight("bold");
+    tempSheet.getRange(footerRow + 1, 1).setValue("(DA): DUAL AMFİBİ");
+    tempSheet.getRange(footerRow + 2, 1).setValue("(SA): SINGLE AMFİBİ");
+    tempSheet.getRange(footerRow + 3, 1).setValue("(DL): DUAL LAND");
+    tempSheet.getRange(footerRow + 4, 1).setValue("(SL): SINGLE LAND");
+    tempSheet.getRange(footerRow + 5, 1).setValue("(H): HELİTAK");
+
+    tempSheet.autoResizeColumns(1, 7);
+    tempSheet.setColumnWidth(7, 400); 
+    
+    SpreadsheetApp.flush();
+    
+    var url = "https://docs.google.com/spreadsheets/d/" + tempSs.getId() + "/export?format=xlsx";
+    var token = ScriptApp.getOAuthToken();
+    var response = UrlFetchApp.fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+    var blob = response.getBlob().setName("ENVANTER RAPORU.xlsx");
+    
+    DriveApp.getFileById(tempSs.getId()).setTrashed(true);
+    return blob;
+  } catch (e) {
+    console.error("Envanter Excel Error: " + e.toString());
+    return null;
+  }
+}
+
+function parseSingleCellToHourGS(val, aircraftType) {
+  if (val === undefined || val === null || val === "" || val === "0" || val === "00:00") return null;
+
+  if (val instanceof Date) {
+    var base = new Date(Date.UTC(1899, 11, 30));
+    var totalHours = (val.getTime() - base.getTime()) / (1000 * 60 * 60);
+    return totalHours > 0 ? totalHours : null;
+  }
+
+  if (typeof val === 'number') {
+    if (val <= 0) return null;
+    var n = val;
+    if (aircraftType === 'AT-802' && n < 100) n = n * 24;
+    return n;
+  }
+
+  if (typeof val === 'string') {
+    var s = val.trim().replace(',', '.');
+    if (s.indexOf(':') !== -1) {
+      var parts = s.split(':').map(Number);
+      return (parts[0] || 0) + (parts[1] || 0) / 60;
+    }
+    var n = parseFloat(s);
+    if (!isNaN(n)) {
+      if (aircraftType === 'Bell-429' && s.indexOf('.') !== -1) {
+        var parts = s.split('.');
+        var h = parseInt(parts[0]) || 0;
+        var m = parseInt(parts[1]) || 0;
+        return h + m / 60;
+      }
+      return n;
+    }
+  }
+  return null;
+}
+
+function formatToHHMMGS(val, aircraftType) {
+  if (val === null || val === undefined || val === "" || val === "0") return "-";
+  
+  var totalHours = null;
+  if (typeof val === 'number') {
+    totalHours = val;
+    // AT-802 correction if it's days
+    if (aircraftType === 'AT-802' && totalHours < 100) totalHours *= 24;
+  } else if (val instanceof Date) {
+    var base = new Date(Date.UTC(1899, 11, 30));
+    totalHours = (val.getTime() - base.getTime()) / (1000 * 60 * 60);
+  } else {
+    var s = String(val).trim().replace(',', '.');
+    if (s.indexOf(':') !== -1) {
+      var parts = s.split(':').map(Number);
+      totalHours = (parts[0] || 0) + (parts[1] || 0) / 60;
+    } else {
+      totalHours = parseFloat(s);
+    }
+  }
+  
+  if (totalHours === null || isNaN(totalHours)) return String(val);
+  
+  if (aircraftType === 'C-650') return Math.floor(Math.abs(totalHours)).toString();
+  
+  var hours = Math.floor(Math.abs(totalHours));
+  var minutes = Math.round((Math.abs(totalHours) - hours) * 60);
+  if (minutes === 60) { hours++; minutes = 0; }
+  var sign = totalHours < 0 ? '-' : '';
+  
+  return sign + hours + ":" + (minutes < 10 ? "0" + minutes : minutes);
+}
+
+
+function getAbbreviationGS(kuyrukNo) {
+  var tail = String(kuyrukNo).trim().toUpperCase();
+  if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return ' (DA)';
+  if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return ' (SA)';
+  if (tail === 'OR-2036') return ' (DL)';
+  if (tail === 'OR-2038') return ' (SL)';
+  if (tail === 'OR-1020') return ' (H)';
+  return '';
+}
+
+function getCallSignByTailGS(tail) {
+  var mapping = {
+    'OR-0177': 'ORMAN-01', 'OR-1839': 'ORMAN-02', 'OR-3125': 'ORMAN-03',
+    'OR-3126': 'ORMAN-04', 'OR-3127': 'ORMAN-05', 'OR-3131': 'ORMAN-06',
+    'OR-3133': 'ORMAN-07', 'OR-3192': 'ORMAN-08', 'OR-2021': 'ORMAN-21',
+    'OR-2022': 'ORMAN-22', 'OR-2023': 'ORMAN-23', 'OR-2024': 'ORMAN-24',
+    'OR-2025': 'ORMAN-25', 'OR-2026': 'ORMAN-26', 'OR-2027': 'ORMAN-27',
+    'OR-2028': 'ORMAN-28', 'OR-2029': 'ORMAN-29', 'OR-2030': 'ORMAN-30',
+    'OR-2031': 'ORMAN-31', 'OR-2036': 'ORMAN-36', 'OR-2037': 'ORMAN-37',
+    'OR-2038': 'ORMAN-38', 'OR-1018': 'ORMAN-18', 'OR-1019': 'ORMAN-19',
+    'OR-1020': 'ORMAN-20'
+  };
+  return mapping[tail] || ("ORMAN-" + (tail.split('-')[1] || 'XX'));
+}
+
+/**
+ * Formatted Excel Generation for Faaliyet - Matches ActivityGrid.tsx
+ */
+function generateFormattedFaaliyetExcel(ssId) {
+  try {
+    var ss = SpreadsheetApp.openById(ssId);
+    var logSheet = findSheet(ss, "Faaliyet Log");
+    if (!logSheet) return null;
+
+    var tempSs = SpreadsheetApp.create("Faaliyet_Cizelgesi_Temp");
+    var tempSheet = tempSs.getSheets()[0];
+    
+    var data = logSheet.getDataRange().getDisplayValues();
+    var dates = [];
+    var aircrafts = [];
+    var grid = {}; // {kNo: {date: code}}
+    var aircraftInfo = {}; // {kNo: {tip: string, cagri: string}}
+
+    for (var i = 1; i < data.length; i++) {
+      var d = data[i][1];
+      var k = data[i][2];
+      var tip = data[i][3];
+      var c = data[i][5];
+      if (dates.indexOf(d) === -1) dates.push(d);
+      if (aircrafts.indexOf(k) === -1) {
+        aircrafts.push(k);
+        aircraftInfo[k] = { tip: tip, cagri: getCallSignByTailGS(k) };
+      }
+      if (!grid[k]) grid[k] = {};
+      grid[k][d] = c;
+    }
+    
+    dates.sort(function(a, b) {
+      var partsA = a.split('.');
+      var partsB = b.split('.');
+      return new Date(partsA[2], partsA[1]-1, partsA[0]) - new Date(partsB[2], partsB[1]-1, partsB[0]);
+    });
+    
+    // Sort aircrafts by type order then callsign
+    var typeOrder = ['C-650', 'B-360', 'Bell-429', 'AT-802', 'T-70'];
+    aircrafts.sort(function(a, b) {
+      var infoA = aircraftInfo[a];
+      var infoB = aircraftInfo[b];
+      var indexA = typeOrder.indexOf(infoA.tip);
+      var indexB = typeOrder.indexOf(infoB.tip);
+      if (indexA !== indexB) {
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        return infoA.tip.localeCompare(infoB.tip);
+      }
+      return infoA.cagri.localeCompare(infoB.cagri);
+    });
+
+    // Header Construction
+    // Row 1: KUYRUK NO, ÇAĞRI KODU, TİP, Dates..., TOPLAM G.FAAL (colSpan 3), TOPLAM G.FAAL, TOPLAM FAAL, FAALİYET %
+    var header1 = ["KUYRUK NO", "ÇAĞRI KODU", "HAVA ARACI TİPİ"];
+    dates.forEach(function(d) { header1.push(d); });
+    header1.push("TOPLAM G.FAAL", "", "", "TOPLAM G.FAAL", "TOPLAM FAAL", "FAALİYET %");
+    
+    tempSheet.getRange(1, 1, 1, header1.length).setValues([header1]);
+    tempSheet.getRange(1, 1, 2, 3).mergeVertically().setBackground("white").setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle");
+    
+    var dateStartCol = 4;
+    var dateEndCol = dateStartCol + dates.length - 1;
+    tempSheet.getRange(1, dateStartCol, 2, dates.length).mergeVertically().setBackground("white").setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle");
+    
+    // Rotate dates
+    for (var c = dateStartCol; c <= dateEndCol; c++) {
+      tempSheet.getRange(1, c).setTextRotation(90);
+    }
+
+    var statsStartCol = dateEndCol + 1;
+    tempSheet.getRange(1, statsStartCol, 1, 3).merge().setValue("TOPLAM G.FAAL").setBackground("#00b0f0").setFontColor("white").setFontWeight("bold").setHorizontalAlignment("center");
+    tempSheet.getRange(1, statsStartCol + 3, 2, 1).merge().setValue("TOPLAM G.FAAL").setBackground("#00b0f0").setFontColor("white").setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle");
+    tempSheet.getRange(1, statsStartCol + 4, 2, 1).merge().setValue("TOPLAM FAAL").setBackground("#ffc000").setFontColor("black").setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle");
+    tempSheet.getRange(1, statsStartCol + 5, 2, 1).merge().setValue("FAALİYET %").setBackground("#f3f4f6").setFontColor("black").setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle");
+
+    // Row 2 for stats
+    var header2 = ["", "", ""];
+    dates.forEach(function() { header2.push(""); });
+    header2.push("Bakım", "Arıza", "Olmadığı", "", "", "");
+    tempSheet.getRange(2, 1, 1, header2.length).setValues([header2]);
+    tempSheet.getRange(2, statsStartCol).setBackground("#ffff00").setFontWeight("bold").setHorizontalAlignment("center");
+    tempSheet.getRange(2, statsStartCol + 1).setBackground("#ff0000").setFontColor("white").setFontWeight("bold").setHorizontalAlignment("center");
+    tempSheet.getRange(2, statsStartCol + 2).setBackground("#7030a0").setFontColor("white").setFontWeight("bold").setHorizontalAlignment("center");
+
+    // Body
+    var startRow = 3;
+    aircrafts.forEach(function(k, idx) {
+      var currentRow = startRow + idx;
+      var info = aircraftInfo[k];
+      var rowData = [k + getAbbreviationGS(k), info.cagri, info.tip];
+      
+      var bakim = 0, ariza = 0, olmadi = 0, faal = 0;
+      dates.forEach(function(d) {
+        var code = grid[k][d] || "";
+        rowData.push(code === "F" ? "" : code);
+        if (['B', 'BB', 'KM'].includes(code)) bakim++;
+        else if (['A', 'PB', 'KK'].includes(code)) ariza++;
+        else if (code === 'X') olmadi++;
+        else if (code === 'F') faal++;
+      });
+      
+      var totalGF = bakim + ariza + olmadi;
+      var totalDays = dates.length;
+      var baseDays = totalDays - olmadi;
+      // Simplified percentage for script (ActivityGrid has complex 3-day rule, but here we just do basic)
+      var percentage = baseDays > 0 ? Math.round(((baseDays - (bakim + ariza)) / baseDays) * 100) : 0;
+      
+      rowData.push(bakim, ariza, olmadi, totalGF, faal, percentage + "%");
+      
+      var range = tempSheet.getRange(currentRow, 1, 1, rowData.length);
+      range.setValues([rowData]);
+      range.setBorder(true, true, true, true, true, true);
+      
+      // Color coding for status cells
+      for (var c = 0; c < dates.length; c++) {
+        var cell = tempSheet.getRange(currentRow, dateStartCol + c);
+        var val = cell.getValue();
+        if (['B', 'BB', 'KM'].includes(val)) cell.setBackground("#ffff00").setFontColor("black");
+        else if (['A', 'PB', 'KK'].includes(val)) cell.setBackground("#ff0000").setFontColor("white");
+        else if (val === 'X') cell.setBackground("#7030a0").setFontColor("white");
+      }
+      
+      // Stats colors
+      tempSheet.getRange(currentRow, statsStartCol).setBackground("#ffffcc");
+      tempSheet.getRange(currentRow, statsStartCol + 1).setBackground("#ffcccc");
+      tempSheet.getRange(currentRow, statsStartCol + 2).setBackground("#e2efda");
+      tempSheet.getRange(currentRow, statsStartCol + 3).setBackground("#ddebf7");
+      tempSheet.getRange(currentRow, statsStartCol + 4).setBackground("#fff2cc");
+    });
+
+    var lastBodyRow = startRow + aircrafts.length;
+    var legendRow = lastBodyRow + 2;
+    
+    tempSheet.getRange(legendRow, 1).setValue("KISALTMALAR").setFontWeight("bold");
+    var legendData = [
+      ["B: BAKIM", "ARI: ARIZA", "X: OLMADIĞI GÜNLER"],
+      ["BB: BAKIM BEKLER", "PB: PARÇA BEKLER", ""],
+      ["KM: KABUL MUAYENESİ", "KK: KAZA KIRIM", ""]
+    ];
+    tempSheet.getRange(legendRow + 1, 1, 3, 3).setValues(legendData);
+    tempSheet.getRange(legendRow + 1, 1, 3, 1).setBackground("#ffff00");
+    tempSheet.getRange(legendRow + 1, 2, 3, 1).setBackground("#ff0000").setFontColor("white");
+    tempSheet.getRange(legendRow + 1, 3, 1, 1).setBackground("#7030a0").setFontColor("white");
+
+    tempSheet.autoResizeColumns(1, header1.length);
+    SpreadsheetApp.flush();
+    
+    var url = "https://docs.google.com/spreadsheets/d/" + tempSs.getId() + "/export?format=xlsx";
+    var token = ScriptApp.getOAuthToken();
+    var response = UrlFetchApp.fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+    var blob = response.getBlob().setName("Faaliyet_Cizelgesi.xlsx");
+    
+    DriveApp.getFileById(tempSs.getId()).setTrashed(true);
+    return blob;
+  } catch (e) {
+    console.error("Faaliyet Excel Error: " + e.toString());
+    return null;
+  }
+}
+
+function setupMidnightTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  var triggerExists = false;
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'performDailyMidnightLogging') {
+      triggerExists = true;
+      break;
+    }
+  }
+  
+  if (!triggerExists) {
+    ScriptApp.newTrigger('performDailyMidnightLogging')
+      .timeBased()
+      .atHour(0)
+      .everyDays(1)
+      .create();
+  }
+}
+
+function doGet() { 
+  setupMidnightTrigger(); // Her erişimde tetikleyiciyi kontrol et
+  return ContentService.createTextOutput("OGM Servis Aktif."); 
+}

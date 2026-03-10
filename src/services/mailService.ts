@@ -82,7 +82,7 @@ export const deleteMailRecipient = async (id: string): Promise<boolean> => {
   }
 };
 
-export const sendManualEmail = async (id: string): Promise<boolean> => {
+export const sendManualEmail = async (id: string, customAttachments?: { name: string, data: string, mimeType: string }[]): Promise<boolean> => {
   try {
     const response = await fetch(LOG_SCRIPT_URL, {
       method: 'POST',
@@ -90,7 +90,8 @@ export const sendManualEmail = async (id: string): Promise<boolean> => {
       body: JSON.stringify({
         action: 'sendManualEmail',
         sheetId: MAIL_LOG_SHEET_ID,
-        id
+        id,
+        customAttachments
       })
     });
     const result = await response.json();

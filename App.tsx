@@ -22,6 +22,7 @@ import {
 } from './constants';
 import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM } from './services/sheetService';
 import { exportAT802DailyStatusToPDF, exportAT802DailyStatusToExcel } from './services/pdfService';
+import { generateFleetExcelHtml } from './src/services/excelService';
 
 const App = () => {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
@@ -240,122 +241,15 @@ const App = () => {
     const targetDate = new Date(filterDate);
     const dateStr = targetDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const fileNameDate = dateStr.replace(/\./g, '-');
-    const fileName = isHistorical ? `Envanter_Rapor_${fileNameDate}.xls` : 'Envanter_Hava_Araci_Durum_Raporu.xls';
+    const fileName = isHistorical ? `Envanter_Rapor_${fileNameDate}.xls` : 'ENVANTER RAPORU.xls';
     
-    // Custom sort order based on Platform Type
-    const typeOrder = ['C-650', 'B-360', 'Bell-429', 'AT-802', 'T-70'];
-    
-    const sortedFleet = [...filteredFleet].sort((a, b) => {
-      const indexA = typeOrder.indexOf(a.tip || '');
-      const indexB = typeOrder.indexOf(b.tip || '');
-      
-      if (indexA !== indexB) {
-        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-        if (indexA !== -1) return -1;
-        if (indexB !== -1) return 1;
-        return (a.tip || '').localeCompare(b.tip || '');
-      }
+    const html = generateFleetExcelHtml(filteredFleet, dateStr);
 
-      // Same type, sort by ORMAN-XX
-      const getOrder = (cagriKodu: string) => {
-        const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
-        if (match) return parseInt(match[1]);
-        return 999;
-      };
-      return getOrder(a.cagriKodu) - getOrder(b.cagriKodu);
-    });
-
-    const getAbbreviation = (kuyrukNo: string) => {
-      const tail = String(kuyrukNo).trim().toUpperCase();
-      if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return ' (DA)';
-      if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return ' (SA)';
-      if (tail === 'OR-2036') return ' (DL)';
-      if (tail === 'OR-2038') return ' (SL)';
-      if (tail === 'OR-1020') return ' (H)';
-      return '';
-    };
-
-    let html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8" />
-        <style>
-          table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
-          th, td { border: 1px solid black; padding: 5px; text-align: center; vertical-align: middle; font-size: 12px; }
-          .title-row { background-color: #f2f2f2; font-weight: bold; font-size: 14px; }
-          .header-row th { background-color: #d9d9d9; font-weight: bold; }
-          .date-text { color: red; font-weight: bold; text-align: right; }
-        </style>
-      </head>
-      <body>
-        <table>
-          <tr>
-            <td colspan="7" class="date-text" style="border: none; text-align: right; color: red; font-weight: bold;">${dateStr}</td>
-          </tr>
-          <tr>
-            <td colspan="7" class="title-row" style="text-align: center; font-weight: bold; background-color: #f2f2f2;">OGM HAVA ARAÇLARI DURUM ÖZETLERİ</td>
-          </tr>
-          <tr class="header-row">
-            <th style="background-color: #d9d9d9;">ÇAĞRI KODU</th>
-            <th style="background-color: #d9d9d9;">KUYRUK NUMARASI</th>
-            <th style="background-color: #d9d9d9;">DURUM</th>
-            <th style="background-color: #d9d9d9;">DURUM AYRINTISI</th>
-            <th style="background-color: #d9d9d9;">KONUM</th>
-            <th style="background-color: #d9d9d9;">FAYDALI SAAT</th>
-            <th style="background-color: #d9d9d9;">AÇIKLAMA</th>
-          </tr>
-    `;
-
-    sortedFleet.forEach(aircraft => {
-      const aciklama = (aircraft.aciklama || '').replace(/\n/g, '<br/>');
-      const faydaliSaat = aircraft.faydaliSaat ? formatToHHMM(aircraft.faydaliSaat) : '';
-      const abbr = getAbbreviation(aircraft.kuyrukNo);
-      
-      html += `
-        <tr>
-          <td style="background-color: #e6e6e6;">${aircraft.cagriKodu || ''}</td>
-          <td style="background-color: #e6e6e6;">${aircraft.kuyrukNo || ''}<span style="color: red; font-weight: bold;">${abbr}</span></td>
-          <td style="background-color: ${aircraft.durum === Status.FAAL ? '#c6efce' : '#ffc7ce'}; color: ${aircraft.durum === Status.FAAL ? '#006100' : '#9c0006'}; font-weight: bold;">${aircraft.durum || ''}</td>
-          <td>${aircraft.durumAyrintisi || ''}</td>
-          <td>${aircraft.konum || ''}</td>
-          <td style="mso-number-format:'\@'; font-weight: bold; color: #0000ff;">${faydaliSaat}</td>
-          <td style="text-align: left; vertical-align: top; font-style: italic; font-size: 10px;">${aciklama}</td>
-        </tr>
-      `;
-    });
-
-    html += `
-          <tr><td colspan="7" style="border: none;">&nbsp;</td></tr>
-          <tr>
-            <td colspan="7" style="border: none; text-align: left; font-weight: bold;">KISALTMALAR:</td>
-          </tr>
-          <tr>
-            <td colspan="7" style="border: none; text-align: left;">(DA): DUAL AMFİBİ</td>
-          </tr>
-          <tr>
-            <td colspan="7" style="border: none; text-align: left;">(SA): SINGLE AMFİBİ</td>
-          </tr>
-          <tr>
-            <td colspan="7" style="border: none; text-align: left;">(DL): DUAL LAND</td>
-          </tr>
-          <tr>
-            <td colspan="7" style="border: none; text-align: left;">(SL): SINGLE LAND</td>
-          </tr>
-          <tr>
-            <td colspan="7" style="border: none; text-align: left;">(H): HELİTAK</td>
-          </tr>
-        </table>
-      </body>
-      </html>
-    `;
-
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
-    const url = URL.createObjectURL(blob);
+    const url = 'data:application/vnd.ms-excel;base64,' + btoa(unescape(encodeURIComponent(html)));
     const link = document.createElement('a');
     link.download = fileName;
     link.href = url;
     link.click();
-    URL.revokeObjectURL(url);
   };
 
   const handleManualOverride = (kuyrukNo: string, newCode: DailyStatusCode) => {
@@ -585,22 +479,8 @@ const App = () => {
         }
       }));
 
-      // Önce güncel verileri log tablosuna kaydet
-      if (LOG_SCRIPT_URL && fetchedFleet.length > 0) {
-        try {
-          await fetch(LOG_SCRIPT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ 
-              action: 'saveLogs', 
-              sheetId: MAIL_LOG_SHEET_ID,
-              fleetData: fetchedFleet 
-            })
-          });
-        } catch (err) {
-          console.error("Log save error:", err);
-        }
-      }
+      // Log saving removed from frontend to prevent duplicate logs on refresh.
+      // Now handled by server-side trigger at midnight.
 
     } finally {
       initialSyncDone.current = true;
@@ -951,7 +831,7 @@ const App = () => {
           </div>
           <div className="flex space-x-5">
             <button onClick={() => setShowActivity(!showActivity)} className={`px-10 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.4em] transition-all shadow-2xl border-2 ${showActivity ? 'bg-blue-600 text-white border-blue-500' : 'bg-white/10 text-white border-white/20'}`}>
-              {showActivity ? "ENVANTER HAVA ARACI DURUM RAPORU" : "FAALİYET ÇİZELGESİ"}
+              {showActivity ? "ENVANTER RAPORU" : "FAALİYET ÇİZELGESİ"}
             </button>
             <button 
               onClick={handleAdminClick} 
@@ -1040,7 +920,7 @@ const App = () => {
         <div className="mb-24 animate-in fade-in duration-1000">
           <div className="flex justify-between items-end mb-12 px-6">
              <div>
-                <h2 className="text-6xl font-black text-white uppercase tracking-tighter italic">ENVANTER HAVA ARACI DURUM RAPORU</h2>
+                <h2 className="text-6xl font-black text-white uppercase tracking-tighter italic">ENVANTER RAPORU</h2>
                 {historicalFleet !== null && (
                   <div className="mt-4 bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-2 rounded-xl inline-block font-black text-xs uppercase tracking-widest">
                     Bu rapor geçmiş tarihli veridir.

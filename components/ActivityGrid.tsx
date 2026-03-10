@@ -143,12 +143,6 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     <div className="activity-grid-section bg-white p-2">
       <div className="flex justify-between items-center mb-4 px-2">
          <h3 className="text-4xl font-black text-black tracking-tighter">{title}</h3>
-         {onExport && (
-            <button onClick={onExport} className="bg-emerald-700 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg flex items-center">
-               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth={3}/></svg>
-               EXCEL OLARAK İNDİR
-            </button>
-         )}
       </div>
 
       <div className="overflow-x-auto">
