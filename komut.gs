@@ -355,6 +355,28 @@ function doPost(e) {
       return jsonSuccess(data);
     }
 
+    // 🟡 EXCEL YÜKLEME AKSİYONU
+    if (action === "replaceEntireSpreadsheet") {
+      var fileData = params.fileData; // base64 string
+      if (!fileData) return jsonError("Dosya verisi eksik.");
+      
+      try {
+        var decodedData = Utilities.base64Decode(fileData.split(',')[1] || fileData);
+        var blob = Utilities.newBlob(decodedData, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'temp.xlsx');
+        
+        // Google Drive API kullanarak dosyayı dönüştür ve mevcut ID'nin üzerine yaz
+        var fileId = ss.getId();
+        Drive.Files.update({
+          title: ss.getName(),
+          mimeType: MimeType.GOOGLE_SHEETS
+        }, fileId, blob);
+        
+        return jsonSuccess("Excel başarıyla yüklendi.");
+      } catch (e) {
+        return jsonError("Excel yükleme hatası: " + e.toString());
+      }
+    }
+
     // 🟠 GÜNCELLEME AKSİYONU
     if (action === "updateAircraftData") {
       var sheetName = params.sheetName;

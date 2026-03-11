@@ -98,18 +98,12 @@ function doPost(e) {
     // -----------------------------------------------------
     if (action === "saveMailRecipient") {
       var mailSheet = findSheet(ss, "mail log");
-      var expectedHeaders = ["ID", "PERSONEL ADI", "PERSONEL MAİL ADRESİ", "MAİL GÖNDERME TÜRÜ", "SAAT", "GÜN SEÇENEĞİ", "GÖNDERİLECEK MAİLİN EKİ"];
+      var expectedHeaders = ["ID", "PERSONEL ADI", "PERSONEL MAİL ADRESİ", "MAİL GÖNDERME TÜRÜ", "SAAT", "GÜN SEÇENEĞİ", "GÖNDERİLECEK MAİLİN EKİ", "SON GÖNDERİM"];
       
       if (!mailSheet) {
         mailSheet = ss.insertSheet("mail log");
         mailSheet.appendRow(expectedHeaders);
-        mailSheet.getRange("A1:G1").setFontWeight("bold").setBackground("#d9ead3").setBorder(true, true, true, true, true, true);
-      } else {
-        // Mevcut sayfada başlıkları kontrol et ve eksikse ekle
-        var currentHeaders = mailSheet.getRange(1, 1, 1, mailSheet.getLastColumn()).getValues()[0];
-        if (currentHeaders.length < expectedHeaders.length) {
-           mailSheet.getRange(1, currentHeaders.length + 1, 1, expectedHeaders.length - currentHeaders.length).setValues([expectedHeaders.slice(currentHeaders.length)]);
-        }
+        mailSheet.getRange("A1:H1").setFontWeight("bold").setBackground("#d9ead3").setBorder(true, true, true, true, true, true);
       }
       
       var id = params.id || Utilities.getUuid();
@@ -120,7 +114,24 @@ function doPost(e) {
       var days = params.days || "";
       var attachments = params.attachments || "";
       
-      mailSheet.appendRow([id, name, email, type, time, days, attachments]);
+      var data = mailSheet.getDataRange().getValues();
+      var foundRow = -1;
+      for (var i = 1; i < data.length; i++) {
+        if (data[i][0] == id) {
+          foundRow = i + 1;
+          break;
+        }
+      }
+      
+      var rowData = [id, name, email, type, time, days, attachments, ""];
+      if (foundRow > 0) {
+        // Mevcut kaydı güncelle (SON GÖNDERİM'i koru)
+        rowData[7] = data[foundRow-1][7]; 
+        mailSheet.getRange(foundRow, 1, 1, 8).setValues([rowData]);
+      } else {
+        // Yeni kayıt ekle
+        mailSheet.appendRow(rowData);
+      }
       return jsonSuccess({ id: id });
     }
 
@@ -397,6 +408,28 @@ function doPost(e) {
       return jsonSuccess(data);
     }
 
+    // 🟡 EXCEL YÜKLEME AKSİYONU
+    if (action === "replaceEntireSpreadsheet") {
+      var fileData = params.fileData; // base64 string
+      if (!fileData) return jsonError("Dosya verisi eksik.");
+      
+      try {
+        var decodedData = Utilities.base64Decode(fileData.split(',')[1] || fileData);
+        var blob = Utilities.newBlob(decodedData, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'temp.xlsx');
+        
+        // Google Drive API kullanarak dosyayı dönüştür ve mevcut ID'nin üzerine yaz
+        var fileId = ss.getId();
+        Drive.Files.update({
+          title: ss.getName(),
+          mimeType: MimeType.GOOGLE_SHEETS
+        }, fileId, blob);
+        
+        return jsonSuccess("Excel başarıyla yüklendi.");
+      } catch (e) {
+        return jsonError("Excel yükleme hatası: " + e.toString());
+      }
+    }
+
     if (action === "updateAircraftData") {
       var sheetName = params.sheetName;
       var sheet = sheetName ? ss.getSheetByName(sheetName) : ss.getSheets()[0];
@@ -508,52 +541,147 @@ function getFirstNonEmpty(sheet, rangeStr) {
 
 function findSheet(ss, name) {
   var sheets = ss.getSheets();
-  var target = name.toUpperCase().replace(/\./g, "");
+  var target = name.toUpperCase().replace(/[\s\.]/g, "");
   for (var i = 0; i < sheets.length; i++) {
-    var sName = sheets[i].getName().toUpperCase().replace(/\./g, "");
+    var sName = sheets[i].getName().toUpperCase().replace(/[\s\.]/g, "");
     if (sName === target) return sheets[i];
   }
   return null;
 }
 
 function sendDailyReports() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg"; // Merkezi Log Tablosu ID
+  var ss = SpreadsheetApp.openById(logSsId);
   var mailSheet = findSheet(ss, "mail log");
-  if (!mailSheet) return;
+  if (!mailSheet) {
+    console.error("Mail log sayfası bulunamadı.");
+    return;
+  }
+  
+  var lastCol = mailSheet.getLastColumn();
+  var headers = mailSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var lastSentIdx = -1;
+  for(var h=0; h<headers.length; h++) {
+    if(headers[h].toString().toUpperCase().includes("SON GÖNDERİM")) {
+      lastSentIdx = h;
+      break;
+    }
+  }
+  
+  if (lastSentIdx === -1) {
+    mailSheet.getRange(1, lastCol + 1).setValue("SON GÖNDERİM").setFontWeight("bold");
+    headers.push("SON GÖNDERİM");
+    lastSentIdx = headers.length - 1;
+  }
   
   var data = mailSheet.getDataRange().getDisplayValues();
-  var headers = data[0];
   var now = new Date();
-  var currentDay = ["PAZAR", "PAZARTESİ", "SALI", "ÇARŞAMBA", "PERŞEMBE", "CUMA", "CUMARTESİ"][now.getDay()];
-  var currentTime = Utilities.formatDate(now, Session.getScriptTimeZone(), "HH:mm");
+  var timeZone = "GMT+3"; 
+  var daysTR = ["PAZAR", "PAZARTESİ", "SALI", "ÇARŞAMBA", "PERŞEMBE", "CUMA", "CUMARTESİ"];
   
+  var todayStr = Utilities.formatDate(now, timeZone, "yyyy-MM-dd");
+  var currentTime = Utilities.formatDate(now, timeZone, "HH:mm");
+  
+  // GMT+3'e göre gün hesaplama
+  var dateParts = todayStr.split("-");
+  var d = new Date(dateParts[0], dateParts[1]-1, dateParts[2]);
+  var currentDay = daysTR[d.getDay()];
+  
+  console.log("--- OTO MAİL KONTROLÜ ---");
+  console.log("Sistem Saati: " + currentTime + ", Gün: " + currentDay);
+
   for (var i = 1; i < data.length; i++) {
     var recipient = {};
     for (var j = 0; j < headers.length; j++) {
       recipient[headers[j]] = data[i][j];
     }
     
-    if (recipient["MAİL GÖNDERME TÜRÜ"] === "OTOMATİK") {
-      var days = recipient["GÜN SEÇENEĞİ"].toUpperCase();
-      var time = recipient["SAAT"];
-      
+    var type = "";
+    var days = "";
+    var time = "";
+    var lastSent = "";
+    var personName = recipient["PERSONEL ADI"] || "Bilinmeyen";
+    
+    for (var key in recipient) {
+      var k = key.toUpperCase();
+      if (k.includes("TÜR")) type = recipient[key];
+      if (k.includes("GÜN")) days = (recipient[key] || "").toUpperCase();
+      if (k.includes("SAAT")) time = recipient[key];
+      if (k.includes("SON GÖNDERİM")) lastSent = recipient[key];
+    }
+    
+    if (type === "OTOMATİK") {
       var shouldSend = false;
       if (days.includes("HER GÜN")) shouldSend = true;
       else if (days.includes(currentDay)) shouldSend = true;
       
       if (shouldSend && time) {
-        var diff = Math.abs(timeToMinutes(currentTime) - timeToMinutes(time));
-        if (diff <= 15) {
-          sendReportEmail(recipient);
+        try {
+          var tMin = timeToMinutes(time);
+          var cMin = timeToMinutes(currentTime);
+          var diff = Math.abs(cMin - tMin);
+          
+          if (diff <= 15) {
+            if (lastSent !== todayStr) {
+              console.log("GÖNDERİLİYOR: " + personName + " (Hedef: " + time + ", Fark: " + diff + " dk)");
+              sendReportEmail(recipient);
+              mailSheet.getRange(i + 1, lastSentIdx + 1).setValue(todayStr);
+            } else {
+              console.log("ATLANDI (Bugün zaten gitti): " + personName);
+            }
+          } else {
+            // Sadece çok uzak değilse logla ki kalabalık yapmasın
+            if (diff < 120) {
+              console.log("BEKLEMEDE: " + personName + " (Hedef: " + time + ", Şu an: " + currentTime + ", Fark: " + diff + " dk)");
+            }
+          }
+        } catch(e) {
+          console.error("Hata (Satır " + (i+1) + "): " + e.toString());
         }
+      } else {
+        console.log("EKSİK VERİ: " + personName + " (Gün: " + days + ", Saat: " + time + ")");
       }
     }
   }
 }
 
 function timeToMinutes(timeStr) {
-  var parts = timeStr.split(':');
-  return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+  if (!timeStr) return 0;
+  var s = String(timeStr).trim();
+  if (!s.includes(':')) return 0;
+  var parts = s.split(':');
+  var h = parseInt(parts[0]) || 0;
+  var m = parseInt(parts[1]) || 0;
+  return h * 60 + m;
+}
+
+function debugAutoMail() {
+  var now = new Date();
+  var timeZone = "GMT+3";
+  var daysTR = ["PAZAR", "PAZARTESİ", "SALI", "ÇARŞAMBA", "PERŞEMBE", "CUMA", "CUMARTESİ"];
+  var currentDay = daysTR[now.getDay()];
+  var currentTime = Utilities.formatDate(now, timeZone, "HH:mm");
+  
+  var log = "--- OTO MAİL DEBUG ---\n";
+  log += "Şu anki Zaman (GMT+3): " + currentTime + "\n";
+  log += "Şu anki Gün: " + currentDay + "\n";
+  log += "Script Zaman Dilimi: " + Session.getScriptTimeZone() + "\n";
+  
+  return log;
+}
+
+function setupAutoMailTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === "sendDailyReports") {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+  ScriptApp.newTrigger("sendDailyReports")
+    .timeBased()
+    .everyMinutes(15)
+    .create();
+  return "Otomatik mail tetikleyicisi kuruldu (15 dk bir kontrol edilecek).";
 }
 
 function sendReportEmail(recipient, customAttachments) {
@@ -603,11 +731,7 @@ function sendReportEmail(recipient, customAttachments) {
 
   if (!skipEnvanter && (selectedReports.includes("ENVANTER RAPORU") || selectedReports.includes("ENVANTER HAVA ARACI DURUM RAPORU"))) {
     try {
-      // User requested NOT to send the link's excel directly if possible, 
-      // but if no custom attachment provided, we still need something.
-      // However, the user specifically said "don't send this link's excel".
-      // For now, we only skip if custom is provided.
-      var blob = getSheetAsExcel(logSsId, "ENVANTER RAPORU.xlsx");
+      var blob = generateEnvanterExcelBlob();
       if (blob) attachments.push(blob);
     } catch (e) {
       console.error("Error attaching Envanter Raporu: " + e.toString());
@@ -843,11 +967,16 @@ function generateEnvanterExcelBlob() {
     var faydali = formatToHHMM(a.faydaliSaat);
     var aciklama = (a.aciklama || "").replace(/\n/g, "<br/>");
 
+    var durumAyrintisi = a.durumAyrintisi || "";
+    if (durumAyrintisi && durumAyrintisi !== "-") {
+      durumAyrintisi = "(" + durumAyrintisi + ")";
+    }
+
     html += '<tr>' +
       '<td style="background-color: #e6e6e6;">' + (a.cagriKodu || "") + '</td>' +
       '<td style="background-color: #e6e6e6;">' + (a.kuyrukNo || "") + '<span style="color: red; font-weight: bold;">' + abbr + '</span></td>' +
       '<td style="background-color: ' + durumColor + '; color: ' + durumTextColor + '; font-weight: bold;">' + (a.durum || "") + '</td>' +
-      '<td>' + (a.durumAyrintisi || "") + '</td>' +
+      '<td>' + durumAyrintisi + '</td>' +
       '<td>' + (a.konum || "") + '</td>' +
       '<td style="mso-number-format:\'@\'; font-weight: bold; color: #0000ff;">' + faydali + '</td>' +
       '<td style="text-align: left; vertical-align: top; font-style: italic; font-size: 10px;">' + aciklama + '</td></tr>';

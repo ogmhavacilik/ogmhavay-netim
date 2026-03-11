@@ -21,6 +21,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [editingCode, setEditingCode] = useState<{ kuyrukNo: string, code: string } | null>(null);
   const [recipients, setRecipients] = useState<MailRecipient[]>([]);
+  const [editingRecipientId, setEditingRecipientId] = useState<string | null>(null);
   const [newRecipient, setNewRecipient] = useState<Omit<MailRecipient, 'id'>>({
     name: '',
     email: '',
@@ -46,9 +47,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
       alert('Lütfen isim ve e-posta giriniz.');
       return;
     }
-    const success = await saveMailRecipient(newRecipient);
+    const success = await saveMailRecipient(editingRecipientId ? { ...newRecipient, id: editingRecipientId } : newRecipient);
     if (success) {
-      alert('Alıcı başarıyla eklendi.');
+      alert(editingRecipientId ? 'Alıcı başarıyla güncellendi.' : 'Alıcı başarıyla eklendi.');
       setNewRecipient({
         name: '',
         email: '',
@@ -57,10 +58,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
         days: 'HER GÜN',
         attachments: ''
       });
+      setEditingRecipientId(null);
       loadRecipients();
     } else {
       alert('Hata oluştu.');
     }
+  };
+
+  const handleEditRecipient = (recipient: MailRecipient) => {
+    setNewRecipient({
+      name: recipient.name,
+      email: recipient.email,
+      type: recipient.type,
+      time: recipient.time,
+      days: recipient.days,
+      attachments: recipient.attachments
+    });
+    setEditingRecipientId(recipient.id);
+  };
+
+  const handleCancelEdit = () => {
+    setNewRecipient({
+      name: '',
+      email: '',
+      type: 'MANUEL',
+      time: '09:00',
+      days: 'HER GÜN',
+      attachments: ''
+    });
+    setEditingRecipientId(null);
   };
 
   const handleDeleteRecipient = async (id: string) => {
@@ -86,8 +112,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
     
     const customAttachments: { name: string, data: string, mimeType: string }[] = [];
     
-    // If recipient wants "ENVANTER RAPORU", generate it from current previewData
-    if (recipient.attachments.includes('ENVANTER RAPORU')) {
+    // If recipient wants "ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU", generate it from current previewData
+    if (recipient.attachments.includes('ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU')) {
       const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const html = generateFleetExcelHtml(previewData as Aircraft[], dateStr);
       
@@ -96,7 +122,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
       const base64Data = btoa(unescape(encodeURIComponent(html)));
       
       customAttachments.push({
-        name: 'ENVANTER RAPORU.xls',
+        name: 'ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU.xls',
         data: base64Data,
         mimeType: 'application/vnd.ms-excel'
       });
@@ -385,7 +411,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
                 <div className="bg-[#021a0c] p-10 flex-1 overflow-y-auto custom-scrollbar rounded-b-[3rem]">
                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                       <div className="bg-white/5 p-10 rounded-[2.5rem] border border-green-900/30">
-                         <h3 className="text-white font-black text-lg uppercase mb-8">Yeni Alıcı Ekle</h3>
+                         <h3 className="text-white font-black text-lg uppercase mb-8">
+                            {editingRecipientId ? 'Alıcıyı Düzenle' : 'Yeni Alıcı Ekle'}
+                         </h3>
                          <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
                             <div>
                                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 ml-2">PERSONEL ADI</label>
@@ -451,7 +479,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
                                   <span className="text-emerald-500 lowercase italic font-normal">en az birini seçiniz</span>
                                </label>
                                <div className="space-y-3">
-                                  {['ENVANTER RAPORU', 'FAALİYET ÇİZELGESİ', 'HAVA ARACI EXCELİ (ONLİNE)'].map(report => (
+                                  {['ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU', 'FAALİYET ÇİZELGESİ', 'HAVA ARACI EXCELİ (ONLİNE)'].map(report => (
                                     <label key={report} className="flex items-center space-x-3 bg-black/20 px-4 py-3 rounded-xl border border-white/5 cursor-pointer hover:bg-white/5 transition-all">
                                        <input 
                                          type="checkbox" 

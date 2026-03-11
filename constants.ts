@@ -2,11 +2,11 @@
 import { PlatformType, Status, StatusType, Aircraft, AircraftActivity } from './types';
 
 export const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxh6SyGVZfoby2CYc7FNk3JJQQW-P4Uh-Wx4ZupaRydrpY74FDblcyQBGac9XrphnQW/exec";
-export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwRQXi8vjS4PY6tJ07FNngZMoan3RCNdIShulUioRkJgTDM_DfvtZ_O9LNCIuieavWnVw/exec";
+export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxeQTFVfz1kL0htrNUGDIKjKPtPYL49V9ef9o_N0r-ys8mNHrKHDbwkmrKyMUmW3BNblQ/exec";
 export const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxcELr64A09o-x3jByNreNHbiurVHrNnGGV63XgQgKvr4kOz9gGqXLLINRRVAX8LcBHDQ/exec"; 
 export const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzD1GdmzKz2Q3r1-Whq8ueFW9ixN6faTjHkOUdoLxoN2NIRY6hANFlrMXQcVTGk1ZILSg/exec";
 export const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdmkAhcQgC6kqHtEKUCKfcc5JKphOzyt_VbOfuI5hv6qCuyRl-k6h46-gaIGakydo/exec";
-export const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzVfeFh-6ftJk_sbaHPCdwiFX8LtogN0dazmTeDORFtVq2gPBv_lkv_OH4iNNvMKz5q/exec";
+export const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfnrG8nAfcmnHwKRvisaAokKNChbCENoJbpR7iHj5L2JoNFqHeySGASfq4ElMrXDvEOg/exec";
 export const MAIL_LOG_SHEET_ID = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
 
 export const getCallSignByTail = (tail: string): string => {
@@ -419,7 +419,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     uretimYili: 2021,
     base: 'Etimesgut',
     maintenanceHours: [],
-    photos: []
+    photos: ['data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxASEhUSEhIVFRUXFRYVFxUXFhoVFxgXFRUXFxUVFRcYHSggGB0lHRUVITEhJSkrLi4uFx8zODMsNygtLisBCgoKDg0OGxAQGi0lICUtLS0tLS0tLS0rLS0vLTUtLTAtLi0tLS0tLS8uKy0tLy0tLSstLy8rLSstLS01LS0tLf/AABEIAK8BIAMBIgACEQEDEQH/xAAcAAABBQEBAQAAAAAAAAAAAAABAAIFBgcEAwj/xABOEAABAweEBgUHBwkFCAMAAAABAAIRAwQSITEFBkFRYXETIjKBkQdCUqGxwdIUF3KSk9HwFSNUYoKissLhFjNDRMNTY3ODhMTT8SQ01P/EABoBAQEBAQEBAQAAAAAAAAAAAAABAgMEBQb/xAAxEQACAgECAwYFBAIDAAAAAAAAAQIRAxIhBDFBBWGRocHwE1FxgdEiMrHhFBVCQ/H/2gAMAwEAAhEDEQA/AJiPzX7fuRtFANmGuwjHZ7EqhAphsgmb2GxK0VWuk9aTxEL6Z4RXad29dOcRPCdyNOi2G4ON4kYHLGNy8r/Uu/rT6oTzWN0NBIiZxzkoQPybAxJIdGG5O+S9gYgkGeELzFTq3f1p9UJ4tEXf1ZnjKu42ExjHSGggwSCTMxv3IUmsIJIOAnPP1IiqxsloMkRjkJ3Lzp1IDhvEIBzWNguIMTAE7eJSdSaQHDAE3TOMd6FKoILXA']
   },
   {
     cagriKodu: 'ORMAN-37',

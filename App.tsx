@@ -241,7 +241,7 @@ const App = () => {
     const targetDate = new Date(filterDate);
     const dateStr = targetDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const fileNameDate = dateStr.replace(/\./g, '-');
-    const fileName = isHistorical ? `Envanter_Rapor_${fileNameDate}.xls` : 'ENVANTER RAPORU.xls';
+    const fileName = isHistorical ? `Envanter_Rapor_${fileNameDate}.xls` : 'ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU.xls';
     
     const html = generateFleetExcelHtml(filteredFleet, dateStr);
 
@@ -831,7 +831,7 @@ const App = () => {
           </div>
           <div className="flex space-x-5">
             <button onClick={() => setShowActivity(!showActivity)} className={`px-10 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.4em] transition-all shadow-2xl border-2 ${showActivity ? 'bg-blue-600 text-white border-blue-500' : 'bg-white/10 text-white border-white/20'}`}>
-              {showActivity ? "ENVANTER RAPORU" : "FAALİYET ÇİZELGESİ"}
+              {showActivity ? "ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU" : "FAALİYET ÇİZELGESİ"}
             </button>
             <button 
               onClick={handleAdminClick} 
@@ -920,7 +920,7 @@ const App = () => {
         <div className="mb-24 animate-in fade-in duration-1000">
           <div className="flex justify-between items-end mb-12 px-6">
              <div>
-                <h2 className="text-6xl font-black text-white uppercase tracking-tighter italic">ENVANTER RAPORU</h2>
+                <h2 className="text-6xl font-black text-white uppercase tracking-tighter italic">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</h2>
                 {historicalFleet !== null && (
                   <div className="mt-4 bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-2 rounded-xl inline-block font-black text-xs uppercase tracking-widest">
                     Bu rapor geçmiş tarihli veridir.
@@ -999,7 +999,7 @@ const App = () => {
                         </td>
                       <td className="px-8 py-6 text-center select-none" onDoubleClick={() => historicalFleet === null && setSelectedAircraft(a)}>
                           <span className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase border-2 shadow-sm transition-transform active:scale-95 block ${a.durum === Status.FAAL ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                            {a.durum}
+                            {a.durum} {a.durumAyrintisi && a.durumAyrintisi !== '-' && `(${a.durumAyrintisi})`}
                           </span>
                           {/* GÖVDE BİLGİSİ LİSTEDE GÖRÜNSÜN */}
                           <div className="mt-2 text-[10px] font-black text-gray-500 uppercase tracking-tighter bg-gray-100/50 py-1 rounded">

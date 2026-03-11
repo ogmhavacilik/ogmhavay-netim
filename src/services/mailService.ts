@@ -40,7 +40,7 @@ export const getMailRecipients = async (): Promise<MailRecipient[]> => {
   }
 };
 
-export const saveMailRecipient = async (recipient: Omit<MailRecipient, 'id'>): Promise<boolean> => {
+export const saveMailRecipient = async (recipient: Partial<MailRecipient>): Promise<boolean> => {
   try {
     const response = await fetch(LOG_SCRIPT_URL, {
       method: 'POST',

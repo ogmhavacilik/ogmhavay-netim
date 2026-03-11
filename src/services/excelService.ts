@@ -103,12 +103,16 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
     const faydaliSaat = aircraft.faydaliSaat ? formatToHHMM(aircraft.faydaliSaat) : '';
     const abbr = getAbbreviation(aircraft.kuyrukNo);
     
+    const durumAyrintisi = aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' 
+      ? `(${aircraft.durumAyrintisi})` 
+      : (aircraft.durumAyrintisi || '');
+    
     html += `
       <tr>
         <td style="background-color: #e6e6e6;">${aircraft.cagriKodu || ''}</td>
         <td style="background-color: #e6e6e6;">${aircraft.kuyrukNo || ''}<span style="color: red; font-weight: bold;">${abbr}</span></td>
         <td style="background-color: ${aircraft.durum === Status.FAAL ? '#c6efce' : '#ffc7ce'}; color: ${aircraft.durum === Status.FAAL ? '#006100' : '#9c0006'}; font-weight: bold;">${aircraft.durum || ''}</td>
-        <td>${aircraft.durumAyrintisi || ''}</td>
+        <td>${durumAyrintisi}</td>
         <td>${aircraft.konum || ''}</td>
         <td style="mso-number-format:'\\@'; font-weight: bold; color: #0000ff;">${faydaliSaat}</td>
         <td style="text-align: left; vertical-align: top; font-style: italic; font-size: 10px;">${aciklama}</td>
