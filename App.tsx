@@ -624,8 +624,12 @@ const App = () => {
             }
           })
         });
-        const data = await res.json();
+        const result = await res.json();
         
+        const data = (result && (result.success || result.status === 'success') && Array.isArray(result.data)) 
+          ? result.data 
+          : (Array.isArray(result) ? result : []);
+
         const targetDate = new Date(filterDate);
         const targetDay = targetDate.getDate();
         const targetMonth = targetDate.getMonth();
