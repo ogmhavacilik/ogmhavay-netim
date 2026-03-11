@@ -377,6 +377,31 @@ function doPost(e) {
       }
     }
 
+    // 🔴 PDF EXPORT AKSİYONU (AT-802)
+    if (action === "exportAT802PDF") {
+      try {
+        var sheet = findSheet(ss, "GÜNLÜK DURUM");
+        if (!sheet) return jsonError("GÜNLÜK DURUM sayfası bulunamadı.");
+        
+        var gid = sheet.getSheetId();
+        var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=pdf&gid=" + gid + "&range=A1:AL16&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false";
+        
+        var token = ScriptApp.getOAuthToken();
+        var response = UrlFetchApp.fetch(url, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        
+        var blob = response.getBlob();
+        var base64 = Utilities.base64Encode(blob.getBytes());
+        return jsonSuccess({
+          filename: "AT802_Gunluk_Durum_" + Utilities.formatDate(new Date(), "GMT+3", "yyyy-MM-dd") + ".pdf",
+          base64: base64
+        });
+      } catch (e) {
+        return jsonError("PDF oluşturma hatası: " + e.toString());
+      }
+    }
+
     // 🟠 GÜNCELLEME AKSİYONU
     if (action === "updateAircraftData") {
       var sheetName = params.sheetName;

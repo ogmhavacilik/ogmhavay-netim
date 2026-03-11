@@ -1,6 +1,4 @@
 
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { getCallSignByTail } from '../constants';
 
 export const exportAT802DailyStatusToPDF = async (scriptUrl: string, sheetId: string) => {
@@ -10,193 +8,33 @@ export const exportAT802DailyStatusToPDF = async (scriptUrl: string, sheetId: st
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
         sheetId: sheetId,
-        sheetName: 'GÜNLÜK DURUM',
-        action: 'getRawData',
-        range: 'A1:AL50' // Fetch more rows to find data
+        action: 'exportAT802PDF'
       })
     });
 
     const result = await response.json();
-    if (!result || !Array.isArray(result)) {
-      throw new Error('Veri alınamadı');
+    if (!result || result.status !== 'success') {
+      throw new Error(result?.message || 'PDF oluşturulamadı');
     }
 
-    // Find the start of data (where row[0] is a number like 1)
-    let dataStartIndex = result.findIndex(row => row[0] === "1" || row[0] === 1);
-    if (dataStartIndex === -1) dataStartIndex = 2; // Fallback to row 3 (index 2)
-
-    const filteredData = result.slice(dataStartIndex).filter(row => row[0] && !isNaN(Number(row[0])));
-
-    // Custom Sorting based on ORMAN-XX
-    const getOrder = (cagriKodu: string) => {
-      const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
-      if (match) return parseInt(match[1]);
-      return 999;
-    };
-
-    filteredData.sort((a, b) => getOrder(a[1]) - getOrder(b[1]));
-
-    const getAbbreviation = (kuyrukNo: string) => {
-      const tail = String(kuyrukNo).trim().toUpperCase();
-      if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return ' (D-A)';
-      if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return ' (S-A)';
-      if (tail === 'OR-2036') return ' (D-L)';
-      if (tail === 'OR-2038') return ' (S-L)';
-      if (tail === 'OR-1020') return ' (H)';
-      return '';
-    };
-
-    const doc = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4'
-    });
-
-    // Add Title
-    doc.setFontSize(14);
-    doc.setTextColor(0, 100, 0); // Dark Green
-    doc.text('OGM HAVACILIK - AT-802 GÜNLÜK DURUM RAPORU', 148.5, 12, { align: 'center' });
+    // Convert base64 to blob and download
+    const byteCharacters = atob(result.data.base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
     
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')}`, 290, 12, { align: 'right' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = result.data.filename || 'AT802_Gunluk_Durum.pdf';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
 
-    // Define columns based on the user's exact request
-    const headers = [[
-      "SIRA\nNO",
-      "ÇAĞRI\nKODU",
-      "KUYRUK\nNUMARASI",
-      "DURUMU",
-      "G.FAAL\nSEBEBİ",
-      "BULUNDUĞU\nLOKASYON",
-      "GÖVDE\nUÇUŞ SAATİ",
-      "MOTOR\nSAATİ",
-      "HAFTALIK\nFRDS BAKIM",
-      "KALAN\nGÜN",
-      "HAFTALIK\nMOTOR ÇAL.",
-      "KALAN\nGÜN",
-      "AYLIK\nGARMIN GPS",
-      "KALAN\nGÜN",
-      "AYLIK\nFRDS BAKIM",
-      "KALAN\nGÜN",
-      "3 AYLIK\nELT KONTROL",
-      "KALAN\nGÜN",
-      "25 SAATLİK\nBAKIM",
-      "KALAN\nSAAT",
-      "50 SAATLİK\nBAKIM",
-      "KALAN\nSAAT",
-      "100 SAATLİK\nBAKIM",
-      "KALAN\nSAAT",
-      "200 SAATLİK\nBAKIM",
-      "KALAN\nSAAT",
-      "300 SAATLİK\nBAKIM",
-      "KALAN\nSAAT",
-      "300 MOTOR\nBAKIMI",
-      "KALAN\nSAAT",
-      "400 SAATLİK\nBAKIM",
-      "KALAN\nSAAT",
-      "800 SAATLİK\nBAKIM",
-      "KALAN\nSAAT",
-      "1000 SAATLİK\nBAKIM",
-      "KALAN\nSAAT",
-      "YILLIK BAKIM\nTARİHİ",
-      "KALAN\nGÜN",
-      "AÇIKLAMA"
-    ]];
-
-    const body = filteredData.map((row, index) => {
-      const newRow = [];
-      newRow.push(index + 1); // SIRA NO
-      const kuyrukNo = String(row[1] || '-').trim();
-      const cagriKodu = getCallSignByTail(kuyrukNo);
-      
-      newRow.push(cagriKodu); // ÇAĞRI KODU
-      newRow.push(kuyrukNo + getAbbreviation(kuyrukNo)); // KUYRUK NUMARASI with Abbreviation
-      
-      for (let i = 2; i <= 37; i++) {
-        newRow.push(row[i] || '-');
-      }
-      return newRow;
-    });
-
-    autoTable(doc, {
-      startY: 18,
-      head: headers,
-      body: body,
-      theme: 'grid',
-      styles: { 
-        fontSize: 3.2, // Extremely small to fit 38 columns
-        font: 'helvetica', 
-        cellPadding: 0.2,
-        halign: 'center',
-        valign: 'middle',
-        lineWidth: 0.05,
-        lineColor: [0, 0, 0],
-        overflow: 'linebreak'
-      },
-      headStyles: { 
-        fillColor: [0, 128, 0], // Green
-        textColor: [255, 255, 255],
-        fontStyle: 'bold',
-        fontSize: 3
-      },
-      columnStyles: {
-        0: { cellWidth: 4 }, // SIRA NO
-        1: { cellWidth: 10 }, // ÇAĞRI KODU
-        2: { cellWidth: 10 }, // KUYRUK
-        3: { cellWidth: 8 }, // DURUMU
-        4: { cellWidth: 12 }, // G.FAAL SEBEBİ
-        5: { cellWidth: 12 }, // LOKASYON
-        6: { cellWidth: 8 }, // GÖVDE
-        38: { cellWidth: 'auto', halign: 'left' } // AÇIKLAMA
-      },
-      margin: { left: 2, right: 2 },
-      didParseCell: function(data) {
-        // Color coding for Status
-        if (data.section === 'body' && data.column.index === 3) {
-          const val = String(data.cell.raw).toUpperCase();
-          if (val.includes('FAAL') && !val.includes('GAYRİ')) {
-            data.cell.styles.textColor = [0, 128, 0];
-          } else if (val.includes('GAYRİ') || val.includes('BAKIM') || val.includes('ARIZA')) {
-            data.cell.styles.textColor = [200, 0, 0];
-          }
-        }
-        // Red color for abbreviations in column 2
-        if (data.section === 'body' && data.column.index === 2) {
-          const text = data.cell.text[0];
-          if (text.includes('(')) {
-            // Note: jsPDF-AutoTable doesn't easily support multi-color in a single cell
-            // but we can color the whole cell or just leave it. 
-            // The user wants the abbreviation to be red.
-          }
-        }
-      }
-    });
-
-    // Add Legend at the bottom
-    const finalY = (doc as any).lastAutoTable.finalY + 5;
-    doc.setFontSize(7);
-    doc.setTextColor(0, 0, 0);
-    doc.text('KISALTMALAR:', 5, finalY);
-    
-    autoTable(doc, {
-      startY: finalY + 2,
-      head: [['KOD', 'AÇIKLAMA']],
-      body: [
-        ['D-A', 'DUAL AMFİBİ'],
-        ['S-A', 'SINGLE AMFİBİ'],
-        ['D-L', 'DUAL LAND'],
-        ['S-L', 'SINGLE LAND'],
-        ['H', 'HELİTAK']
-      ],
-      theme: 'grid',
-      styles: { fontSize: 6, cellPadding: 1 },
-      headStyles: { fillColor: [100, 100, 100] },
-      margin: { left: 5 },
-      tableWidth: 80
-    });
-
-    doc.save(`AT802_Gunluk_Durum_${new Date().toISOString().split('T')[0]}.pdf`);
     return { success: true };
   } catch (error) {
     console.error('PDF Export Error:', error);
