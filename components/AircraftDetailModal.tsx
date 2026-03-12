@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Aircraft, Status, OPLItem, AircraftActivity } from '../types';
 import LogRecordsModal from './LogRecordsModal';
-import { fetchOPLData } from '../services/sheetService';
+import { fetchOPLData, formatToHHMM } from '../services/sheetService';
 
 interface AircraftDetailModalProps {
   aircraft: Aircraft;
@@ -266,7 +266,9 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                             </div>
                             <div className="flex justify-between items-center">
                               <span className="text-[10px] font-bold text-gray-500 uppercase leading-none">TAKVİM ESASLI (TARİH):</span>
-                              <span className="text-sm font-black text-gray-800 tracking-tighter">{aircraft.bakimTakvimTarih || '-'}</span>
+                              <div className="flex flex-col items-end">
+                                <span className="text-sm font-black text-gray-800 tracking-tighter">{aircraft.bakimTakvimTarih || '-'}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -388,9 +390,16 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth={2.5}/></svg>
                       BAKIM SAATLERİ
                    </h3>
-                   <span className="text-[9px] font-black px-2 py-1 bg-blue-50 text-blue-600 rounded uppercase tracking-widest">
-                      EN YAKIN: {aircraft.faydaliSaat} SAAT
-                   </span>
+                   <div className="flex items-center gap-2">
+                     <span className="text-[9px] font-black px-2 py-1 bg-blue-50 text-blue-600 rounded uppercase tracking-widest">
+                        EN YAKIN: {isT70 ? (aircraft.bakimKalanSaat || '-') : (isB360OrC650 || isBell429) ? formatToHHMM(aircraft.faydaliSaat) : aircraft.faydaliSaat} SAAT
+                     </span>
+                     {(isB360OrC650 || isBell429) && aircraft.faydaliSaat !== null && (
+                       <span className="text-[8px] font-bold text-gray-400 italic">
+                         *Ondalık sistemden saate çevrildi
+                       </span>
+                     )}
+                   </div>
                  </div>
                  <div className="border border-gray-100 rounded-xl overflow-hidden shadow-sm">
                    <table className="w-full text-[13px]">
@@ -401,14 +410,41 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                        </tr>
                      </thead>
                      <tbody>
-                        {aircraft.maintenanceHours.map((mh, i) => (
-                          <tr key={i} className="border-b last:border-0 border-gray-50 hover:bg-gray-50 transition-colors">
-                            <td className="px-5 py-4 font-bold text-gray-600 uppercase tracking-tighter">{mh.bakimTuru}</td>
-                            <td className={`px-5 py-4 text-right font-black text-2xl tracking-tighter ${mh.kalanSaat < 50 ? 'text-red-500' : 'text-emerald-600'}`}>
-                              {mh.kalanSaat}
-                            </td>
-                          </tr>
-                        ))}
+                        {isT70 ? (
+                          <>
+                            <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                              <td className="px-5 py-4 font-bold text-gray-600 uppercase tracking-tighter">Bakıma Kalan Saat (40 Saat)</td>
+                              <td className="px-5 py-4 text-right font-black text-2xl tracking-tighter text-red-600">
+                                {aircraft.bakimKalanSaat || '-'}
+                              </td>
+                            </tr>
+                            {aircraft.maintenanceHours.map((mh, i) => (
+                              <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                                <td className="px-5 py-4 font-bold text-gray-600 uppercase tracking-tighter">
+                                  {mh.bakimTuru === 'KALAN' ? 'Bakıma Kalan Saat (120 Saat)' : mh.bakimTuru}
+                                </td>
+                                <td className={`px-5 py-4 text-right font-black text-2xl tracking-tighter ${mh.kalanSaat < 50 ? 'text-red-500' : 'text-emerald-600'}`}>
+                                  {mh.kalanSaat}
+                                </td>
+                              </tr>
+                            ))}
+                            <tr className="border-b last:border-0 border-gray-50 hover:bg-gray-50 transition-colors">
+                              <td className="px-5 py-4 font-bold text-gray-600 uppercase tracking-tighter">TAKVİM ESASLI (TARİH): bakıma kalan</td>
+                              <td className="px-5 py-4 text-right font-black text-2xl tracking-tighter text-gray-800">
+                                {aircraft.bakimTakvimTarih || '-'}
+                              </td>
+                            </tr>
+                          </>
+                        ) : (
+                          aircraft.maintenanceHours.map((mh, i) => (
+                            <tr key={i} className="border-b last:border-0 border-gray-50 hover:bg-gray-50 transition-colors">
+                              <td className="px-5 py-4 font-bold text-gray-600 uppercase tracking-tighter">{mh.bakimTuru}</td>
+                              <td className={`px-5 py-4 text-right font-black text-2xl tracking-tighter ${mh.kalanSaat < 50 ? 'text-red-500' : 'text-emerald-600'}`}>
+                                {mh.kalanSaat}
+                              </td>
+                            </tr>
+                          ))
+                        )}
                      </tbody>
                    </table>
                  </div>
@@ -430,7 +466,7 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
         : aircraft.durum
       }
     </span>
-                 </div>
+  </div>
                  <div className="space-y-4">
                     <div className="flex items-center text-[11px] font-bold text-gray-400 uppercase tracking-widest">
                        <span className="mr-2 opacity-50">BAŞLANGIÇ:</span>

@@ -5,6 +5,25 @@ function doPost(e) {
     var sheetName = contents.sheetName;
     var sheet = sheetName ? ss.getSheetByName(sheetName) : ss.getSheets()[0];
     
+    if (contents.action === 'replaceEntireSpreadsheet') {
+      var fileData = contents.fileData;
+      if (!fileData) {
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Dosya verisi eksik." })).setMimeType(ContentService.MimeType.JSON);
+      }
+      try {
+        var decodedData = Utilities.base64Decode(fileData.split(',')[1] || fileData);
+        var blob = Utilities.newBlob(decodedData, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'temp.xlsx');
+        var fileId = ss.getId();
+        Drive.Files.update({
+          title: ss.getName(),
+          mimeType: MimeType.GOOGLE_SHEETS
+        }, fileId, blob);
+        return ContentService.createTextOutput(JSON.stringify({ success: true, message: "Excel başarıyla yüklendi." })).setMimeType(ContentService.MimeType.JSON);
+      } catch (e) {
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Excel yükleme hatası: " + e.toString() })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     if (contents.action === 'updateAircraftData') {
       var kuyrukNo = contents.kuyrukNo;
       var updates = contents.updates;

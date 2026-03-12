@@ -5,7 +5,7 @@ import { getCallSignByTail } from '../constants';
  * Durum metinlerini analiz ederek faaliyet kodunu belirler.
  */
 export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretation: string } => {
-  if (!item) return { code: 'F', interpretation: 'Bilinmeyen durum.' };
+  if (!item) return { code: 'F', interpretation: 'FAAL' };
   
   const detail = String(item.durumAyrintisi || '').toLocaleLowerCase('tr-TR').trim();
   const desc = String(item.aciklama || '').toLocaleLowerCase('tr-TR').trim();
@@ -13,30 +13,33 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   const fullText = `${detail} ${desc} ${durumStr.toLocaleLowerCase('tr-TR')}`;
 
   if (fullText.includes('kabul muayenelerı') || fullText.includes('kabul muayeneleri')) {
-    return { code: 'KM', interpretation: 'Kabul Muayeneleri.' };
+    return { code: 'KM', interpretation: 'KABUL MUAYENESİ' };
   }
 
   if (fullText.includes('kaza') || fullText.includes('kırım') || fullText.includes('hasar')) 
-    return { code: 'KK', interpretation: 'Kaza/Kırım tespiti.' };
+    return { code: 'KK', interpretation: 'KAZA KIRIM' };
 
   if (fullText.includes('parça') && (fullText.includes('bekle') || fullText.includes('sipariş'))) {
-    return { code: 'PB', interpretation: 'Parça Bekler.' };
+    return { code: 'PB', interpretation: 'PARÇA BEKLER' };
   }
   
   if (fullText.includes('bakım') || fullText.includes('yıllık') || fullText.includes('periyodik') || /\b\d+h\b/.test(fullText)) {
     if (fullText.includes('bekliyor') || fullText.includes('sıra')) {
-      return { code: 'BB', interpretation: 'Bakım Bekler.' };
+      return { code: 'BB', interpretation: 'BAKIM BEKLER' };
     }
-    return { code: 'B', interpretation: 'Bakımda.' };
   }
 
   if (fullText.includes('arıza') || fullText.includes('problem')) 
-    return { code: 'A', interpretation: 'Arıza.' };
+    return { code: 'A', interpretation: 'ARIZA' };
+
+  if (fullText.includes('bakım') || fullText.includes('yıllık') || fullText.includes('periyodik') || /\b\d+h\b/.test(fullText)) {
+    return { code: 'B', interpretation: 'BAKIM' };
+  }
 
   const isGayriFaalExplicit = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('G.FAAL');
-  if (isGayriFaalExplicit) return { code: 'X', interpretation: 'Gayrı Faal.' };
+  if (isGayriFaalExplicit) return { code: 'X', interpretation: 'OLMADIĞI GÜNLER' };
 
-  return { code: 'F', interpretation: 'Faal.' };
+  return { code: 'F', interpretation: 'FAAL' };
 };
 
 /**
@@ -45,25 +48,19 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
 export const formatToHHMM = (totalHours: number | null, aircraftType?: string): string => {
   if (totalHours === null) return '-';
   
-  // C-650 Faydalı Saat should be integer
-  if (aircraftType === 'C-650') {
-    return Math.floor(Math.abs(totalHours)).toString();
-  }
-
   const hours = Math.floor(Math.abs(totalHours));
   const minutes = Math.round((Math.abs(totalHours) - hours) * 60);
   const sign = totalHours < 0 ? '-' : '';
   
   const result = `${sign}${hours}:${minutes.toString().padStart(2, '0')}`;
   
-  // For B-360 and Bell-429, use comma if requested (handled in formatGovdeHour usually)
   return result;
 };
 
 /**
  * Hücre değerini sayısal saate çevirir
  */
-const parseSingleCellToHour = (val: any, aircraftType: string): number | null => {
+export const parseSingleCellToHour = (val: any, aircraftType: string): number | null => {
   if (val === undefined || val === null || val === "" || val === "0" || val === "00:00") return null;
 
   let d: Date | null = null;
@@ -366,10 +363,13 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         aircraft.govdeSN = formatValueToString(item.govdeSN);
         aircraft.motor1SN = formatValueToString(item.motor1SN);
         aircraft.motor2SN = formatValueToString(item.motor2SN);
-        aircraft.bakim40H = formatGovdeHour(item.bakim40H, config.aircraftType);
-        aircraft.bakim120H = formatGovdeHour(item.bakim120H, config.aircraftType);
-        aircraft.bakim480H = formatGovdeHour(item.bakim480H, config.aircraftType);
-        aircraft.bakimTakvimTarih = formatDateIfISO(item.bakimTakvimTarih);
+        // T-70 için veriyi dönüştürmeden aynen al
+        aircraft.govdeUcusSaati = formatValueToString(item.govdeUcusSaati ?? item.E ?? item.e ?? item[4]);
+        aircraft.bakim40H = formatValueToString(item.bakim40H);
+        aircraft.bakim120H = formatValueToString(item.bakim120H);
+        aircraft.bakim480H = formatValueToString(item.bakim480H);
+        aircraft.bakimTakvimTarih = formatValueToString(item.bakimTakvimTarih);
+        aircraft.bakimKalanSaat = formatValueToString(item.bakimKalanSaat);
       } else if (config.aircraftType === 'B-360' || config.aircraftType === 'C-650') {
         aircraft.govdeSN = formatValueToString(item.govdeSN);
         aircraft.motor1SN = formatValueToString(item.motor1SN);

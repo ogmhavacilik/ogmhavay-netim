@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { SheetConfig, Aircraft, AppNotification, DailyStatusCode } from '../types';
-import { fetchAircraftDataFromAppsScript } from '../services/sheetService';
+import { fetchAircraftDataFromAppsScript, formatToHHMM, parseSingleCellToHour } from '../services/sheetService';
 import { getMailRecipients, saveMailRecipient, deleteMailRecipient, MailRecipient, sendManualEmail, testMail } from '../src/services/mailService';
 import { generateFleetExcelHtml } from '../src/services/excelService';
 
@@ -364,7 +364,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onClose, no
                             <td className="px-8 py-4"><span className="text-[10px] font-black bg-emerald-900/50 px-2 py-1 rounded text-emerald-400">{row.tip || "BELİRSİZ"}</span></td>
                             <td className="px-8 py-4 font-bold">{row.kuyrukNo}</td>
                             <td className="px-8 py-4 text-blue-400 font-black">{row.govdeUcusSaati || '-'}</td>
-                            <td className="px-8 py-4 text-emerald-400 font-black">{row.faydaliSaat}</td>
+                            <td className="px-8 py-4 text-emerald-400 font-black">
+                              {(row.tip === 'B-360' || row.tip === 'C-650' || row.tip === 'Bell-429') 
+                                ? formatToHHMM(typeof row.faydaliSaat === 'number' ? row.faydaliSaat : parseSingleCellToHour(row.faydaliSaat, row.tip)) 
+                                : row.faydaliSaat}
+                            </td>
                             <td className="px-8 py-4" onDoubleClick={() => setEditingCode({ kuyrukNo: row.kuyrukNo, code: row.assignedCode })}>
                                {editingCode?.kuyrukNo === row.kuyrukNo ? (
                                  <select 

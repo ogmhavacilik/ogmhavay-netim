@@ -1,13 +1,21 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Aircraft, Status } from '../types';
-import { updateAircraftData, fetchAircraftSpecificData } from '../services/sheetService';
+import { Aircraft, Status, DailyStatusCode } from '../types';
+import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus } from '../services/sheetService';
 
 interface DataUpdateFormProps {
   fleet: Aircraft[];
   onBack: () => void;
-  onSuccess: () => void;
+  onSuccess: (type: string) => void;
+  onSaveIntraDay?: (data: {
+    kuyrukNo: string;
+    tip: string;
+    startTime: string;
+    endTime: string;
+    status: DailyStatusCode;
+    description: string;
+  }) => Promise<boolean>;
 }
 
 const formatForDateInput = (val: string | undefined | null) => {
@@ -47,7 +55,7 @@ const formatForDateInput = (val: string | undefined | null) => {
   return cleanVal;
 };
 
-const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSuccess }) => {
+const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSuccess, onSaveIntraDay }) => {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [isAuth, setIsAuth] = useState(false);
@@ -82,7 +90,9 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
     konum: '',
     durum: '',
     durumAyrintisi: '',
-    aciklama: ''
+    aciklama: '',
+    intraDayStartTime: '',
+    intraDayEndTime: ''
   });
 
   const handleTypeSelect = (type: string) => {
@@ -140,7 +150,12 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
     return diffDays;
   };
 
+  const prevKuyrukRef = React.useRef<string>('');
+
   useEffect(() => {
+    if (selectedKuyruk === prevKuyrukRef.current) return; // Sadece kuyruk değiştiğinde çalıştır
+    prevKuyrukRef.current = selectedKuyruk;
+
     const aircraft = fleet.find(a => a.kuyrukNo === selectedKuyruk);
     if (aircraft) {
       setSelectedAircraft(aircraft);
@@ -158,7 +173,9 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
         konum: aircraft.konum && aircraft.konum !== '-' ? aircraft.konum : '',
         durum: aircraft.durum || '',
         durumAyrintisi: aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? aircraft.durumAyrintisi : '',
-        aciklama: aircraft.aciklama && aircraft.aciklama !== '-' ? aircraft.aciklama : ''
+        aciklama: aircraft.aciklama && aircraft.aciklama !== '-' ? aircraft.aciklama : '',
+        intraDayStartTime: '',
+        intraDayEndTime: ''
       });
 
       if (aircraft.tip === 'AT-802') {
@@ -228,6 +245,24 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
     }
 
     try {
+      // Gün içi faaliyet kaydı (Eğer saat girilmişse)
+      if (onSaveIntraDay && (formData.intraDayStartTime || formData.intraDayEndTime)) {
+        const analysis = analyzeStatus({ 
+          durum: formData.durum, 
+          durumAyrintisi: formData.durumAyrintisi, 
+          aciklama: formData.aciklama 
+        });
+        
+        await onSaveIntraDay({
+          kuyrukNo: selectedAircraft.kuyrukNo,
+          tip: selectedAircraft.tip || '',
+          startTime: formData.intraDayStartTime,
+          endTime: formData.intraDayEndTime,
+          status: analysis.code,
+          description: formData.aciklama
+        });
+      }
+
       const result = await updateAircraftData(
         selectedAircraft.appsScriptUrl || '',
         selectedAircraft.sheetId || '',
@@ -239,7 +274,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
       if (result.success) {
         setMessage({ type: 'success', text: 'Veriler başarıyla güncellendi.' });
         setTimeout(() => {
-          onSuccess();
+          onSuccess(selectedAircraft.tip);
         }, 1500);
       } else {
         setMessage({ type: 'error', text: result.message || 'Güncelleme sırasında bir hata oluştu.' });
@@ -352,18 +387,30 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                         </select>
                       </div>
                       {formData.durum === Status.GAYRI_FAAL && (
+                        <>
+                          <div className="space-y-2 md:col-span-2">
+                            <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GAYRI FAAL BAŞLANGIÇ SAATİ</label>
+                            <input type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUM AYRINTISI</label>
+                            <input type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                            <datalist id="status-details">
+                              <option value="BAKIM">BAKIM</option>
+                              <option value="BAKIM BEKLER">BAKIM BEKLER</option>
+                              <option value="KABUL MUAYENESİ">KABUL MUAYENESİ</option>
+                              <option value="ARIZA">ARIZA</option>
+                              <option value="PARÇA BEKLER">PARÇA BEKLER</option>
+                              <option value="KAZA KIRIM">KAZA KIRIM</option>
+                              <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
+                            </datalist>
+                          </div>
+                        </>
+                      )}
+                      {formData.durum === Status.FAAL && selectedAircraft.durum === Status.GAYRI_FAAL && (
                         <div className="space-y-2 md:col-span-2">
-                          <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUM AYRINTISI</label>
-                          <input type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                          <datalist id="status-details">
-                            <option value="BAKIM">BAKIM</option>
-                            <option value="BAKIM BEKLER">BAKIM BEKLER</option>
-                            <option value="KABUL MUAYENESİ">KABUL MUAYENESİ</option>
-                            <option value="ARIZA">ARIZA</option>
-                            <option value="PARÇA BEKLER">PARÇA BEKLER</option>
-                            <option value="KAZA KIRIM">KAZA KIRIM</option>
-                            <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
-                          </datalist>
+                          <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FAAL OLDUĞU SAAT</label>
+                          <input type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                         </div>
                       )}
                       <div className="space-y-2 md:col-span-2">
@@ -418,18 +465,30 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                         </select>
                       </div>
                       {formData.durum === Status.GAYRI_FAAL && (
+                        <>
+                          <div className="space-y-2 md:col-span-2">
+                            <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GAYRI FAAL BAŞLANGIÇ SAATİ</label>
+                            <input type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUM AYRINTISI</label>
+                            <input type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                            <datalist id="status-details">
+                              <option value="BAKIM">BAKIM</option>
+                              <option value="BAKIM BEKLER">BAKIM BEKLER</option>
+                              <option value="KABUL MUAYENESİ">KABUL MUAYENESİ</option>
+                              <option value="ARIZA">ARIZA</option>
+                              <option value="PARÇA BEKLER">PARÇA BEKLER</option>
+                              <option value="KAZA KIRIM">KAZA KIRIM</option>
+                              <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
+                            </datalist>
+                          </div>
+                        </>
+                      )}
+                      {formData.durum === Status.FAAL && selectedAircraft.durum === Status.GAYRI_FAAL && (
                         <div className="space-y-2 md:col-span-2">
-                          <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUM AYRINTISI</label>
-                          <input type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                          <datalist id="status-details">
-                            <option value="BAKIM">BAKIM</option>
-                            <option value="BAKIM BEKLER">BAKIM BEKLER</option>
-                            <option value="KABUL MUAYENESİ">KABUL MUAYENESİ</option>
-                            <option value="ARIZA">ARIZA</option>
-                            <option value="PARÇA BEKLER">PARÇA BEKLER</option>
-                            <option value="KAZA KIRIM">KAZA KIRIM</option>
-                            <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
-                          </datalist>
+                          <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FAAL OLDUĞU SAAT</label>
+                          <input type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                         </div>
                       )}
                       <div className="space-y-2 md:col-span-2">
@@ -480,18 +539,30 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                         </select>
                       </div>
                       {formData.durum === Status.GAYRI_FAAL && (
+                        <>
+                          <div className="space-y-2 md:col-span-2">
+                            <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GAYRI FAAL BAŞLANGIÇ SAATİ</label>
+                            <input type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUM AYRINTISI</label>
+                            <input type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                            <datalist id="status-details">
+                              <option value="BAKIM">BAKIM</option>
+                              <option value="BAKIM BEKLER">BAKIM BEKLER</option>
+                              <option value="KABUL MUAYENESİ">KABUL MUAYENESİ</option>
+                              <option value="ARIZA">ARIZA</option>
+                              <option value="PARÇA BEKLER">PARÇA BEKLER</option>
+                              <option value="KAZA KIRIM">KAZA KIRIM</option>
+                              <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
+                            </datalist>
+                          </div>
+                        </>
+                      )}
+                      {formData.durum === Status.FAAL && selectedAircraft.durum === Status.GAYRI_FAAL && (
                         <div className="space-y-2 md:col-span-2">
-                          <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUM AYRINTISI</label>
-                          <input type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                          <datalist id="status-details">
-                            <option value="BAKIM">BAKIM</option>
-                            <option value="BAKIM BEKLER">BAKIM BEKLER</option>
-                            <option value="KABUL MUAYENESİ">KABUL MUAYENESİ</option>
-                            <option value="ARIZA">ARIZA</option>
-                            <option value="PARÇA BEKLER">PARÇA BEKLER</option>
-                            <option value="KAZA KIRIM">KAZA KIRIM</option>
-                            <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
-                          </datalist>
+                          <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FAAL OLDUĞU SAAT</label>
+                          <input type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                         </div>
                       )}
                       <div className="space-y-2 md:col-span-2">
@@ -597,18 +668,30 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                             </select>
                           </div>
                           {formData.durum === Status.GAYRI_FAAL && (
+                            <>
+                              <div className="space-y-4 md:col-span-2">
+                                <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GAYRI FAAL BAŞLANGIÇ SAATİ</label>
+                                <input type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                              </div>
+                              <div className="space-y-4 md:col-span-2">
+                                <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">G.FAAL SEBEBİ / DURUM AYRINTISI</label>
+                                <input type="text" list="status-details" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                <datalist id="status-details">
+                                  <option value="BAKIM">BAKIM</option>
+                                  <option value="BAKIM BEKLER">BAKIM BEKLER</option>
+                                  <option value="KABUL MUAYENESİ">KABUL MUAYENESİ</option>
+                                  <option value="ARIZA">ARIZA</option>
+                                  <option value="PARÇA BEKLER">PARÇA BEKLER</option>
+                                  <option value="KAZA KIRIM">KAZA KIRIM</option>
+                                  <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
+                                </datalist>
+                              </div>
+                            </>
+                          )}
+                          {formData.durum === Status.FAAL && selectedAircraft.durum === Status.GAYRI_FAAL && (
                             <div className="space-y-4 md:col-span-2">
-                              <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">G.FAAL SEBEBİ / DURUM AYRINTISI</label>
-                              <input type="text" list="status-details" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                              <datalist id="status-details">
-                                <option value="BAKIM">BAKIM</option>
-                                <option value="BAKIM BEKLER">BAKIM BEKLER</option>
-                                <option value="KABUL MUAYENESİ">KABUL MUAYENESİ</option>
-                                <option value="ARIZA">ARIZA</option>
-                                <option value="PARÇA BEKLER">PARÇA BEKLER</option>
-                                <option value="KAZA KIRIM">KAZA KIRIM</option>
-                                <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
-                              </datalist>
+                              <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FAAL OLDUĞU SAAT</label>
+                              <input type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                             </div>
                           )}
                           <div className="space-y-4 md:col-span-2">

@@ -169,16 +169,20 @@ function doPost(e) {
       var fleetData = params.fleetData;
       if (!fleetData || fleetData.length === 0) return jsonError("Log verisi boş.");
 
-      var envLogSheet = findSheet(ss, "Envanter Log");
+      // LOGLARI HER ZAMAN MERKEZİ LOG TABLOSUNA YAZ (Platform dosyasına değil)
+      var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
+      var logSs = SpreadsheetApp.openById(logSsId);
+
+      var envLogSheet = findSheet(logSs, "Envanter Log");
       if (!envLogSheet) {
-        envLogSheet = ss.insertSheet("Envanter Log");
+        envLogSheet = logSs.insertSheet("Envanter Log");
         envLogSheet.appendRow(["ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Açıklama"]);
         envLogSheet.getRange("A1:J1").setFontWeight("bold").setBackground("#cfe2f3").setBorder(true, true, true, true, true, true);
       }
 
-      var faalLogSheet = findSheet(ss, "Faaliyet Log");
+      var faalLogSheet = findSheet(logSs, "Faaliyet Log");
       if (!faalLogSheet) {
-        faalLogSheet = ss.insertSheet("Faaliyet Log");
+        faalLogSheet = logSs.insertSheet("Faaliyet Log");
         faalLogSheet.appendRow(["ID", "Tarih", "Kuyruk No", "Tip", "Günlük Durum (Faal/Gayrı Faal vb.)", "Analiz Kodu"]);
         faalLogSheet.getRange("A1:F1").setFontWeight("bold").setBackground("#fff2cc").setBorder(true, true, true, true, true, true);
       }

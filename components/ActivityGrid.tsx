@@ -11,6 +11,14 @@ interface ActivityGridProps {
 }
 
 const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endDate, title, onExport }) => {
+  const isHourlyView = useMemo(() => {
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    s.setHours(0,0,0,0);
+    e.setHours(0,0,0,0);
+    return s.getTime() === e.getTime();
+  }, [startDate, endDate]);
+
   const getDaysInRange = (start: Date, end: Date) => {
     const dates = [];
     let currentDate = new Date(start);
@@ -24,6 +32,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     }
     return dates;
   };
+
+  const hours = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
 
   const visibleDates = getDaysInRange(startDate, endDate);
   const totalDaysInMonth = visibleDates.length;
@@ -142,7 +152,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
   return (
     <div className="activity-grid-section bg-white p-2">
       <div className="flex justify-between items-center mb-4 px-2">
-         <h3 className="text-4xl font-black text-black tracking-tighter">{title}</h3>
+         <h3 className="text-4xl font-black text-black tracking-tighter">{isHourlyView ? `${title} - SAATLİK GÖRÜNÜM` : title}</h3>
       </div>
 
       <div className="overflow-x-auto">
@@ -152,23 +162,39 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
               <th rowSpan={2} className="border border-black px-1 py-1 w-[110px] uppercase font-black text-[9px]">KUYRUK NO</th>
               <th rowSpan={2} className="border border-black px-1 py-1 w-[100px] uppercase font-black text-[9px]">ÇAĞRI KODU</th>
               <th rowSpan={2} className="border border-black px-1 py-1 w-[120px] uppercase font-black text-[9px]">HAVA ARACI TİPİ</th>
-              {visibleDates.map((date, idx) => (
-                <th key={idx} rowSpan={2} className="border border-black w-8 text-center font-bold min-w-[32px] text-[8px] bg-white h-16">
-                   <div className="[writing-mode:vertical-lr] rotate-180 whitespace-nowrap mx-auto">
-                     {date.getDate()}.{String(date.getMonth() + 1).padStart(2, '0')}.{date.getFullYear()}
-                   </div>
-                </th>
-              ))}
-              <th colSpan={3} className="border border-black bg-[#00b0f0] text-white py-0.5 text-[8px] font-black uppercase tracking-tighter" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>TOPLAM G.FAAL</th>
-              <th rowSpan={2} className="border border-black bg-[#00b0f0] text-white px-0.5 w-12 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>TOPLAM<br/>G.FAAL</th>
-              <th rowSpan={2} className="border border-black bg-[#ffc000] text-black px-0.5 w-12 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#ffc000', color: '#000000' }}>TOPLAM<br/>FAAL</th>
-              <th rowSpan={2} className="border border-black bg-gray-100 text-black px-0.5 w-16 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#f3f4f6', color: '#000000' }}>FAALİYET % **</th>
+              {isHourlyView ? (
+                hours.map((hour, idx) => (
+                  <th key={idx} rowSpan={2} className="border border-black w-8 text-center font-bold min-w-[32px] text-[8px] bg-white h-16">
+                    <div className="[writing-mode:vertical-lr] rotate-180 whitespace-nowrap mx-auto">
+                      {hour}
+                    </div>
+                  </th>
+                ))
+              ) : (
+                visibleDates.map((date, idx) => (
+                  <th key={idx} rowSpan={2} className="border border-black w-8 text-center font-bold min-w-[32px] text-[8px] bg-white h-16">
+                    <div className="[writing-mode:vertical-lr] rotate-180 whitespace-nowrap mx-auto">
+                      {date.getDate()}.{String(date.getMonth() + 1).padStart(2, '0')}.{date.getFullYear()}
+                    </div>
+                  </th>
+                ))
+              )}
+              {!isHourlyView && (
+                <>
+                  <th colSpan={3} className="border border-black bg-[#00b0f0] text-white py-0.5 text-[8px] font-black uppercase tracking-tighter" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>TOPLAM G.FAAL</th>
+                  <th rowSpan={2} className="border border-black bg-[#00b0f0] text-white px-0.5 w-12 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>TOPLAM<br/>G.FAAL</th>
+                  <th rowSpan={2} className="border border-black bg-[#ffc000] text-black px-0.5 w-12 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#ffc000', color: '#000000' }}>TOPLAM<br/>FAAL</th>
+                  <th rowSpan={2} className="border border-black bg-gray-100 text-black px-0.5 w-16 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#f3f4f6', color: '#000000' }}>FAALİYET % **</th>
+                </>
+              )}
             </tr>
-            <tr className="bg-white">
-              <th className="border border-black bg-[#ffff00] text-black w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#ffff00', color: '#000000' }}>Bakım</th>
-              <th className="border border-black bg-[#ff0000] text-white w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#ff0000', color: '#ffffff' }}>Arıza</th>
-              <th className="border border-black bg-[#7030a0] text-white w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#7030a0', color: '#ffffff' }}>Olmadığı</th>
-            </tr>
+            {!isHourlyView && (
+              <tr className="bg-white">
+                <th className="border border-black bg-[#ffff00] text-black w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#ffff00', color: '#000000' }}>Bakım</th>
+                <th className="border border-black bg-[#ff0000] text-white w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#ff0000', color: '#ffffff' }}>Arıza</th>
+                <th className="border border-black bg-[#7030a0] text-white w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#7030a0', color: '#ffffff' }}>Olmadığı</th>
+              </tr>
+            )}
           </thead>
           <tbody>
             {Object.keys(groupedActivities).map((groupName, gIdx) => {
@@ -205,36 +231,55 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                         </td>
                         <td className="border border-black text-center font-bold px-1">{act.cagriKodu}</td>
                         <td className="border border-black text-center px-1 font-bold">{act.tip}</td>
-                        {visibleDates.map((date, dIdx) => {
-                          const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                          const status = act.dailyStatuses[dateStrKey] || '';
-                          return (
-                            <td key={dIdx} className={`border border-black text-center text-[10px] ${getStatusClass(status)}`} style={getStatusStyle(status)}>
-                              {status === 'F' ? '' : status}
-                            </td>
-                          );
-                        })}
-                        <td className="border border-black text-center font-bold bg-[#ffffcc]" style={{ backgroundColor: '#ffffcc' }}>{s.bakim || '0'}</td>
-                        <td className="border border-black text-center font-bold bg-[#ffcccc]" style={{ backgroundColor: '#ffcccc' }}>{s.ariza || '0'}</td>
-                        <td className="border border-black text-center font-bold bg-[#e2efda]" style={{ backgroundColor: '#e2efda' }}>{s.olmadi || '0'}</td>
-                        <td className="border border-black text-center font-bold bg-[#ddebf7]" style={{ backgroundColor: '#ddebf7' }}>{s.totalGFaal}</td>
-                        <td className="border border-black text-center font-bold bg-[#fff2cc]" style={{ backgroundColor: '#fff2cc' }}>{s.totalFaal}</td>
-                        <td className="border border-black text-center font-bold bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>{s.percentage}%</td>
+                        {isHourlyView ? (
+                          hours.map((hour, hIdx) => {
+                            const dateStrKey = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
+                            const status = act.hourlyStatuses?.[dateStrKey]?.[hour] || act.dailyStatuses[dateStrKey] || '';
+                            return (
+                              <td key={hIdx} className={`border border-black text-center text-[10px] ${getStatusClass(status)}`} style={getStatusStyle(status)}>
+                                {status === 'F' ? '' : status}
+                              </td>
+                            );
+                          })
+                        ) : (
+                          visibleDates.map((date, dIdx) => {
+                            const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                            const status = act.dailyStatuses[dateStrKey] || '';
+                            const isCompletedToday = act.intraDayCompletions?.[dateStrKey];
+                            return (
+                              <td key={dIdx} className={`border border-black text-center text-[10px] ${getStatusClass(status)}`} style={getStatusStyle(status)}>
+                                {status === 'F' ? (isCompletedToday ? <span className="text-orange-500 font-black text-sm">*</span> : '') : status}
+                              </td>
+                            );
+                          })
+                        )}
+                        {!isHourlyView && (
+                          <>
+                            <td className="border border-black text-center font-bold bg-[#ffffcc]" style={{ backgroundColor: '#ffffcc' }}>{s.bakim || '0'}</td>
+                            <td className="border border-black text-center font-bold bg-[#ffcccc]" style={{ backgroundColor: '#ffcccc' }}>{s.ariza || '0'}</td>
+                            <td className="border border-black text-center font-bold bg-[#e2efda]" style={{ backgroundColor: '#e2efda' }}>{s.olmadi || '0'}</td>
+                            <td className="border border-black text-center font-bold bg-[#ddebf7]" style={{ backgroundColor: '#ddebf7' }}>{s.totalGFaal}</td>
+                            <td className="border border-black text-center font-bold bg-[#fff2cc]" style={{ backgroundColor: '#fff2cc' }}>{s.totalFaal}</td>
+                            <td className="border border-black text-center font-bold bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>{s.percentage}%</td>
+                          </>
+                        )}
                       </tr>
                     );
                   })}
                   {/* GRUP TOPLAMI SATIRI */}
-                  <tr className="h-6 bg-gray-100 font-black">
-                    <td colSpan={3 + totalDaysInMonth} className="border border-black text-right px-4 uppercase text-[8px]" style={{ backgroundColor: '#f3f4f6' }}>TOPLAM</td>
-                    <td className="border border-black text-center bg-[#ffff00]" style={{ backgroundColor: '#ffff00', color: '#000000' }}>{groupBakim}</td>
-                    <td className="border border-black text-center bg-[#ff0000] text-white" style={{ backgroundColor: '#ff0000', color: '#ffffff' }}>{groupAriza}</td>
-                    <td className="border border-black text-center bg-[#7030a0] text-white" style={{ backgroundColor: '#7030a0', color: '#ffffff' }}>{groupOlmadi}</td>
-                    <td className="border border-black text-center bg-[#00b0f0] text-white" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>{groupTotalGF}</td>
-                    <td className="border border-black text-center bg-[#ffc000]" style={{ backgroundColor: '#ffc000', color: '#000000' }}>{groupTotalF}</td>
-                    <td className="border border-black text-center bg-gray-200" style={{ backgroundColor: '#e5e7eb' }}>
-                      {((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) > 0 ? (((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) - groupEffectiveGFaal) / (groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) * 100).toFixed(0) : "0")}%
-                    </td>
-                  </tr>
+                  {!isHourlyView && (
+                    <tr className="h-6 bg-gray-100 font-black">
+                      <td colSpan={3 + totalDaysInMonth} className="border border-black text-right px-4 uppercase text-[8px]" style={{ backgroundColor: '#f3f4f6' }}>TOPLAM</td>
+                      <td className="border border-black text-center bg-[#ffff00]" style={{ backgroundColor: '#ffff00', color: '#000000' }}>{groupBakim}</td>
+                      <td className="border border-black text-center bg-[#ff0000] text-white" style={{ backgroundColor: '#ff0000', color: '#ffffff' }}>{groupAriza}</td>
+                      <td className="border border-black text-center bg-[#7030a0] text-white" style={{ backgroundColor: '#7030a0', color: '#ffffff' }}>{groupOlmadi}</td>
+                      <td className="border border-black text-center bg-[#00b0f0] text-white" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>{groupTotalGF}</td>
+                      <td className="border border-black text-center bg-[#ffc000]" style={{ backgroundColor: '#ffc000', color: '#000000' }}>{groupTotalF}</td>
+                      <td className="border border-black text-center bg-gray-200" style={{ backgroundColor: '#e5e7eb' }}>
+                        {((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) > 0 ? (((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) - groupEffectiveGFaal) / (groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) * 100).toFixed(0) : "0")}%
+                      </td>
+                    </tr>
+                  )}
                 </React.Fragment>
               );
             })}
@@ -257,10 +302,18 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
            <div className="flex flex-col space-y-1">
               <div className="bg-[#7030a0] text-white border border-black px-2 py-1 text-[9px] font-black w-40">X: OLMADIĞI GÜNLER</div>
            </div>
+           <div className="flex flex-col space-y-1">
+              <div className="bg-white border border-black px-2 py-1 text-[9px] font-black w-64 flex items-center">
+                <span className="text-orange-500 font-black text-sm mr-2">*</span>
+                GÜN İÇERSİNDE TAMAMLANAN BAKIM VEYA ARIZA FAALİYETLERİ
+              </div>
+           </div>
         </div>
-        <div className="text-[10px] font-bold text-red-600">
-          ** 3 güne kadar olan gayrı faal durumlar (B, BB, KM, A, PB, KK) faaliyet oranına yansıtılmamıştır.
-        </div>
+        {!isHourlyView && (
+          <div className="text-[10px] font-bold text-red-600">
+            ** 3 güne kadar olan gayrı faal durumlar (B, BB, KM, A, PB, KK) faaliyet oranına yansıtılmamıştır.
+          </div>
+        )}
         <div className="text-[10px] font-bold text-gray-500 mt-1 flex items-center">
           <div className="w-3 h-3 bg-gray-200 border border-gray-300 mr-2 inline-block"></div>
           Soluk alanlar veri tabanında bulunmamaktadır.

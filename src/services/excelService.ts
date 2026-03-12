@@ -147,3 +147,49 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
 
   return html;
 };
+
+export const exportTableToExcel = (tableId: string, fileName: string) => {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+
+  // Clone the table to modify it without affecting the UI
+  const clone = table.cloneNode(true) as HTMLTableElement;
+
+  // Clean up vertical text divs for Excel readability
+  const verticalDivs = clone.querySelectorAll('div[class*="writing-mode"]');
+  verticalDivs.forEach((div: any) => {
+    div.style.writingMode = 'horizontal-tb';
+    div.style.transform = 'none';
+    div.style.height = 'auto';
+    div.style.width = 'auto';
+  });
+
+  // Ensure styles are preserved in the export
+  const html = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8">
+      <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Sheet1</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+      <style>
+        table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
+        th, td { border: 1px solid black; padding: 5px; font-size: 10pt; text-align: center; vertical-align: middle; }
+        th { background-color: #f2f2f2; font-weight: bold; }
+        .bg-yellow { background-color: #FFFF00 !important; }
+        .bg-red { background-color: #FF0000 !important; color: white !important; }
+        .bg-purple { background-color: #7030A0 !important; color: white !important; }
+      </style>
+    </head>
+    <body>
+      ${clone.outerHTML}
+    </body>
+    </html>
+  `;
+
+  const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${fileName}.xls`;
+  link.click();
+  URL.revokeObjectURL(url);
+};

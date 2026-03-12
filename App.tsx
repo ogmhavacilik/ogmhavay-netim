@@ -21,8 +21,11 @@ import {
   getCallSignByTail
 } from './constants';
 import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM } from './services/sheetService';
-import { exportAT802DailyStatusToPDF } from './services/pdfService';
-import { generateFleetExcelHtml } from './src/services/excelService';
+import { exportAT802DailyStatusToPDF, exportOPLToPDF } from './services/pdfService';
+import { exportTableToMHTML } from './services/mhtmlService';
+import { MOCK_ACTIVITY_GRID } from './constants';
+import { generateFleetExcelHtml, exportTableToExcel } from './src/services/excelService';
+import { X, Download, Activity, Clock } from 'lucide-react';
 
 const App = () => {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
@@ -53,6 +56,51 @@ const App = () => {
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [isGovdeSorguOpen, setIsGovdeSorguOpen] = useState(false);
   const [isFetchingActivities, setIsFetchingActivities] = useState(false);
+
+  const [showIntraDayModal, setShowIntraDayModal] = useState(false);
+  const [selectedAircraftForIntraDay, setSelectedAircraftForIntraDay] = useState<Aircraft | null>(null);
+  const [intraDayStartTime, setIntraDayStartTime] = useState('');
+  const [intraDayEndTime, setIntraDayEndTime] = useState('');
+  const [intraDayStatus, setIntraDayStatus] = useState<DailyStatusCode>('F');
+  const [intraDayDescription, setIntraDayDescription] = useState('');
+  const [isSavingIntraDay, setIsSavingIntraDay] = useState(false);
+
+  const handleSaveIntraDay = async (data: {
+    kuyrukNo: string;
+    tip: string;
+    startTime: string;
+    endTime: string;
+    status: DailyStatusCode;
+    description: string;
+  }) => {
+    setIsSavingIntraDay(true);
+    try {
+      const response = await fetch(LOG_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'saveIntraDayActivity',
+          data: {
+            ...data,
+            date: new Date().toISOString().split('T')[0]
+          }
+        })
+      });
+      
+      if (response.ok) {
+        fetchPastLogs(); // Refresh activity data
+        return true;
+      } else {
+        console.error("Kayıt sırasında bir hata oluştu.");
+        return false;
+      }
+    } catch (error) {
+      console.error('Error saving intra-day activity:', error);
+      return false;
+    } finally {
+      setIsSavingIntraDay(false);
+    }
+  };
 
   const [authenticatedTypes, setAuthenticatedTypes] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<{ type: string, action: () => void } | null>(null);
@@ -143,6 +191,7 @@ const App = () => {
         bakim120H: 'I4:I6',
         bakim480H: 'J4:J6',
         bakimTakvimTarih: 'K4:K6',
+        bakimKalanSaat: 'L4:L6',
         faydaliSaat: 'N4:N6',
         konum: 'P4:P6',
         durum: 'Q4:Q6',
@@ -355,102 +404,146 @@ const App = () => {
     }
   }, []);
 
-  const fetchPastLogs = () => {
+  const fetchPastLogs = async () => {
     if (!LOG_SCRIPT_URL) return Promise.resolve();
-    return fetch(LOG_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ 
-        action: 'getFaaliyetLog',
-        sheetId: MAIL_LOG_SHEET_ID
-      })
-    })
-    .then(res => res.json())
-    .then(result => {
+    
+    try {
+      const res = await fetch(LOG_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ 
+          action: 'getFaaliyetLog',
+          sheetId: MAIL_LOG_SHEET_ID
+        })
+      });
+      
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      
+      const result = await res.json();
       console.log("Past logs result:", result);
-      const logData = result.data || (Array.isArray(result) ? result : []);
-      if (Array.isArray(logData) && logData.length > 0) {
-        setActivities(prevActivities => {
-          // Use a Map to avoid duplicates and ensure we merge correctly
-          const activityMap = new Map<string, AircraftActivity>();
-          
-          // Initialize with current activities
-          prevActivities.forEach(act => activityMap.set(act.kuyrukNo, { ...act }));
+      
+      const logData = result.data?.faaliyetLog || [];
+      const intraDayData = result.data?.intraDayLog || [];
 
-          const now = new Date();
-          const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      setActivities(prevActivities => {
+        const activityMap = new Map<string, AircraftActivity>();
+        prevActivities.forEach(act => activityMap.set(act.kuyrukNo, { ...act }));
 
-          logData.forEach((logEntry: any) => {
-            try {
-              const kuyrukNo = String(logEntry.kuyrukNo || '').trim();
-              if (!kuyrukNo) return;
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-              const tarihStr = String(logEntry.tarih || '').trim();
-              const durumAyrintisi = String(logEntry.durum || '').trim().toUpperCase();
-              const analizKodu = logEntry.analizKodu ? String(logEntry.analizKodu).trim() : null;
+        // Process Daily Logs
+        logData.forEach((logEntry: any) => {
+          try {
+            const kuyrukNo = String(logEntry.kuyrukNo || '').trim();
+            if (!kuyrukNo) return;
 
-              let dayNum = -1, monthNum = -1, yearNum = -1;
-              
-              if (tarihStr.includes('T') || (tarihStr.includes('-') && !tarihStr.includes('.'))) {
-                const d = new Date(tarihStr);
-                if (!isNaN(d.getTime())) {
-                  dayNum = d.getDate();
-                  monthNum = d.getMonth();
-                  yearNum = d.getFullYear();
-                }
-              } else if (tarihStr.includes('/')) {
-                const parts = tarihStr.split('/');
-                if (parts.length === 3) {
-                  dayNum = parseInt(parts[0], 10);
-                  monthNum = parseInt(parts[1], 10) - 1;
-                  yearNum = parseInt(parts[2], 10);
-                }
-              } else if (tarihStr.includes('.')) {
-                const parts = tarihStr.split('.');
-                if (parts.length === 3) {
-                  dayNum = parseInt(parts[0], 10);
-                  monthNum = parseInt(parts[1], 10) - 1;
-                  yearNum = parseInt(parts[2], 10);
-                }
+            const tarihStr = String(logEntry.tarih || '').trim();
+            const durumAyrintisi = String(logEntry.durum || '').trim().toUpperCase();
+            const analizKodu = logEntry.analizKodu ? String(logEntry.analizKodu).trim() : null;
+
+            let dayNum = -1, monthNum = -1, yearNum = -1;
+            
+            if (tarihStr.includes('T') || (tarihStr.includes('-') && !tarihStr.includes('.'))) {
+              const d = new Date(tarihStr);
+              if (!isNaN(d.getTime())) {
+                dayNum = d.getDate();
+                monthNum = d.getMonth();
+                yearNum = d.getFullYear();
               }
-
-              if (dayNum !== -1) {
-                const dateStrKey = `${yearNum}-${String(monthNum + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-                
-                if (dateStrKey !== todayStr) {
-                  let code: DailyStatusCode = 'F';
-                  if (analizKodu) {
-                    code = analizKodu as DailyStatusCode;
-                  } else {
-                    if (durumAyrintisi.includes('BAKIM')) code = 'B';
-                    else if (durumAyrintisi.includes('ARIZA') || durumAyrintisi.includes('PARÇA BEKLER') || durumAyrintisi.includes('KAZA KIRIM')) code = 'A';
-                    else if (durumAyrintisi.includes('OLMADIĞI GÜNLER')) code = 'X';
-                    else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') code = 'B';
-                  }
-
-                  let act = activityMap.get(kuyrukNo);
-                  if (act) {
-                    act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
-                  } else {
-                    activityMap.set(kuyrukNo, {
-                      kuyrukNo: kuyrukNo,
-                      cagriKodu: getCallSignByTail(kuyrukNo),
-                      tip: logEntry.tip || 'Bilinmiyor',
-                      dailyStatuses: { [dateStrKey]: code }
-                    });
-                  }
-                }
+            } else if (tarihStr.includes('/')) {
+              const parts = tarihStr.split('/');
+              if (parts.length === 3) {
+                dayNum = parseInt(parts[0], 10);
+                monthNum = parseInt(parts[1], 10) - 1;
+                yearNum = parseInt(parts[2], 10);
               }
-            } catch (err) {
-              console.error("Error processing log entry:", logEntry, err);
+            } else if (tarihStr.includes('.')) {
+              const parts = tarihStr.split('.');
+              if (parts.length === 3) {
+                dayNum = parseInt(parts[0], 10);
+                monthNum = parseInt(parts[1], 10) - 1;
+                yearNum = parseInt(parts[2], 10);
+              }
             }
-          });
 
-          return Array.from(activityMap.values());
+            if (dayNum !== -1) {
+              const dateStrKey = `${yearNum}-${String(monthNum + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+              
+              if (dateStrKey !== todayStr) {
+                let code: DailyStatusCode = 'F';
+                if (analizKodu) {
+                  code = analizKodu as DailyStatusCode;
+                } else {
+                  if (durumAyrintisi.includes('BAKIM')) code = 'B';
+                  else if (durumAyrintisi.includes('ARIZA') || durumAyrintisi.includes('PARÇA BEKLER') || durumAyrintisi.includes('KAZA KIRIM')) code = 'A';
+                  else if (durumAyrintisi.includes('OLMADIĞI GÜNLER')) code = 'X';
+                  else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') code = 'B';
+                }
+
+                let act = activityMap.get(kuyrukNo);
+                if (act) {
+                  act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
+                } else {
+                  activityMap.set(kuyrukNo, {
+                    kuyrukNo: kuyrukNo,
+                    cagriKodu: getCallSignByTail(kuyrukNo),
+                    tip: logEntry.tip || 'Bilinmiyor',
+                    dailyStatuses: { [dateStrKey]: code }
+                  });
+                }
+              }
+            }
+          } catch (err) {
+            console.error("Error processing log entry:", logEntry, err);
+          }
         });
-      }
-    })
-    .catch(e => console.error("Log verisi çekilirken hata oluştu:", e));
+
+        // Process Intra-Day Logs
+        intraDayData.forEach((log: any) => {
+          const kuyrukNo = String(log.kuyrukNo || '').trim();
+          if (!kuyrukNo) return;
+
+          const dateStr = log.tarih; // yyyy-MM-dd
+          const startHour = parseInt(log.startTime?.split(':')[0] || '0');
+          const endHour = parseInt(log.endTime?.split(':')[0] || '23');
+          const status = log.status as DailyStatusCode;
+
+          let act = activityMap.get(kuyrukNo);
+          if (!act) {
+            act = {
+              kuyrukNo: kuyrukNo,
+              cagriKodu: getCallSignByTail(kuyrukNo),
+              tip: log.tip || 'Bilinmiyor',
+              dailyStatuses: {},
+              hourlyStatuses: {},
+              intraDayCompletions: {}
+            };
+            activityMap.set(kuyrukNo, act);
+          }
+
+          if (!act.hourlyStatuses) act.hourlyStatuses = {};
+          if (!act.hourlyStatuses[dateStr]) act.hourlyStatuses[dateStr] = {};
+          
+          for (let h = startHour; h <= endHour; h++) {
+            const hourStr = `${String(h).padStart(2, '0')}:00`;
+            act.hourlyStatuses[dateStr][hourStr] = status;
+          }
+
+          // Mark as intra-day completion if it was G.Faal and turned back to Faal within the day
+          // Or if the user specifically logged it. 
+          // The requirement says: "FAAL OLARAK GÜNÜ KAPATAN KUTUCUKALR NORMALDE BOŞ İKEN KUTUNUN İÇİNE TURUNCU * ATILIR"
+          // This usually implies a transition happened.
+          if (!act.intraDayCompletions) act.intraDayCompletions = {};
+          act.intraDayCompletions[dateStr] = true;
+        });
+
+        return Array.from(activityMap.values());
+      });
+    } catch (e) {
+      console.warn("Log verisi çekilirken hata oluştu, mock veriler kullanılıyor:", e);
+      setActivities(MOCK_ACTIVITY_GRID);
+    }
   };
 
   const handleSearchActivities = () => {
@@ -704,7 +797,7 @@ const App = () => {
       const matchesSearch = a.kuyrukNo.toLowerCase().includes(s) || a.konum.toLowerCase().includes(s) || (a.tip && a.tip.toLowerCase().includes(s));
       const matchesType = filterType === 'Tümü' || a.tip === filterType;
       const matchesTail = filterTail === '' || a.kuyrukNo.toLowerCase().includes(filterTail.toLowerCase());
-      const isKazaKirim = a.assignedCode === 'KK' || a.durumAyrintisi?.toUpperCase().includes('KAZA KIRIM');
+      const isKazaKirim = a.assignedCode === 'KK' || (a.durumAyrintisi && a.durumAyrintisi.toUpperCase().includes('KAZA KIRIM'));
       const matchesKazaKirim = hideKazaKirim ? !isKazaKirim : true;
       
       return matchesSearch && matchesType && matchesTail && matchesKazaKirim;
@@ -800,8 +893,9 @@ const App = () => {
       <DataUpdateForm 
         fleet={fleet}
         onBack={() => setCurrentView('landing')}
-        onSuccess={() => {
-          setFilterType('AT-802');
+        onSaveIntraDay={handleSaveIntraDay}
+        onSuccess={(type) => {
+          setFilterType(type);
           runGlobalSync();
           setCurrentView('dashboard');
         }}
@@ -911,12 +1005,23 @@ const App = () => {
                  </div>
                </div>
              )}
+             <div className="flex justify-between items-center mb-6 px-4">
+                <div className="flex space-x-4">
+                  <button 
+                    onClick={() => exportTableToExcel('activity-table', `Faaliyet_Cizelgesi_${filterStartDate}_${filterEndDate}`)}
+                    className="bg-emerald-700 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    EXCEL İNDİR
+                  </button>
+                </div>
+             </div>
              <ActivityGrid 
                activities={filteredActivities} 
                startDate={new Date(filterStartDate)} 
                endDate={new Date(filterEndDate)} 
                title={`${new Date(filterStartDate).toLocaleDateString('tr-TR')} - ${new Date(filterEndDate).toLocaleDateString('tr-TR')} FAALİYET ÇİZELGESİ`} 
-               onExport={() => exportTableToExcel('activity-table', `OGM_Faaliyet_Raporu_${filterStartDate}_${filterEndDate}`)} 
+               onExport={() => exportTableToMHTML('activity-table', `Faaliyet_Cizelgesi_${filterStartDate}_${filterEndDate}`)} 
              />
            </div>
         </div>
@@ -971,7 +1076,7 @@ const App = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredFleet.map((a, i) => {
-                  const isKazaKirim = a.assignedCode === 'KK' || a.durumAyrintisi?.toUpperCase().includes('KAZA KIRIM');
+                  const isKazaKirim = a.assignedCode === 'KK' || (a.durumAyrintisi && a.durumAyrintisi.toUpperCase().includes('KAZA KIRIM'));
                   const hasOplAlert = a.oplAlerts && a.oplAlerts.length > 0 && !isKazaKirim;
                   return (
                     <tr key={i} className={`hover:bg-slate-50 transition-all group ${hasOplAlert ? 'animate-pulse bg-red-50/30' : ''} ${historicalFleet !== null ? 'opacity-60 cursor-default' : 'cursor-pointer active:scale-[0.99]'}`}>
@@ -991,7 +1096,7 @@ const App = () => {
                              </span>
                              {hasOplAlert && (
                                <span className="ml-3 bg-red-600 text-white text-[8px] px-2 py-0.5 rounded-full animate-bounce shadow-[0_0_10px_rgba(220,38,38,0.5)]">
-                                 ÖPL ALERT!
+                                 ALERT!
                                </span>
                              )}
                            </div>
@@ -1009,7 +1114,7 @@ const App = () => {
                       <td className="px-8 py-6 text-sm font-black text-slate-800 uppercase tracking-widest">{a.konum}</td>
                       <td className="px-8 py-6 text-center">
                          <div className="font-black text-3xl text-blue-600 tracking-tighter">
-                            {formatToHHMM(a.faydaliSaat)}
+                            {a.tip === 'T-70' ? (a.bakimKalanSaat || '-') : formatToHHMM(a.faydaliSaat)}
                          </div>
                       </td>
                       <td className="px-8 py-6" onDoubleClick={() => historicalFleet === null && toggleNote(a.kuyrukNo)}>
@@ -1045,7 +1150,7 @@ const App = () => {
           }}
         />
       )}
-      {isAdminOpen && <AdminPanel notifications={notifications} initialData={fleet} onSave={(configs, data) => handleSyncFromExcel(data, configs[0].aircraftType)} onOverride={handleManualOverride} onClose={() => setIsAdminOpen(false)} />}
+      {isAdminOpen && <AdminPanel notifications={notifications} initialData={fleet} onSave={(configs, data) => handleSyncFromExcel(data, configs?.[0]?.aircraftType || 'GENEL')} onOverride={handleManualOverride} onClose={() => setIsAdminOpen(false)} />}
       
       {pendingAction && (
         <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">
@@ -1101,6 +1206,96 @@ const App = () => {
       )}
 
       <GovdeSorgulaModal isOpen={isGovdeSorguOpen} onClose={() => setIsGovdeSorguOpen(false)} />
+
+      {/* Intra-Day Activity Modal */}
+      {showIntraDayModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[500] p-4">
+          <div className="bg-[#052e16] w-full max-w-md p-10 rounded-[3rem] border border-green-800/40 shadow-2xl">
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <h3 className="text-white font-black text-2xl tracking-tighter uppercase">GÜN İÇİ FAALİYET KAYDI</h3>
+                <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mt-1">Faaliyet Log Girişi</p>
+              </div>
+              <button onClick={() => setShowIntraDayModal(false)} className="text-emerald-500 hover:text-white transition-colors">
+                <X className="w-8 h-8" />
+              </button>
+            </div>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 ml-2">HAVA ARACI SEÇİNİZ</label>
+                <select 
+                  className="w-full px-6 py-4 bg-black/40 border border-green-900/40 rounded-2xl text-white font-bold outline-none focus:border-emerald-500 transition-all appearance-none"
+                  onChange={(e) => setSelectedAircraftForIntraDay(fleet.find(a => a.kuyrukNo === e.target.value) || null)}
+                  value={selectedAircraftForIntraDay?.kuyrukNo || ''}
+                >
+                  <option value="" className="bg-emerald-950">Seçiniz...</option>
+                  {fleet.map(a => (
+                    <option key={a.kuyrukNo} value={a.kuyrukNo} className="bg-emerald-950">{a.kuyrukNo} - {a.tip}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 ml-2">BAŞLANGIÇ SAATİ</label>
+                  <input 
+                    type="time" 
+                    className="w-full px-6 py-4 bg-black/40 border border-green-900/40 rounded-2xl text-white font-bold outline-none focus:border-emerald-500 transition-all"
+                    value={intraDayStartTime}
+                    onChange={(e) => setIntraDayStartTime(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 ml-2">BİTİŞ SAATİ</label>
+                  <input 
+                    type="time" 
+                    className="w-full px-6 py-4 bg-black/40 border border-green-900/40 rounded-2xl text-white font-bold outline-none focus:border-emerald-500 transition-all"
+                    value={intraDayEndTime}
+                    onChange={(e) => setIntraDayEndTime(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 ml-2">DURUM</label>
+                <select 
+                  className="w-full px-6 py-4 bg-black/40 border border-green-900/40 rounded-2xl text-white font-bold outline-none focus:border-emerald-500 transition-all appearance-none"
+                  value={intraDayStatus}
+                  onChange={(e) => setIntraDayStatus(e.target.value as DailyStatusCode)}
+                >
+                  <option value="F" className="bg-emerald-950">FAAL</option>
+                  <option value="A" className="bg-emerald-950">ARIZA</option>
+                  <option value="B" className="bg-emerald-950">BAKIM</option>
+                  <option value="BB" className="bg-emerald-950">BAKIM BEKLER</option>
+                  <option value="KM" className="bg-emerald-950">KABUL MUAYENESİ</option>
+                  <option value="PB" className="bg-emerald-950">PARÇA BEKLER</option>
+                  <option value="KK" className="bg-emerald-950">KAZA KIRIM</option>
+                  <option value="X" className="bg-emerald-950">OLMADIĞI GÜNLER</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 ml-2">AÇIKLAMA / NOT</label>
+                <textarea 
+                  className="w-full px-6 py-4 bg-black/40 border border-green-900/40 rounded-2xl text-white font-bold outline-none focus:border-emerald-500 transition-all h-24 resize-none"
+                  value={intraDayDescription}
+                  onChange={(e) => setIntraDayDescription(e.target.value)}
+                  placeholder="Faaliyet detayı giriniz..."
+                />
+              </div>
+
+              <button 
+                onClick={handleSaveIntraDay}
+                disabled={isSavingIntraDay}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-black py-5 rounded-2xl transition-all shadow-xl shadow-emerald-900/40 uppercase tracking-widest text-xs"
+              >
+                {isSavingIntraDay ? 'KAYDEDİLİYOR...' : 'FAALİYETİ KAYDET'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };

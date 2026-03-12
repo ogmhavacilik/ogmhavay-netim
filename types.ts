@@ -75,6 +75,7 @@ export interface Aircraft {
   bakim120H?: string;
   bakim480H?: string;
   bakimTakvimTarih?: string;
+  bakimKalanSaat?: string;
 
   // B-360 & C-650 Special Fields
   bakim200H?: string;
@@ -87,6 +88,8 @@ export interface AircraftActivity {
   cagriKodu: string;
   tip: string;
   dailyStatuses: { [dateStr: string]: DailyStatusCode };
+  hourlyStatuses?: { [dateStr: string]: { [hour: string]: DailyStatusCode } };
+  intraDayCompletions?: { [dateStr: string]: boolean };
 }
 
 export interface SheetMapping {
@@ -122,6 +125,7 @@ export interface SheetMapping {
   bakim120H?: string;
   bakim480H?: string;
   bakimTakvimTarih?: string;
+  bakimKalanSaat?: string;
 
   // B-360 & C-650 mappings
   bakim200H?: string;

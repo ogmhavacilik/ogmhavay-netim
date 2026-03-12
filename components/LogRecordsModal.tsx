@@ -5,6 +5,8 @@ import * as XLSX from 'xlsx';
 
 import { BELL_SCRIPT_URL, AT802_SCRIPT_URL, T70_SCRIPT_URL, B360_SCRIPT_URL, C650_SCRIPT_URL } from '../constants';
 
+import { exportOPLToPDF } from '../services/pdfService';
+
 interface LogRecordsModalProps {
   aircraft: Aircraft;
   onClose: () => void;
@@ -16,6 +18,86 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadComplete, setUploadComplete] = useState<boolean>(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+
+  const exportTableToMHTML = (tableId: string, fileName: string) => {
+    const table = document.getElementById(tableId);
+    if (!table) return;
+
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Sheet1</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+        <style>
+          table { border-collapse: collapse; width: 100%; }
+          th, td { border: 1px solid black; padding: 5px; font-family: Arial; font-size: 10pt; }
+          th { background-color: #ddeaf6; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        ${table.outerHTML}
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${fileName}.xls`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const exportOPLToExcel = () => {
+    if (!filteredData || filteredData.length === 0) return;
+
+    const requestedHeaders = [
+      "SIRA NU:",
+      "HAVA ARACI NU:",
+      "ÖMÜR TİPİ",
+      "PARÇA ADI",
+      "ANA PARÇA",
+      "PARÇA NU:",
+      "SERİ NU:",
+      "ÖMRÜ",
+      "DEĞİŞİME KALAN SAAT",
+      "DEĞİŞİME KALAN GÜN",
+      "DEĞİŞİME KALAN SAYKIL",
+      "DEĞİŞİM YAPILACAK HAVA ARACI / MOTOR UÇUŞ SAATİ",
+      "DEĞİŞİM YAPILACAK GÜN"
+    ];
+
+    const exportData = filteredData.map(row => {
+      const newRow: any = {};
+      requestedHeaders.forEach(header => {
+        const normalize = (s: string) => s.replace(/[:\s_]/g, '').toUpperCase();
+        const normalizedHeader = normalize(header);
+        
+        const key = Object.keys(row).find(k => normalize(k) === normalizedHeader);
+        let value = key ? row[key] : "-";
+
+        // Özel durumlar
+        if (header === "HAVA ARACI NU:" && (value === "-" || !value)) {
+          value = aircraft.kuyrukNo;
+        }
+        
+        // Birleşik hücre kontrolü (Sıra No kolonuna ekle)
+        if (header === "SIRA NU:" && row['IS_MERGED_RECORD'] === 'BİRLEŞİK') {
+          value = `BİRLEŞİK ${value === "-" ? "" : value}`.trim();
+        }
+
+        newRow[header] = value;
+      });
+      return newRow;
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "ÖPL Listesi");
+    XLSX.writeFile(workbook, `${aircraft.kuyrukNo}_OPL_Listesi.xlsx`);
+  };
+
   const [oplData, setOplData] = useState<OPLItem[]>([]);
   const [dynamicHeaders, setDynamicHeaders] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -95,10 +177,16 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
           setUploadProgress(10);
           const base64String = (event.target?.result as string).split(',')[1];
 
-          const scriptUrl = SCRIPT_URLS[aircraft.tip || 'AT-802'];
+          // Her hava aracının Excel formatı farklı olsa da, "replaceEntireSpreadsheet" işlemi 
+          // tüm dosyayı (formatı, formülleri ve sayfalarıyla birlikte) olduğu gibi Google Sheets'e yazar.
+          // Ancak diğer scriptlerde (Bell, T70 vb.) "Drive API" yetkisi kapalı olduğu için "Drive is not defined" hatası alınıyor.
+          // Bu yüzden tüm uçakların Excel yükleme işlemini, Drive API yetkisi açık olan AT-802 servisi üzerinden yapıyoruz.
+          // AT-802 servisi, gönderilen sheetId'ye göre ilgili uçağın Excel'ini bulup formatını bozmadan günceller.
+          let uploadScriptUrl = AT802_SCRIPT_URL;
+          
           const sheetId = SHEET_IDS[aircraft.tip || 'AT-802'];
 
-          if (!scriptUrl || !sheetId) {
+          if (!uploadScriptUrl || !sheetId) {
             throw new Error("Bu uçak tipi için yapılandırma bulunamadı.");
           }
 
@@ -114,7 +202,7 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
             });
           }, 500);
 
-          const response = await fetch(scriptUrl, {
+          const response = await fetch(uploadScriptUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'text/plain;charset=utf-8',
@@ -364,9 +452,20 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
              </div>
           ) : (
             <div className="flex flex-col h-full overflow-hidden animate-in fade-in duration-300">
-               <div className="p-6 bg-white border-b flex justify-between items-center">
-                 <button onClick={() => setView('menu')} className="bg-gray-100 px-6 py-2 rounded-xl text-[10px] font-black uppercase">GERİ DÖN</button>
-                 <div className="flex items-center space-x-3">
+                <div className="p-6 bg-white border-b flex justify-between items-center">
+                    <div className="flex items-center space-x-4">
+                      <button onClick={() => setView('menu')} className="bg-gray-100 px-6 py-2 rounded-xl text-[10px] font-black uppercase">GERİ DÖN</button>
+                      {hasOPLSupport && (
+                        <button 
+                          onClick={exportOPLToExcel}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-colors flex items-center space-x-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                          <span>İNDİR</span>
+                        </button>
+                      )}
+                    </div>
+                  <div className="flex items-center space-x-3">
                    <span className="text-[10px] font-black text-emerald-700 uppercase">TABLO İÇİ ARAMA:</span>
                    <input type="text" placeholder="Kelime bazlı süz..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-80 px-4 py-2 bg-gray-50 border rounded-xl text-sm font-bold outline-none focus:border-emerald-500 transition-all shadow-sm" />
                  </div>
@@ -379,8 +478,8 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
                         <span className="text-xs font-black text-emerald-900 uppercase">HÜCRE BİRLEŞTİRMELERİ ÇÖZÜLÜYOR...</span>
                       </div>
                     ) : (
-                      <div className="overflow-auto custom-scrollbar flex-grow bg-white">
-                         <table className="w-full text-left border-collapse min-w-[3000px] table-fixed">
+                      <div className="overflow-auto custom-scrollbar flex-grow bg-white" id="opl-table-container">
+                        <table id="opl-table" className="w-full text-left border-collapse min-w-[3000px] table-fixed">
                            <thead className="sticky top-0 z-20">
                              <tr className="bg-[#ddeaf6]">
                                <th className="px-3 py-4 border border-black text-[9px] font-black uppercase text-center w-28 bg-gray-100">KAYIT DURUMU</th>
