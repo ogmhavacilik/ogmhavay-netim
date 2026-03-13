@@ -11,21 +11,23 @@ export const exportOPLToPDF = async (aircraftTail: string, oplData: any[], dynam
     });
 
     // Başlık ve Bilgiler
+    const cleanTitle = `${aircraftTail} ÖMÜRLÜ PARÇA LİSTESİ (OPL)`.replace(/İ/g, 'I').replace(/ı/g, 'i').replace(/Ş/g, 'S').replace(/ş/g, 's').replace(/Ğ/g, 'G').replace(/ğ/g, 'g').replace(/Ü/g, 'U').replace(/ü/g, 'u').replace(/Ö/g, 'O').replace(/ö/g, 'o');
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text(`${aircraftTail} ÖMÜRLÜ PARÇA LİSTESİ (ÖPL)`, 14, 15);
+    doc.setFontSize(14);
+    doc.text(cleanTitle, 14, 15);
     
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.text(`Rapor Tarihi: ${new Date().toLocaleString('tr-TR')}`, 14, 22);
 
     // PDF'de gösterilecek başlıklar
-    const pdfHeaders = [["DURUM", ...dynamicHeaders]];
+    const pdfHeaders = [["DURUM", ...dynamicHeaders].map(h => h.replace(/İ/g, 'I').replace(/ı/g, 'i').replace(/Ş/g, 'S').replace(/ş/g, 's').replace(/Ğ/g, 'G').replace(/ğ/g, 'g').replace(/Ü/g, 'U').replace(/ü/g, 'u').replace(/Ö/g, 'O').replace(/ö/g, 'o'))];
 
     const body = oplData.map(item => {
       const row = [item['IS_MERGED_RECORD'] || ''];
       dynamicHeaders.forEach(header => {
-        row.push(String(item[header] || '-'));
+        const val = String(item[header] || '-');
+        row.push(val.replace(/İ/g, 'I').replace(/ı/g, 'i').replace(/Ş/g, 'S').replace(/ş/g, 's').replace(/Ğ/g, 'G').replace(/ğ/g, 'g').replace(/Ü/g, 'U').replace(/ü/g, 'u').replace(/Ö/g, 'O').replace(/ö/g, 'o'));
       });
       return row;
     });
@@ -36,8 +38,8 @@ export const exportOPLToPDF = async (aircraftTail: string, oplData: any[], dynam
       body: body,
       theme: 'grid',
       styles: {
-        fontSize: dynamicHeaders.length > 15 ? 5 : 6,
-        cellPadding: 1.5,
+        fontSize: dynamicHeaders.length > 15 ? 7 : 8,
+        cellPadding: 2,
         halign: 'center',
         valign: 'middle',
         font: 'helvetica',
@@ -48,31 +50,15 @@ export const exportOPLToPDF = async (aircraftTail: string, oplData: any[], dynam
         fillColor: [44, 62, 80],
         textColor: 255,
         fontStyle: 'bold',
-        fontSize: 7
+        fontSize: 8
       },
       columnStyles: {
         0: { cellWidth: 15 }, // DURUM
-        1: { halign: 'left', cellWidth: 45 }, // Parça Adı
+        1: { halign: 'left', cellWidth: 50 }, // Parça Adı
       },
       margin: { top: 25, bottom: 20, left: 10, right: 10 },
       didParseCell: (data) => {
-        if (data.section === 'body') {
-          const rowIndex = data.row.index;
-          const item = oplData[rowIndex];
-          
-          if (item && item._hasAlert) {
-            data.cell.styles.fillColor = [153, 27, 27]; // bg-red-800
-            data.cell.styles.textColor = [255, 255, 255];
-            data.cell.styles.fontStyle = 'bold';
-          }
-
-          const headerName = dynamicHeaders[data.column.index - 1];
-          if (item && item._alertCols && item._alertCols.includes(headerName)) {
-            data.cell.styles.fillColor = [185, 28, 28]; // bg-red-700
-            data.cell.styles.textColor = [255, 255, 255];
-            data.cell.styles.fontStyle = 'bold';
-          }
-        }
+        // Red highlighting removed as per user request
       },
       didDrawPage: (data) => {
         doc.setFontSize(8);

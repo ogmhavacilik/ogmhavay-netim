@@ -301,16 +301,48 @@ const App = () => {
     link.click();
   };
 
-  const handleManualOverride = (kuyrukNo: string, newCode: DailyStatusCode) => {
+  const handleManualOverride = async (kuyrukNo: string, newCode: DailyStatusCode) => {
+    const aircraft = fleet.find(a => a.kuyrukNo === kuyrukNo);
+    
     setFleet(prev => prev.map(a => a.kuyrukNo === kuyrukNo ? { ...a, assignedCode: newCode } : a));
     const now = new Date();
     const currentDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const displayDateStr = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()}`;
     
     setActivities(prev => prev.map(act => act.kuyrukNo === kuyrukNo ? {
       ...act,
       dailyStatuses: { ...act.dailyStatuses, [currentDateStr]: newCode }
     } : act));
     
+    // Persist to Google Sheets
+    if (LOG_SCRIPT_URL) {
+      try {
+        console.log(`Sending updateLogEntry for ${kuyrukNo} with code ${newCode} on ${displayDateStr}`);
+        const res = await fetch(LOG_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'updateLogEntry',
+            sheetId: MAIL_LOG_SHEET_ID,
+            kuyrukNo: kuyrukNo,
+            date: displayDateStr,
+            newCode: newCode,
+            tip: aircraft?.tip || '',
+            durum: aircraft?.durumAyrintisi || 'MANUEL GÜNCELLEME'
+          })
+        });
+        const result = await res.json();
+        console.log("Update log response:", result);
+        if (result.success) {
+          console.log(`Log updated successfully for ${kuyrukNo}`);
+        } else {
+          console.error(`Log update failed: ${result.message}`);
+        }
+      } catch (err) {
+        console.error("Error updating log entry:", err);
+      }
+    }
+
     setNotifications(prev => [{
       id: Math.random().toString(36).substr(2, 9),
       platform: 'MANUEL',
@@ -424,10 +456,14 @@ const App = () => {
       
       const logData = result.data?.faaliyetLog || [];
       const intraDayData = result.data?.intraDayLog || [];
+      console.log(`Processing ${logData.length} daily logs and ${intraDayData.length} intra-day logs`);
 
       setActivities(prevActivities => {
         const activityMap = new Map<string, AircraftActivity>();
-        prevActivities.forEach(act => activityMap.set(act.kuyrukNo, { ...act }));
+        // Mevcut aktiviteleri haritaya ekle
+        prevActivities.forEach(act => {
+          activityMap.set(act.kuyrukNo, { ...act });
+        });
 
         const now = new Date();
         const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -444,6 +480,7 @@ const App = () => {
 
             let dayNum = -1, monthNum = -1, yearNum = -1;
             
+            // Tarih formatlarını dene
             if (tarihStr.includes('T') || (tarihStr.includes('-') && !tarihStr.includes('.'))) {
               const d = new Date(tarihStr);
               if (!isNaN(d.getTime())) {
@@ -454,6 +491,7 @@ const App = () => {
             } else if (tarihStr.includes('/')) {
               const parts = tarihStr.split('/');
               if (parts.length === 3) {
+                // TR formatı varsay (DD/MM/YYYY)
                 dayNum = parseInt(parts[0], 10);
                 monthNum = parseInt(parts[1], 10) - 1;
                 yearNum = parseInt(parts[2], 10);
@@ -470,28 +508,34 @@ const App = () => {
             if (dayNum !== -1) {
               const dateStrKey = `${yearNum}-${String(monthNum + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
               
-              if (dateStrKey !== todayStr) {
-                let code: DailyStatusCode = 'F';
-                if (analizKodu) {
-                  code = analizKodu as DailyStatusCode;
-                } else {
-                  if (durumAyrintisi.includes('BAKIM')) code = 'B';
-                  else if (durumAyrintisi.includes('ARIZA') || durumAyrintisi.includes('PARÇA BEKLER') || durumAyrintisi.includes('KAZA KIRIM')) code = 'A';
-                  else if (durumAyrintisi.includes('OLMADIĞI GÜNLER')) code = 'X';
-                  else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') code = 'B';
-                }
+              // Bugünün verisini logdan değil, canlı veriden alıyoruz (ancak logda varsa ve canlıda yoksa eklenebilir)
+              let code: DailyStatusCode = 'F';
+              if (analizKodu) {
+                code = analizKodu as DailyStatusCode;
+              } else {
+                if (durumAyrintisi.includes('BAKIM')) code = 'B';
+                else if (durumAyrintisi.includes('ARIZA') || durumAyrintisi.includes('PARÇA BEKLER') || durumAyrintisi.includes('KAZA KIRIM')) code = 'A';
+                else if (durumAyrintisi.includes('OLMADIĞI GÜNLER')) code = 'X';
+                else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') code = 'B';
+              }
 
-                let act = activityMap.get(kuyrukNo);
-                if (act) {
-                  act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
+              let act = activityMap.get(kuyrukNo);
+              if (act) {
+                // Eğer bugün ise ve zaten bir kod varsa (canlı veriden gelen), logdaki kodu sadece analizKodu varsa ez
+                if (dateStrKey === todayStr) {
+                  if (analizKodu) {
+                    act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
+                  }
                 } else {
-                  activityMap.set(kuyrukNo, {
-                    kuyrukNo: kuyrukNo,
-                    cagriKodu: getCallSignByTail(kuyrukNo),
-                    tip: logEntry.tip || 'Bilinmiyor',
-                    dailyStatuses: { [dateStrKey]: code }
-                  });
+                  act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
                 }
+              } else {
+                activityMap.set(kuyrukNo, {
+                  kuyrukNo: kuyrukNo,
+                  cagriKodu: getCallSignByTail(kuyrukNo),
+                  tip: logEntry.tip || 'Bilinmiyor',
+                  dailyStatuses: { [dateStrKey]: code }
+                });
               }
             }
           } catch (err) {
@@ -877,6 +921,25 @@ const App = () => {
     }
   };
 
+  const syncLogs = async () => {
+    setIsSyncing(true);
+    try {
+      const response = await fetch(`${AT802_SCRIPT_URL}?action=sync`);
+      const result = await response.json();
+      if (result.success) {
+        alert('Log senkronizasyonu başarıyla tamamlandı.');
+        runGlobalSync(); // Refresh data
+      } else {
+        alert('Senkronizasyon hatası: ' + result.message);
+      }
+    } catch (error) {
+      console.error('Sync error:', error);
+      alert('Senkronizasyon sırasında bir hata oluştu.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   if (isSplashVisible) return <SplashScreen onComplete={() => setIsSplashVisible(false)} />;
 
   if (currentView === 'landing') {
@@ -1150,7 +1213,7 @@ const App = () => {
           }}
         />
       )}
-      {isAdminOpen && <AdminPanel notifications={notifications} initialData={fleet} onSave={(configs, data) => handleSyncFromExcel(data, configs?.[0]?.aircraftType || 'GENEL')} onOverride={handleManualOverride} onClose={() => setIsAdminOpen(false)} />}
+      {isAdminOpen && <AdminPanel notifications={notifications} initialData={fleet} onSave={(configs, data) => handleSyncFromExcel(data, configs?.[0]?.aircraftType || 'GENEL')} onOverride={handleManualOverride} onSyncLogs={syncLogs} onClose={() => setIsAdminOpen(false)} />}
       
       {pendingAction && (
         <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">

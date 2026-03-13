@@ -22,14 +22,15 @@ const Dashboard: React.FC<DashboardProps> = ({ fleet }) => {
     chartData.push({ name: 'Parça Bekler', value: parcaBekler, color: '#f97316' }); // Orange 500
   }
 
-  const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }: any) => {
-    if (percent === 0) return null;
+  const renderCustomizedLabel = (props: any) => {
+    const { cx, cy, midAngle, innerRadius, outerRadius, percent, payload } = props;
+    if (!percent || percent === 0 || !payload || !payload.color) return null;
     const radius = outerRadius * 1.2;
     const x = cx + radius * Math.cos(-midAngle * Math.PI / 180);
     const y = cy + radius * Math.sin(-midAngle * Math.PI / 180);
 
     return (
-      <text x={x} y={y} fill={chartData[index].color} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize={11} fontWeight="900">
+      <text x={x} y={y} fill={payload.color} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize={11} fontWeight="900">
         {`${(percent * 100).toFixed(0)}%`}
       </text>
     );
@@ -64,7 +65,7 @@ const Dashboard: React.FC<DashboardProps> = ({ fleet }) => {
               labelLine={false}
             >
               {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                entry && entry.color ? <Cell key={`cell-${index}`} fill={entry.color} stroke="none" /> : null
               ))}
             </Pie>
             <Tooltip 

@@ -81,7 +81,7 @@ export interface Aircraft {
   bakim200H?: string;
 }
 
-export type DailyStatusCode = 'B' | 'BB' | 'KM' | 'A' | 'PB' | 'KK' | 'X' | 'F' | '';
+export type DailyStatusCode = 'B' | 'BB' | 'KM' | 'A' | 'PB' | 'KK' | 'X' | 'F' | 'TB' | '';
 
 export interface AircraftActivity {
   kuyrukNo: string;

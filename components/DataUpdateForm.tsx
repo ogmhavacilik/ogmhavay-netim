@@ -403,6 +403,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                               <option value="PARÇA BEKLER">PARÇA BEKLER</option>
                               <option value="KAZA KIRIM">KAZA KIRIM</option>
                               <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
+                              <option value="TECRÜBE BEKLER">TECRÜBE BEKLER</option>
                             </datalist>
                           </div>
                         </>
@@ -481,6 +482,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                               <option value="PARÇA BEKLER">PARÇA BEKLER</option>
                               <option value="KAZA KIRIM">KAZA KIRIM</option>
                               <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
+                              <option value="TECRÜBE BEKLER">TECRÜBE BEKLER</option>
                             </datalist>
                           </div>
                         </>
@@ -555,6 +557,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                               <option value="PARÇA BEKLER">PARÇA BEKLER</option>
                               <option value="KAZA KIRIM">KAZA KIRIM</option>
                               <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
+                              <option value="TECRÜBE BEKLER">TECRÜBE BEKLER</option>
                             </datalist>
                           </div>
                         </>
@@ -684,6 +687,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                                   <option value="PARÇA BEKLER">PARÇA BEKLER</option>
                                   <option value="KAZA KIRIM">KAZA KIRIM</option>
                                   <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
+                                  <option value="TECRÜBE BEKLER">TECRÜBE BEKLER</option>
                                 </datalist>
                               </div>
                             </>

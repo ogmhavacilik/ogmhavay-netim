@@ -12,30 +12,44 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   const durumStr = String(item.durum || '').toLocaleUpperCase('tr-TR').trim();
   const fullText = `${detail} ${desc} ${durumStr.toLocaleLowerCase('tr-TR')}`;
 
-  if (fullText.includes('kabul muayenelerı') || fullText.includes('kabul muayeneleri')) {
+  // KABUL MUAYENESİ -> KM
+  if (fullText.includes('kabul muayenelerı') || fullText.includes('kabul muayeneleri') || fullText.includes('kabul mua')) {
     return { code: 'KM', interpretation: 'KABUL MUAYENESİ' };
   }
 
+  // KAZA KIRIM -> KK
   if (fullText.includes('kaza') || fullText.includes('kırım') || fullText.includes('hasar')) 
     return { code: 'KK', interpretation: 'KAZA KIRIM' };
 
+  // PARÇA BEKLER -> PB (Öncelikli)
   if (fullText.includes('parça') && (fullText.includes('bekle') || fullText.includes('sipariş'))) {
     return { code: 'PB', interpretation: 'PARÇA BEKLER' };
   }
   
+  // TECRÜBE BEKLER -> TB
+  if (fullText.includes('tecrübe') || fullText.includes('tecrube') || fullText.includes('test')) {
+    if (detail.includes('test uçuşu') || detail.includes('test/tecrübe') || detail.includes('test/tecrube')) {
+      return { code: 'TB', interpretation: 'TECRÜBE BEKLER' };
+    }
+  }
+
+  // BAKIM BEKLER -> BB
   if (fullText.includes('bakım') || fullText.includes('yıllık') || fullText.includes('periyodik') || /\b\d+h\b/.test(fullText)) {
-    if (fullText.includes('bekliyor') || fullText.includes('sıra')) {
+    if (fullText.includes('bekliyor') || fullText.includes('bekler') || fullText.includes('sıra') || fullText.includes('sira')) {
       return { code: 'BB', interpretation: 'BAKIM BEKLER' };
     }
   }
 
-  if (fullText.includes('arıza') || fullText.includes('problem')) 
+  // ARIZA -> A
+  if (fullText.includes('arıza') || fullText.includes('ariza') || fullText.includes('problem')) 
     return { code: 'A', interpretation: 'ARIZA' };
 
+  // BAKIM -> B
   if (fullText.includes('bakım') || fullText.includes('yıllık') || fullText.includes('periyodik') || /\b\d+h\b/.test(fullText)) {
     return { code: 'B', interpretation: 'BAKIM' };
   }
 
+  // GAYRİ FAAL -> X (Eğer yukarıdakilerden hiçbiri değilse ama durum Gayri Faal ise)
   const isGayriFaalExplicit = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('G.FAAL');
   if (isGayriFaalExplicit) return { code: 'X', interpretation: 'OLMADIĞI GÜNLER' };
 

@@ -9,6 +9,7 @@ function doPost(e) {
     var params = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.openById(params.sheetId);
     var action = (params.action || "getAircraftData").toString().trim();
+    var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
 
     // -----------------------------------------------------
     // 🔵 AKSİYON: ÖPL VERİSİ (ARŞİV) SORGULAMA
@@ -106,9 +107,10 @@ function doPost(e) {
     // 🟠 AKSİYON: GÜN İÇİ FAALİYET KAYDI
     // -----------------------------------------------------
     if (action === "saveIntraDayActivity") {
-      var logSheet = findSheet(ss, "Gün İçi Faaliyet Log");
+      var logSs = SpreadsheetApp.openById(logSsId);
+      var logSheet = findSheet(logSs, "Gün İçi Faaliyet Log");
       if (!logSheet) {
-        logSheet = ss.insertSheet("Gün İçi Faaliyet Log");
+        logSheet = logSs.insertSheet("Gün İçi Faaliyet Log");
         logSheet.appendRow(["ID", "TARİH", "KUYRUK NO", "TİP", "BAŞLANGIÇ SAATİ", "BİTİŞ SAATİ", "DURUM", "AÇIKLAMA", "KAYIT TARİHİ"]);
         logSheet.getRange("A1:I1").setFontWeight("bold").setBackground("#fce5cd").setBorder(true, true, true, true, true, true);
       }
@@ -152,8 +154,9 @@ function doPost(e) {
 
     // 🔵 AKSİYON: FAALİYET LOGU ÇEKME
     if (action === "getFaaliyetLog") {
-      var faalLogSheet = findSheet(ss, "Faaliyet Log");
-      var intraDaySheet = findSheet(ss, "Gün İçi Faaliyet Log");
+      var logSs = SpreadsheetApp.openById(logSsId);
+      var faalLogSheet = findSheet(logSs, "Faaliyet Log");
+      var intraDaySheet = findSheet(logSs, "Gün İçi Faaliyet Log");
       
       var results = [];
       if (faalLogSheet) {
@@ -211,21 +214,38 @@ function doPost(e) {
       });
     }
 
-    // 🔵 AKSİYON: SİSTEM LOGLARI (ENVANTER VE FAALİYET) - GERÇEK ZAMANLI GÜNCELLEME
-    if (action === "saveSystemLogs" || action === "saveLogs" || action === "updateLogEntry") {
-      var fleetData = params.fleetData;
-      if (!fleetData) {
-        // Tekil uçak güncelleniyorsa diziye çevir
-        if (params.aircraft) fleetData = [params.aircraft];
-      }
-      if (!fleetData || fleetData.length === 0) return jsonError("Log verisi boş.");
-      
-      // LOGLARI HER ZAMAN MERKEZİ LOG TABLOSUNA YAZ (Platform dosyasına değil)
-      var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
+    // 🔵 AKSİYON: LOG GÜNCELLEME (Analiz Kodu vb.)
+    if (action === "updateLogEntry") {
       var logSs = SpreadsheetApp.openById(logSsId);
-      saveLogsToSheets(logSs, fleetData);
-      return jsonSuccess("Loglar güncellendi.");
+      var faalLogSheet = findSheet(logSs, "Faaliyet Log");
+      if (!faalLogSheet) return jsonError("Faaliyet Log sayfası bulunamadı.");
+
+      var kuyrukNo = params.kuyrukNo;
+      var dateStr = params.date; // dd.MM.yyyy
+      var newCode = params.newCode;
+      var id = dateStr + "_" + kuyrukNo;
+
+      var data = faalLogSheet.getRange("A:A").getValues();
+      for (var i = 1; i < data.length; i++) {
+        if (data[i][0] == id) {
+          faalLogSheet.getRange(i + 1, 6).setValue(newCode);
+          return jsonSuccess("Log güncellendi.");
+        }
+      }
+      
+      // Eğer log yoksa yeni satır ekle (Bugün için manuel override yapılmış olabilir)
+      var bugun = new Date();
+      var bugunStr = Utilities.formatDate(bugun, Session.getScriptTimeZone(), "dd.MM.yyyy");
+      if (dateStr === bugunStr) {
+        faalLogSheet.appendRow([id, dateStr, kuyrukNo, params.tip || "", params.durum || "MANUEL GÜNCELLEME", newCode]);
+        return jsonSuccess("Yeni log girişi oluşturuldu.");
+      }
+
+      return jsonError("Güncellenecek log kaydı bulunamadı: " + id);
     }
+
+    // 🔵 AKSİYON: SİSTEM LOGLARI (ENVANTER VE FAALİYET) - GERÇEK ZAMANLI GÜNCELLEME
+    // BU BLOK KULLANICI İSTEĞİ ÜZERİNE KALDIRILDI. LOGLAR SADECE GECE YARISI VEYA GÜN İÇİ FAALİYET İLE KAYDEDİLECEK.
 
     if (action === "getMailRecipients") {
       var mailSheet = findSheet(ss, "mail log");
@@ -707,7 +727,7 @@ function getSheetAsExcel(ssId, name) {
  * Gece yarısı otomatik loglama yapan fonksiyon.
  * Bu fonksiyonun her gece 00:00 - 01:00 arasında çalışacak şekilde tetiklenmesi gerekir.
  */
-function performDailyMidnightLogging() {
+function syncFleetToLogs() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var platformConfigs = [
     { type: 'Bell-429', id: '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ', range: 'A3:O8', map: {kNo:0, durum:12, detail:13, desc:14, loc:11, gHour:4, fHour:8} },
@@ -748,13 +768,15 @@ function performDailyMidnightLogging() {
   });
 
   if (fleetData.length > 0) {
-    saveLogsToSheets(ss, fleetData);
-    console.log("Daily midnight logs saved successfully. Total aircraft: " + fleetData.length);
+    var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
+    var logSs = SpreadsheetApp.openById(logSsId);
+    saveLogsToSheets(logSs, fleetData);
+    console.log("Fleet logs synced successfully to central sheet. Total aircraft: " + fleetData.length);
   }
 }
 
 function analyzeStatusGS(item) {
-  if (!item) return 'F: FAAL';
+  if (!item) return 'F';
   
   var toLowerTR = function(s) {
     return String(s || '').replace(/I/g, 'ı').replace(/İ/g, 'i').toLowerCase().trim();
@@ -765,33 +787,49 @@ function analyzeStatusGS(item) {
   var durumStr = String(item.durum || '').replace(/i/g, 'İ').replace(/ı/g, 'I').toUpperCase().trim();
   var fullText = detail + " " + desc + " " + toLowerTR(item.durum);
 
-  if (fullText.indexOf('kabul muayenelerı') !== -1 || fullText.indexOf('kabul muayeneleri') !== -1) {
-    return 'KM: KABUL MUAYENESİ';
-  }
-  if (fullText.indexOf('kaza') !== -1 || fullText.indexOf('kırım') !== -1 || fullText.indexOf('kirim') !== -1 || fullText.indexOf('hasar') !== -1) 
-    return 'KK: KAZA KIRIM';
-  if (fullText.indexOf('parça') !== -1 && (fullText.indexOf('bekle') !== -1 || fullText.indexOf('sipariş') !== -1 || fullText.indexOf('siparis') !== -1)) {
-    return 'PB: PARÇA BEKLER';
-  }
-  if (fullText.indexOf('bekliyor') !== -1 || fullText.indexOf('sıra') !== -1 || fullText.indexOf('sira') !== -1) {
-    if (fullText.indexOf('bakım') !== -1 || fullText.indexOf('bakim') !== -1) return 'BB: BAKIM BEKLER';
+  // KABUL MUAYENESİ -> KM
+  if (fullText.indexOf('kabul muayenelerı') !== -1 || fullText.indexOf('kabul muayeneleri') !== -1 || fullText.indexOf('kabul mua') !== -1) {
+    return 'KM';
   }
 
-  // ARIZA/PROBLEM -> A
+  // KAZA KIRIM -> KK
+  if (fullText.indexOf('kaza') !== -1 || fullText.indexOf('kırım') !== -1 || fullText.indexOf('kirim') !== -1 || fullText.indexOf('hasar') !== -1) 
+    return 'KK';
+
+  // PARÇA BEKLER -> PB (Öncelikli)
+  if (fullText.indexOf('parça') !== -1 && (fullText.indexOf('bekle') !== -1 || fullText.indexOf('sipariş') !== -1 || fullText.indexOf('siparis') !== -1)) {
+    return 'PB';
+  }
+
+  // TECRÜBE BEKLER -> TB
+  if (fullText.indexOf('tecrübe') !== -1 || fullText.indexOf('tecrube') !== -1 || fullText.indexOf('test') !== -1) {
+    if (detail.indexOf('test uçuşu') !== -1 || detail.indexOf('test/tecrübe') !== -1 || detail.indexOf('test/tecrube') !== -1) {
+      return 'TB';
+    }
+  }
+
+  // BAKIM BEKLER -> BB
+  if (fullText.indexOf('bakım') !== -1 || fullText.indexOf('bakim') !== -1 || fullText.indexOf('yıllık') !== -1 || fullText.indexOf('yillik') !== -1 || fullText.indexOf('periyodik') !== -1 || /\b\d+h\b/.test(fullText)) {
+    if (fullText.indexOf('bekliyor') !== -1 || fullText.indexOf('bekler') !== -1 || fullText.indexOf('sıra') !== -1 || fullText.indexOf('sira') !== -1) {
+      return 'BB';
+    }
+  }
+
+  // ARIZA -> A
   if (fullText.indexOf('arıza') !== -1 || fullText.indexOf('ariza') !== -1 || fullText.indexOf('problem') !== -1) {
-    return 'A: ARIZA';
+    return 'A';
   }
 
   // BAKIM -> B
   if (fullText.indexOf('bakım') !== -1 || fullText.indexOf('bakim') !== -1 || fullText.indexOf('yıllık') !== -1 || fullText.indexOf('yillik') !== -1 || fullText.indexOf('periyodik') !== -1 || /\b\d+h\b/.test(fullText)) {
-    return 'B: BAKIM';
+    return 'B';
   }
 
-  // GAYRİ FAAL -> X
+  // GAYRİ FAAL -> X (Eğer yukarıdakilerden hiçbiri değilse ama durum Gayri Faal ise)
   var isGayriFaalExplicit = durumStr.indexOf('GAYRİ') !== -1 || durumStr.indexOf('GAYRI') !== -1 || durumStr.indexOf('G.FAAL') !== -1;
-  if (isGayriFaalExplicit) return 'X: OLMADIĞI GÜNLER';
+  if (isGayriFaalExplicit) return 'X';
 
-  return 'F: FAAL';
+  return 'F';
 }
 
 function saveLogsToSheets(ss, fleetData) {
@@ -810,6 +848,8 @@ function saveLogsToSheets(ss, fleetData) {
   }
 
   var bugun = new Date();
+  // Gece yarısı çalıştığında bir önceki günün logunu tutması daha mantıklı olabilir
+  // Ancak kullanıcı listesinde 13.03.2026 gördüğü için şimdilik bugünü kullanıyoruz.
   var tarihStr = Utilities.formatDate(bugun, Session.getScriptTimeZone(), "dd.MM.yyyy");
   
   // Mevcut ID'leri ve satır numaralarını al (Hızlı güncelleme için)
@@ -1313,26 +1353,43 @@ function generateFormattedFaaliyetExcel(ssId) {
   }
 }
 
-function setupMidnightTrigger() {
+function setupTriggers() {
   var triggers = ScriptApp.getProjectTriggers();
-  var triggerExists = false;
+  var midnightExists = false;
+  var periodicExists = false;
+  
   for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === 'performDailyMidnightLogging') {
-      triggerExists = true;
-      break;
+    var handler = triggers[i].getHandlerFunction();
+    if (handler === 'syncFleetToLogs') {
+      // We'll manage triggers by name, but since they have same handler, 
+      // we might need to be careful. For simplicity, if any exists, we check.
+      // Actually, let's just clear and recreate to be sure of the schedule.
+      ScriptApp.deleteTrigger(triggers[i]);
     }
   }
   
-  if (!triggerExists) {
-    ScriptApp.newTrigger('performDailyMidnightLogging')
-      .timeBased()
-      .atHour(0)
-      .everyDays(1)
-      .create();
-  }
+  // Midnight Trigger (Daily)
+  ScriptApp.newTrigger('syncFleetToLogs')
+    .timeBased()
+    .atHour(0)
+    .everyDays(1)
+    .create();
+    
+  // Periodic Trigger (Every 15 minutes for intra-day updates)
+  ScriptApp.newTrigger('syncFleetToLogs')
+    .timeBased()
+    .everyMinutes(15)
+    .create();
 }
 
-function doGet() { 
-  setupMidnightTrigger(); // Her erişimde tetikleyiciyi kontrol et
-  return ContentService.createTextOutput("OGM Servis Aktif."); 
+function doGet(e) { 
+  setupTriggers(); // Ensure triggers are set up
+  
+  var action = e.parameter.action;
+  if (action === 'sync') {
+    syncFleetToLogs();
+    return ContentService.createTextOutput("Sync completed successfully.");
+  }
+  
+  return ContentService.createTextOutput("OGM Servis Aktif. Triggers updated."); 
 }

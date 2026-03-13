@@ -43,6 +43,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
       case 'B': case 'BB': case 'KM': return 'bg-[#FFFF00] text-black font-black border-black'; // SARI
       case 'A': case 'PB': case 'KK': return 'bg-[#FF0000] text-white font-black border-black'; // KIRMIZI
       case 'X': return 'bg-[#7030A0] text-white font-black border-black'; // MOR
+      case 'TB': return 'bg-[#40E0D0] text-black font-black border-black'; // TURKUAZ
       case 'F': return 'bg-white text-transparent';
       case '': return 'bg-gray-200 text-transparent'; // Veri yok
       default: return 'bg-white';
@@ -54,6 +55,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
       case 'B': case 'BB': case 'KM': return { backgroundColor: '#FFFF00', color: '#000000' };
       case 'A': case 'PB': case 'KK': return { backgroundColor: '#FF0000', color: '#FFFFFF' };
       case 'X': return { backgroundColor: '#7030A0', color: '#FFFFFF' };
+      case 'TB': return { backgroundColor: '#40E0D0', color: '#000000' };
       case 'F': return { backgroundColor: '#FFFFFF', color: '#FFFFFF' };
       case '': return { backgroundColor: '#e5e7eb', color: 'transparent' }; // Veri yok
       default: return { backgroundColor: '#FFFFFF' };
@@ -301,6 +303,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
            </div>
            <div className="flex flex-col space-y-1">
               <div className="bg-[#7030a0] text-white border border-black px-2 py-1 text-[9px] font-black w-40">X: OLMADIĞI GÜNLER</div>
+              <div className="bg-[#40E0D0] text-black border border-black px-2 py-1 text-[9px] font-black w-40">TB: TECRÜBE BEKLER</div>
            </div>
            <div className="flex flex-col space-y-1">
               <div className="bg-white border border-black px-2 py-1 text-[9px] font-black w-64 flex items-center">

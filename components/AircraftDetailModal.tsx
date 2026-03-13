@@ -413,9 +413,9 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                         {isT70 ? (
                           <>
                             <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                              <td className="px-5 py-4 font-bold text-gray-600 uppercase tracking-tighter">Bakıma Kalan Saat (40 Saat)</td>
+                              <td className="px-5 py-4 font-bold text-gray-600 uppercase tracking-tighter">Bakıma Kalan Saat</td>
                               <td className="px-5 py-4 text-right font-black text-2xl tracking-tighter text-red-600">
-                                {aircraft.bakimKalanSaat || '-'}
+                                {aircraft.bakimKalanSaat ? aircraft.bakimKalanSaat.split(/\n|\s*\/\s*/)[0].trim() : '-'}
                               </td>
                             </tr>
                             {aircraft.maintenanceHours.map((mh, i) => (
@@ -431,7 +431,7 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                             <tr className="border-b last:border-0 border-gray-50 hover:bg-gray-50 transition-colors">
                               <td className="px-5 py-4 font-bold text-gray-600 uppercase tracking-tighter">TAKVİM ESASLI (TARİH): bakıma kalan</td>
                               <td className="px-5 py-4 text-right font-black text-2xl tracking-tighter text-gray-800">
-                                {aircraft.bakimTakvimTarih || '-'}
+                                {aircraft.bakimKalanSaat && aircraft.bakimKalanSaat.split(/\n|\s*\/\s*/).length > 1 ? aircraft.bakimKalanSaat.split(/\n|\s*\/\s*/)[1].trim() : '-'}
                               </td>
                             </tr>
                           </>
