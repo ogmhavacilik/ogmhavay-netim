@@ -226,11 +226,21 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
       ? { ...formData, ...at802Data } 
       : { ...formData };
     
-    // B-360 ve C-650 için boş verilerin silinmesini engelle
+    // B-360 ve C-650 için boş verilerin gönderilmesini engelle
     if (selectedAircraft.tip === 'B-360' || selectedAircraft.tip === 'C-650') {
       Object.keys(finalData).forEach(key => {
         if (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined) {
           delete finalData[key];
+        }
+      });
+    }
+
+    // AT-802 için teknik veriler boşsa gönderme (üzerine yazmasın)
+    if (selectedAircraft.tip === 'AT-802') {
+      const techFields = ['acTT', 'landings', 'starts', 'flights', 'frdsTest', 'motorCalisma'];
+      techFields.forEach(field => {
+        if (finalData[field] === '' || finalData[field] === null || finalData[field] === undefined) {
+          delete finalData[field];
         }
       });
     }
@@ -268,7 +278,9 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
         selectedAircraft.sheetId || '',
         selectedAircraft.kuyrukNo,
         finalData,
-        selectedAircraft.mapping
+        selectedAircraft.mapping,
+        selectedAircraft.sheetName,
+        selectedAircraft.tip
       );
 
       if (result.success) {

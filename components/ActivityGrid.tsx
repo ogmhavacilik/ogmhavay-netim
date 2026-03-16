@@ -64,8 +64,6 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
 
   const calculateRowStats = (activity: AircraftActivity) => {
     let bakim = 0, ariza = 0, olmadi = 0, faal = 0, missing = 0;
-    let effectiveGFaal = 0;
-    let currentStreak = 0;
 
     visibleDates.forEach(date => {
       const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -82,29 +80,15 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
       } else if (s === 'F') {
         faal++;
       }
-
-      if (s && ['B', 'BB', 'KM', 'A', 'PB', 'KK'].includes(s)) {
-        currentStreak++;
-      } else {
-        if (currentStreak >= 3) {
-          effectiveGFaal += currentStreak;
-        }
-        currentStreak = 0;
-      }
     });
-
-    if (currentStreak >= 3) {
-      effectiveGFaal += currentStreak;
-    }
 
     const totalGFaal = bakim + ariza + olmadi;
     const totalFaal = faal;
     
     const baseDays = totalDaysInMonth - olmadi - missing;
-    const effectiveFaal = baseDays - effectiveGFaal;
-    const percentage = baseDays > 0 ? ((effectiveFaal / baseDays) * 100).toFixed(0) : "0";
+    const percentage = baseDays > 0 ? ((totalFaal / baseDays) * 100).toFixed(0) : "0";
     
-    return { bakim, ariza, olmadi, totalGFaal, totalFaal, percentage, effectiveGFaal, missing };
+    return { bakim, ariza, olmadi, totalGFaal, totalFaal, percentage, missing };
   };
 
   // TİP bazlı gruplandırma ve sıralama
@@ -201,7 +185,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
           <tbody>
             {Object.keys(groupedActivities).map((groupName, gIdx) => {
               const groupActs = groupedActivities[groupName];
-              let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupEffectiveGFaal = 0, groupMissing = 0;
+              let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupMissing = 0;
 
               return (
                 <React.Fragment key={gIdx}>
@@ -212,7 +196,6 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                     groupOlmadi += s.olmadi;
                     groupTotalGF += s.totalGFaal;
                     groupTotalF += s.totalFaal;
-                    groupEffectiveGFaal += s.effectiveGFaal;
                     groupMissing += s.missing;
 
                     return (
@@ -278,7 +261,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                       <td className="border border-black text-center bg-[#00b0f0] text-white" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>{groupTotalGF}</td>
                       <td className="border border-black text-center bg-[#ffc000]" style={{ backgroundColor: '#ffc000', color: '#000000' }}>{groupTotalF}</td>
                       <td className="border border-black text-center bg-gray-200" style={{ backgroundColor: '#e5e7eb' }}>
-                        {((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) > 0 ? (((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) - groupEffectiveGFaal) / (groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) * 100).toFixed(0) : "0")}%
+                        {((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) > 0 ? ((groupTotalF) / (groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) * 100).toFixed(0) : "0")}%
                       </td>
                     </tr>
                   )}
@@ -312,11 +295,6 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
               </div>
            </div>
         </div>
-        {!isHourlyView && (
-          <div className="text-[10px] font-bold text-red-600">
-            ** 3 güne kadar olan gayrı faal durumlar (B, BB, KM, A, PB, KK) faaliyet oranına yansıtılmamıştır.
-          </div>
-        )}
         <div className="text-[10px] font-bold text-gray-500 mt-1 flex items-center">
           <div className="w-3 h-3 bg-gray-200 border border-gray-300 mr-2 inline-block"></div>
           Soluk alanlar veri tabanında bulunmamaktadır.

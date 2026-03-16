@@ -77,7 +77,7 @@ const App = () => {
     try {
       const response = await fetch(LOG_SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
           action: 'saveIntraDayActivity',
           data: {
@@ -320,7 +320,7 @@ const App = () => {
         console.log(`Sending updateLogEntry for ${kuyrukNo} with code ${newCode} on ${displayDateStr}`);
         const res = await fetch(LOG_SCRIPT_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({
             action: 'updateLogEntry',
             sheetId: MAIL_LOG_SHEET_ID,
@@ -442,7 +442,7 @@ const App = () => {
     try {
       const res = await fetch(LOG_SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ 
           action: 'getFaaliyetLog',
           sheetId: MAIL_LOG_SHEET_ID
@@ -742,7 +742,7 @@ const App = () => {
       try {
         const res = await fetch(LOG_SCRIPT_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({
             action: 'getAircraftData',
             sheetId: MAIL_LOG_SHEET_ID,

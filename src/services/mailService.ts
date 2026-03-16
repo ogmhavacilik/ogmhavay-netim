@@ -15,7 +15,7 @@ export const getMailRecipients = async (): Promise<MailRecipient[]> => {
   try {
     const response = await fetch(LOG_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'getMailRecipients',
         sheetId: MAIL_LOG_SHEET_ID
@@ -44,7 +44,7 @@ export const saveMailRecipient = async (recipient: Partial<MailRecipient>): Prom
   try {
     const response = await fetch(LOG_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'saveMailRecipient',
         sheetId: MAIL_LOG_SHEET_ID,
@@ -65,7 +65,7 @@ export const deleteMailRecipient = async (id: string): Promise<boolean> => {
   try {
     const response = await fetch(LOG_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'deleteMailRecipient',
         sheetId: MAIL_LOG_SHEET_ID,
@@ -86,7 +86,7 @@ export const sendManualEmail = async (id: string, customAttachments?: { name: st
   try {
     const response = await fetch(LOG_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'sendManualEmail',
         sheetId: MAIL_LOG_SHEET_ID,
@@ -108,7 +108,7 @@ export const testMail = async (email: string): Promise<{ success: boolean; messa
   try {
     const response = await fetch(LOG_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'testMail',
         sheetId: MAIL_LOG_SHEET_ID,

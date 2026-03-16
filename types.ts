@@ -49,6 +49,7 @@ export interface Aircraft {
   assignedCode?: DailyStatusCode;
   aiInterpretation?: string;
   sheetId?: string;
+  sheetName?: string;
   appsScriptUrl?: string;
   mapping?: SheetMapping;
   oplAlerts?: string[];
@@ -117,6 +118,8 @@ export interface SheetMapping {
   landings?: string;
   engineStarts?: string;
   engineFlights?: string;
+  starts?: string;
+  flights?: string;
   frdsTestDate?: string;
   motorRunDate?: string;
 

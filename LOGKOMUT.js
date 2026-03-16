@@ -2,6 +2,11 @@ function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) return jsonError("Post verisi alınamadı.");
     var params = JSON.parse(e.postData.contents);
+    
+    // Debug logging
+    Logger.log("Action: " + params.action);
+    if (params.kuyrukNo) Logger.log("Kuyruk No: " + params.kuyrukNo);
+    
     var ss = SpreadsheetApp.openById(params.sheetId);
     var action = (params.action || "getAircraftData").toString().trim();
 
@@ -159,11 +164,42 @@ function doPost(e) {
           tarih: tarihStr,
           kuyrukNo: String(row[2] || '').trim(),
           tip: String(row[3] || '').trim(),
-          durum: String(row[4] || '').trim(),
-          analizKodu: row[5] ? String(row[5]).trim() : ''
+          durum: String(row[4] || '').trim(), // Eski index: 4 (Durum Açıklaması)
+          analizKodu: row[5] ? String(row[5]).trim() : '' // Eski index: 5 (Analiz Kodu)
         });
       }
       return jsonSuccess({ faaliyetLog: results, intraDayLog: [] });
+    }
+
+    // 🔵 AKSİYON: İNTRADAY AKTİVİTE KAYDETME
+    if (action === "saveIntraDayActivity") {
+      var data = params.data;
+      var faalLogSheet = findSheet(ss, "Faaliyet Log");
+      if (!faalLogSheet) {
+        faalLogSheet = ss.insertSheet("Faaliyet Log");
+        faalLogSheet.appendRow(["ID", "TARİH", "KUYRUK NO", "TİP", "DURUM", "ANALİZ KODU"]);
+        faalLogSheet.getRange("A1:F1").setFontWeight("bold").setBackground("#cfe2f3");
+      }
+      
+      var dateStr = data.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
+      if (dateStr.includes('-')) {
+        var parts = dateStr.split('-');
+        dateStr = parts[2] + "." + parts[1] + "." + parts[0];
+      }
+
+      var id = dateStr + "_" + data.kuyrukNo + "_" + (data.startTime || "0000");
+      
+      var logRow = [
+        id,
+        dateStr,
+        data.kuyrukNo,
+        data.tip,
+        (data.startTime || "") + " - " + (data.endTime || "") + ": " + (data.description || ""),
+        data.status
+      ];
+      
+      faalLogSheet.appendRow(logRow);
+      return jsonSuccess("Aktivite kaydedildi.");
     }
 
     // 🔵 AKSİYON: LOG GÜNCELLEME (Analiz Kodu vb.)
@@ -179,16 +215,15 @@ function doPost(e) {
       var data = faalLogSheet.getRange("A:A").getValues();
       for (var i = 1; i < data.length; i++) {
         if (String(data[i][0]).trim() === id) {
-          faalLogSheet.getRange(i + 1, 6).setValue(newCode);
+          faalLogSheet.getRange(i + 1, 6).setValue(newCode); // Eski index: 6. kolon (Analiz Kodu)
           return jsonSuccess("Log güncellendi: " + id + " -> " + newCode);
         }
       }
       
-      // Eğer log yoksa yeni satır ekle (Bugün için manuel override yapılmış olabilir)
       var bugun = new Date();
       var bugunStr = Utilities.formatDate(bugun, Session.getScriptTimeZone(), "dd.MM.yyyy");
       if (dateStr === bugunStr) {
-        faalLogSheet.appendRow([id, dateStr, kuyrukNo, params.tip || "", params.durum || "MANUEL GÜNCELLEME", newCode]);
+        faalLogSheet.appendRow([id, dateStr, kuyrukNo, params.tip || "", "MANUEL GÜNCELLEME", newCode]);
         return jsonSuccess("Yeni log girişi oluşturuldu: " + id);
       }
 
@@ -196,7 +231,26 @@ function doPost(e) {
     }
 
     // 🔵 AKSİYON: SİSTEM LOGLARI (ENVANTER VE FAALİYET)
-    // BU BLOK KULLANICI İSTEĞİ ÜZERİNE KALDIRILDI.
+    if (action === "runSystemLogs") {
+      try {
+        performDailyMidnightLogging(ss);
+        return jsonSuccess("Sistem logları çalıştırıldı.");
+      } catch (e) {
+        return jsonError("Sistem log hatası: " + e.toString());
+      }
+    }
+
+    if (action === "sendDailyReports") {
+      try {
+        var recipients = getMailRecipientsGS(ss);
+        recipients.forEach(function(r) {
+          sendReportEmail(r, [], ss);
+        });
+        return jsonSuccess("Günlük raporlar gönderildi.");
+      } catch (e) {
+        return jsonError("Rapor gönderim hatası: " + e.toString());
+      }
+    }
 
     if (action === "getMailRecipients") {
       var mailSheet = findSheet(ss, "mail log");
@@ -303,8 +357,8 @@ function doPost(e) {
       if (params.aircraftType === 'AT-802') {
         try {
           lookupData = {
-            keys: sheet.getRange("T24:T35").getDisplayValues(),
-            vals: sheet.getRange("U24:V35").getDisplayValues()
+            keys: sheet.getRange("T24:T45").getDisplayValues(),
+            vals: sheet.getRange("U24:V45").getDisplayValues()
           };
         } catch (e) {}
       }
@@ -312,8 +366,12 @@ function doPost(e) {
       for (var i = 0; i < numRows; i++) {
         var item = {};
         Object.keys(rawData).forEach(function(key) {
-          var rowVals = rawData[key][i];
-          item[key] = rowVals.length === 1 ? rowVals[0] : rowVals;
+          var rowVals = rawData[key] ? rawData[key][i] : null;
+          if (rowVals) {
+            item[key] = rowVals.length === 1 ? rowVals[0] : rowVals;
+          } else {
+            item[key] = null;
+          }
         });
         
         if (item.kuyrukNo && String(item.kuyrukNo).trim() !== "") {
@@ -385,13 +443,13 @@ function doPost(e) {
         var frdsCell = "M10";
         var motorCell = "J16";
         
-        if (kNo === "OR-2023") { frdsCell = "L9"; motorCell = "J15:P15"; }
-        else if (kNo === "OR-2024") { frdsCell = "M7"; motorCell = "K13:Q13"; }
-        else if (kNo === "OR-2025") { frdsCell = "L8"; motorCell = "J14:P14"; }
-        else if (kNo === "OR-2026") { frdsCell = "L8"; motorCell = "J14:P14"; }
-        else if (kNo === "OR-2027") { frdsCell = "N12"; motorCell = "K19:Q19"; }
-        else if (kNo === "OR-2028") { frdsCell = "M8"; motorCell = "J14:P14"; }
-        else if (kNo === "OR-2037") { frdsCell = "M12"; motorCell = "J18:P18"; }
+        if (kNo === "OR-2023") { frdsCell = "L9"; motorCell = "J15"; }
+        else if (kNo === "OR-2024") { frdsCell = "M7"; motorCell = "K13"; }
+        else if (kNo === "OR-2025") { frdsCell = "L8"; motorCell = "J14"; }
+        else if (kNo === "OR-2026") { frdsCell = "L8"; motorCell = "J14"; }
+        else if (kNo === "OR-2027") { frdsCell = "N12"; motorCell = "K19"; }
+        else if (kNo === "OR-2028") { frdsCell = "M8"; motorCell = "J14"; }
+        else if (kNo === "OR-2037") { frdsCell = "M12"; motorCell = "J18"; }
         
         data.frdsTest = getFirstNonEmpty(techSheet, frdsCell);
         data.motorCalisma = getFirstNonEmpty(techSheet, motorCell);
@@ -432,7 +490,7 @@ function doPost(e) {
       var updates = params.updates;
       var mapping = params.mapping;
       
-      if (updates.acTT !== undefined || updates.landings !== undefined) {
+      if (updates.acTT !== undefined || updates.landings !== undefined || updates.starts !== undefined || updates.flights !== undefined || updates.frdsTest !== undefined || updates.motorCalisma !== undefined) {
         var kNo = String(kuyrukNo).trim();
         var match = kNo.match(/OR-\d+/i);
         if (match) {
@@ -457,9 +515,9 @@ function doPost(e) {
           else if (kNo === "OR-2028") { frdsCell = "M8"; motorCell = "J14"; }
           else if (kNo === "OR-2037") { frdsCell = "M12"; motorCell = "J18"; }
 
-          if (updates.frdsTest !== undefined) techSheet.getRange(frdsCell.split(':')[0]).setValue(updates.frdsTest);
+          if (updates.frdsTest !== undefined) techSheet.getRange(frdsCell).setValue(updates.frdsTest);
           if (updates.motorCalisma !== undefined) {
-            techSheet.getRange(motorCell.split(':')[0]).setValue(updates.motorCalisma);
+            techSheet.getRange(motorCell).setValue(updates.motorCalisma);
           }
         }
       }
@@ -470,28 +528,42 @@ function doPost(e) {
       var rowIndex = -1;
       
       var startRow = parseInt(kuyrukNoRangeStr.match(/\d+/)[0]) || 3;
+      var searchKNo = String(kuyrukNo).trim().toUpperCase();
       
       for (var i = 0; i < values.length; i++) {
-        if (values[i][0] == kuyrukNo) {
+        var rowKNo = String(values[i][0]).trim().toUpperCase();
+        if (rowKNo === searchKNo) {
           rowIndex = i + startRow;
           break;
         }
       }
       
-      if (rowIndex === -1) {
-        if (updates.acTT !== undefined) return jsonSuccess("Sadece teknik veriler güncellendi.");
-        return jsonError("Kuyruk numarası bulunamadı.");
-      }
-      
-      Object.keys(updates).forEach(function(key) {
-        if (mapping[key] && updates[key] !== undefined) {
-          var colLetter = mapping[key].split(':')[0].replace(/[0-9]/g, '');
-          var cellAddress = colLetter + rowIndex;
-          sheet.getRange(cellAddress).setValue(updates[key]);
+      if (rowIndex > 0) {
+        var updateErrors = [];
+        Object.keys(updates).forEach(function(key) {
+          if (mapping[key] && updates[key] !== undefined && updates[key] !== null) {
+            try {
+              // Sadece sütun harfini al ve rowIndex ile birleştir (Örn: "C3:C40" -> "C" + 5 -> "C5")
+              var colPart = mapping[key].split(':')[0];
+              var colLetter = colPart.replace(/[0-9]/g, '');
+              if (colLetter) {
+                sheet.getRange(colLetter + rowIndex).setValue(updates[key]);
+                Logger.log("Updated " + key + " at " + colLetter + rowIndex + " with " + updates[key]);
+              }
+            } catch (e) {
+              updateErrors.push(key + ": " + e.toString());
+            }
+          }
+        });
+        
+        if (updateErrors.length > 0) {
+          return jsonError("Bazı alanlar güncellenemedi: " + updateErrors.join(", "));
         }
-      });
-      
-      return jsonSuccess("Veriler güncellendi.");
+        
+        return jsonSuccess({ message: "Veri başarıyla güncellendi", rowIndex: rowIndex });
+      } else {
+        return jsonError("Kuyruk numarası (" + searchKNo + ") " + kuyrukNoRangeStr + " aralığında bulunamadı.");
+      }
     }
     
     return jsonError("Bilinmeyen işlem: " + action);
@@ -543,8 +615,7 @@ function findSheet(ss, name) {
 }
 
 function sendDailyReports() {
-  var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg"; // Merkezi Log Tablosu ID
-  var ss = SpreadsheetApp.openById(logSsId);
+  var ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById("1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg");
   var mailSheet = findSheet(ss, "mail log");
   if (!mailSheet) {
     console.error("Mail log sayfası bulunamadı.");
@@ -617,7 +688,7 @@ function sendDailyReports() {
           if (diff <= 15) {
             if (lastSent !== todayStr) {
               console.log("GÖNDERİLİYOR: " + personName + " (Hedef: " + time + ", Fark: " + diff + " dk)");
-              sendReportEmail(recipient);
+              sendReportEmail(recipient, [], ss);
               mailSheet.getRange(i + 1, lastSentIdx + 1).setValue(todayStr);
             } else {
               console.log("ATLANDI (Bugün zaten gitti): " + personName);
@@ -677,9 +748,10 @@ function setupAutoMailTrigger() {
   return "Otomatik mail tetikleyicisi kuruldu (15 dk bir kontrol edilecek).";
 }
 
-function sendReportEmail(recipient, customAttachments) {
+function sendReportEmail(recipient, customAttachments, ss) {
   var attachments = [];
-  var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg"; // Merkezi Log Tablosu ID
+  var currentSs = ss || SpreadsheetApp.getActiveSpreadsheet();
+  var currentSsId = currentSs ? currentSs.getId() : "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
   
   // Custom attachments from client (e.g. generated HTML-Excel)
   var skipEnvanter = false;
@@ -733,7 +805,7 @@ function sendReportEmail(recipient, customAttachments) {
   
   if (selectedReports.includes("FAALİYET ÇİZELGESİ")) {
     try {
-      var blob = getSheetAsExcel(logSsId, "Faaliyet_Cizelgesi.xlsx");
+      var blob = getSheetAsExcel(currentSsId, "Faaliyet_Cizelgesi.xlsx");
       if (blob) attachments.push(blob);
     } catch (e) {
       console.error("Error attaching Faaliyet Cizelgesi: " + e.toString());
@@ -821,10 +893,29 @@ function analyzeStatusGS(item) {
   var toLowerTR = function(s) {
     return String(s || '').replace(/I/g, 'ı').replace(/İ/g, 'i').toLowerCase().trim();
   };
+  var toUpperTR = function(s) {
+    return String(s || '').replace(/i/g, 'İ').replace(/ı/g, 'I').toUpperCase().trim();
+  };
   
+  var detailUpper = toUpperTR(item.durumAyrintisi);
   var detail = toLowerTR(item.durumAyrintisi);
   var desc = toLowerTR(item.aciklama);
-  var durumStr = String(item.durum || '').replace(/i/g, 'İ').replace(/ı/g, 'I').toUpperCase().trim();
+  var durumStr = toUpperTR(item.durum);
+  
+  // 1. ÖNCELİK: SADECE DURUM AYRINTISI İÇİNDE ARAMA
+  if (detail.indexOf('kabul muayene') !== -1 || detail.indexOf('kabul mua') !== -1) return 'KM';
+  if (detail.indexOf('kaza') !== -1 || detail.indexOf('kırım') !== -1 || detail.indexOf('kirim') !== -1) return 'KK';
+  if (detail.indexOf('parça bekler') !== -1 || detail.indexOf('parca bekler') !== -1 || detail === 'pb') return 'PB';
+  
+  // TB İSTİSNASI: Durum ayrıntısında "tecrübe bekler" yazıyorsa kesinlikle TB
+  if (detail.indexOf('tecrübe bekler') !== -1 || detail.indexOf('tecrube bekler') !== -1 || detail === 'tb') return 'TB';
+
+  if (detail.indexOf('bakım bekler') !== -1 || detail.indexOf('bakim bekler') !== -1 || (detail.indexOf('bakım') !== -1 && (detail.indexOf('sıra') !== -1 || detail.indexOf('bekliyor') !== -1))) return 'BB';
+  if (detail.indexOf('arıza') !== -1 || detail.indexOf('ariza') !== -1) return 'A';
+  if (detail.indexOf('bakım') !== -1 || detail.indexOf('bakim') !== -1 || detail.indexOf('yıllık') !== -1 || detail.indexOf('yillik') !== -1 || detail.indexOf('periyodik') !== -1) return 'B';
+  if (detailUpper === 'OLMADIĞI GÜNLER') return 'X';
+
+  // 2. AÇIKLAMA VE DURUM AYRINTISI İÇİNDE ARAMA (Fallback)
   var fullText = detail + " " + desc + " " + toLowerTR(item.durum);
 
   // KABUL MUAYENESİ -> KM
@@ -843,7 +934,7 @@ function analyzeStatusGS(item) {
 
   // TECRÜBE BEKLER -> TB
   if (fullText.indexOf('tecrübe') !== -1 || fullText.indexOf('tecrube') !== -1 || fullText.indexOf('test') !== -1) {
-    if (detail.indexOf('test uçuşu') !== -1 || detail.indexOf('test/tecrübe') !== -1 || detail.indexOf('test/tecrube') !== -1) {
+    if (detail.indexOf('test uçuşu') !== -1 || detail.indexOf('test/tecrübe') !== -1 || detail.indexOf('test/tecrube') !== -1 || fullText.indexOf('bekliyor') !== -1 || fullText.indexOf('bekler') !== -1 || fullText.indexOf('sıra') !== -1) {
       return 'TB';
     }
   }
@@ -865,9 +956,9 @@ function analyzeStatusGS(item) {
     return 'B';
   }
 
-  // GAYRİ FAAL -> X
+  // GAYRİ FAAL -> A (Eğer yukarıdakilerden hiçbiri değilse ama durum Gayri Faal ise)
   var isGayriFaalExplicit = durumStr.indexOf('GAYRİ') !== -1 || durumStr.indexOf('GAYRI') !== -1 || durumStr.indexOf('G.FAAL') !== -1;
-  if (isGayriFaalExplicit) return 'X';
+  if (isGayriFaalExplicit) return 'A';
 
   return 'F';
 }
@@ -920,7 +1011,7 @@ function parseSingleCellToHour(val, aircraftType) {
 function getFleetDataFromServer() {
   var configs = [
     { type: 'Bell-429', id: '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ', mapping: { kuyrukNo: 'A3:A8', konum: 'L3:L8', durum: 'M3:M8', durumAyrintisi: 'N3:N8', faydaliSaat: 'I3:I8', aciklama: 'O3:O8' } },
-    { type: 'AT-802', id: '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4', mapping: { kuyrukNo: 'B3:B16', durum: 'C3:C16', durumAyrintisi: 'D3:D16', konum: 'E3:E16', faydaliSaat: 'V3:AI16', aciklama: 'AL3:AL16' } },
+    { type: 'AT-802', id: '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4', mapping: { kuyrukNo: 'B3:B40', durum: 'C3:C40', durumAyrintisi: 'D3:D40', konum: 'E3:E40', faydaliSaat: 'V3:AI40', aciklama: 'AL3:AL40' } },
     { type: 'T-70', id: '10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw', mapping: { kuyrukNo: 'A4:A6', faydaliSaat: 'N4:N6', konum: 'P4:P6', durum: 'Q4:Q6', durumAyrintisi: 'R4:R6', aciklama: 'S4:S6' } },
     { type: 'B-360', id: '1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0', mapping: { kuyrukNo: 'A3:A10', faydaliSaat: 'I3:I10', konum: 'M3:M10', durum: 'N3:N10', durumAyrintisi: 'O3:O10', aciklama: 'P3:P10' } },
     { type: 'C-650', id: '1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE', mapping: { kuyrukNo: 'A3:A10', faydaliSaat: 'I3:I10', konum: 'M3:M10', durum: 'N3:N10', durumAyrintisi: 'O3:O10', aciklama: 'P3:P10' } }
@@ -1042,6 +1133,88 @@ function generateEnvanterExcelBlob() {
     '</table></body></html>';
 
   return Utilities.newBlob(html, 'application/vnd.ms-excel', 'ENVANTER RAPORU.xls');
+}
+
+function getMailRecipientsGS(ss) {
+  var mailSheet = findSheet(ss, "mail log");
+  if (!mailSheet) return [];
+  var data = mailSheet.getDataRange().getDisplayValues();
+  var headers = data[0];
+  var recipients = [];
+  for (var i = 1; i < data.length; i++) {
+    var obj = {};
+    for (var j = 0; j < headers.length; j++) {
+      obj[headers[j]] = data[i][j];
+    }
+    recipients.push(obj);
+  }
+  return recipients;
+}
+
+function performDailyMidnightLogging(ss) {
+  var faalLogSheet = findSheet(ss, "Faaliyet Log");
+  if (!faalLogSheet) {
+    faalLogSheet = ss.insertSheet("Faaliyet Log");
+    faalLogSheet.appendRow(["ID", "TARİH", "KUYRUK NO", "TİP", "AC TT", "MOTOR TT", "KONUM", "DURUM", "DURUM AYRINTISI", "AÇIKLAMA", "ANALİZ KODU", "FAYDALI SAAT"]);
+    faalLogSheet.getRange("A1:L1").setFontWeight("bold").setBackground("#cfe2f3");
+  }
+  
+  var fleet = getFleetDataFromServer();
+  var dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
+  
+  fleet.forEach(function(a) {
+    var id = dateStr + "_" + a.kuyrukNo;
+    var analysisCode = analyzeStatusGS({
+      durum: a.durum,
+      durumAyrintisi: a.durumAyrintisi,
+      aciklama: a.aciklama
+    });
+    
+    // Teknik verileri "Genel" sayfasından çek
+    var acTT = "";
+    var motorTT = "";
+    try {
+      if (a.tip === 'AT-802') {
+         var techSheet = ss.getSheetByName(a.kuyrukNo + " Genel");
+         if (techSheet) {
+           acTT = techSheet.getRange("B11").getDisplayValue();
+           motorTT = techSheet.getRange("J16").getDisplayValue();
+         }
+      } else if (a.tip === 'Bell-429') {
+         // Bell-429 için de gerekirse eklenebilir
+      }
+    } catch (e) {
+      Logger.log("Teknik veri çekme hatası (" + a.kuyrukNo + "): " + e.toString());
+    }
+
+    // Mevcut log var mı kontrol et
+    var data = faalLogSheet.getRange("A:A").getValues();
+    var found = false;
+    var foundRow = -1;
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim() === id) {
+        found = true;
+        foundRow = i + 1;
+        break;
+      }
+    }
+    
+    var logRow = [
+      id, 
+      dateStr, 
+      a.kuyrukNo, 
+      a.tip, 
+      (a.durumAyrintisi || a.durum || "-"), 
+      analysisCode
+    ];
+
+    if (!found) {
+      faalLogSheet.appendRow(logRow);
+    } else {
+      // Güncelle (Eğer gün içinde tekrar çalıştırılırsa)
+      faalLogSheet.getRange(foundRow, 1, 1, logRow.length).setValues([logRow]);
+    }
+  });
 }
 
 function doGet() { return ContentService.createTextOutput("OGM Servis Aktif."); }

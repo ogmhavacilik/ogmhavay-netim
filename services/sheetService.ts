@@ -10,48 +10,89 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   const detail = String(item.durumAyrintisi || '').toLocaleLowerCase('tr-TR').trim();
   const desc = String(item.aciklama || '').toLocaleLowerCase('tr-TR').trim();
   const durumStr = String(item.durum || '').toLocaleUpperCase('tr-TR').trim();
+  const detailUpper = String(item.durumAyrintisi || '').toLocaleUpperCase('tr-TR').trim();
+  
+  // 1. KESİN ÖNCELİK: DURUM AYRINTISI (BİREBİR EŞLEŞME VEYA NET ANAHTAR KELİME)
+  // Kullanıcı "Eğer durum ayrıntısı varsa birebir onu baz al" dedi.
+  
+  // PARÇA BEKLER (PB) - En yüksek öncelik
+  if (detailUpper.includes('PARÇA BEKLER') || detailUpper.includes('PARCA BEKLER') || detailUpper === 'PB') return { code: 'PB', interpretation: 'PARÇA BEKLER' };
+  
+  // TECRÜBE BEKLER (TB) - İSTİSNA: Durum ayrıntısında varsa kesinlikle TB
+  if (detailUpper.includes('TECRÜBE BEKLER') || detailUpper.includes('TECRUBE BEKLER') || detailUpper === 'TB') return { code: 'TB', interpretation: 'TECRÜBE BEKLER' };
+
+  // BAKIM BEKLER (BB)
+  if (detailUpper.includes('BAKIM BEKLER') || detailUpper === 'BB') return { code: 'BB', interpretation: 'BAKIM BEKLER' };
+  
+  // KABUL MUAYENE (KM)
+  if (detailUpper.includes('KABUL MUAYENE') || detailUpper === 'KM') return { code: 'KM', interpretation: 'KABUL MUAYENESİ' };
+  
+  // KAZA KIRIM (KK)
+  if (detailUpper.includes('KAZA KIRIM') || detailUpper === 'KK') return { code: 'KK', interpretation: 'KAZA KIRIM' };
+  
+  // BAKIM (B)
+  if (detailUpper.includes('BAKIM') || detailUpper === 'B') return { code: 'B', interpretation: 'BAKIM' };
+  
+  // ARIZA (A)
+  if (detailUpper.includes('ARIZA') || detailUpper === 'A') return { code: 'A', interpretation: 'ARIZA' };
+  
+  // OLMADIĞI GÜNLER (X)
+  if (detailUpper.includes('OLMADIĞI GÜNLER') || detailUpper.includes('OLMADIGI GUNLER') || detailUpper === 'X') return { code: 'X', interpretation: 'OLMADIĞI GÜNLER' };
+
+  // TECRÜBE / TEST (TB) - Durum ayrıntısında varsa
+  if (detailUpper.includes('TECRÜBE') || detailUpper.includes('TECRUBE') || detailUpper.includes('TEST')) return { code: 'TB', interpretation: 'TECRÜBE BEKLER' };
+
   const fullText = `${detail} ${desc} ${durumStr.toLocaleLowerCase('tr-TR')}`;
 
+  // 2. FALLBACK: AÇIKLAMA VE DURUM AYRINTISI BİRLİKTE
+  // OLMADIĞI GÜNLER -> X
+  if (fullText.includes('olmadığı günler') || fullText.includes('olmadigi gunler')) {
+    return { code: 'X', interpretation: 'OLMADIĞI GÜNLER' };
+  }
+
   // KABUL MUAYENESİ -> KM
-  if (fullText.includes('kabul muayenelerı') || fullText.includes('kabul muayeneleri') || fullText.includes('kabul mua')) {
+  if (fullText.includes('kabul muayene') || fullText.includes('kabul mua')) {
     return { code: 'KM', interpretation: 'KABUL MUAYENESİ' };
   }
 
   // KAZA KIRIM -> KK
-  if (fullText.includes('kaza') || fullText.includes('kırım') || fullText.includes('hasar')) 
+  if (fullText.includes('kaza') || fullText.includes('kırım') || fullText.includes('kirim') || fullText.includes('hasar')) {
     return { code: 'KK', interpretation: 'KAZA KIRIM' };
+  }
 
-  // PARÇA BEKLER -> PB (Öncelikli)
-  if (fullText.includes('parça') && (fullText.includes('bekle') || fullText.includes('sipariş'))) {
+  // PARÇA BEKLER -> PB
+  if (fullText.includes('parça') && (fullText.includes('bekle') || fullText.includes('sipariş') || fullText.includes('siparis'))) {
     return { code: 'PB', interpretation: 'PARÇA BEKLER' };
   }
   
   // TECRÜBE BEKLER -> TB
   if (fullText.includes('tecrübe') || fullText.includes('tecrube') || fullText.includes('test')) {
-    if (detail.includes('test uçuşu') || detail.includes('test/tecrübe') || detail.includes('test/tecrube')) {
+    if (detail.includes('test uçuşu') || detail.includes('test/tecrübe') || fullText.includes('bekliyor') || fullText.includes('bekler') || fullText.includes('sıra')) {
       return { code: 'TB', interpretation: 'TECRÜBE BEKLER' };
     }
   }
 
   // BAKIM BEKLER -> BB
-  if (fullText.includes('bakım') || fullText.includes('yıllık') || fullText.includes('periyodik') || /\b\d+h\b/.test(fullText)) {
-    if (fullText.includes('bekliyor') || fullText.includes('bekler') || fullText.includes('sıra') || fullText.includes('sira')) {
-      return { code: 'BB', interpretation: 'BAKIM BEKLER' };
-    }
+  if (fullText.includes('bakım bekler') || fullText.includes('bakim bekler') || 
+     ((fullText.includes('bakım') || fullText.includes('bakim')) && (fullText.includes('bekliyor') || fullText.includes('bekler') || fullText.includes('sıra') || fullText.includes('sira')))) {
+    return { code: 'BB', interpretation: 'BAKIM BEKLER' };
   }
 
-  // ARIZA -> A
-  if (fullText.includes('arıza') || fullText.includes('ariza') || fullText.includes('problem')) 
-    return { code: 'A', interpretation: 'ARIZA' };
-
   // BAKIM -> B
-  if (fullText.includes('bakım') || fullText.includes('yıllık') || fullText.includes('periyodik') || /\b\d+h\b/.test(fullText)) {
+  if (fullText.includes('bakım') || fullText.includes('bakim') || fullText.includes('yıllık') || fullText.includes('yillik') || fullText.includes('periyodik') || /\b\d+h\b/.test(fullText)) {
     return { code: 'B', interpretation: 'BAKIM' };
   }
 
-  // GAYRİ FAAL -> X (Eğer yukarıdakilerden hiçbiri değilse ama durum Gayri Faal ise)
-  const isGayriFaalExplicit = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('G.FAAL');
-  if (isGayriFaalExplicit) return { code: 'X', interpretation: 'OLMADIĞI GÜNLER' };
+  // ARIZA -> A
+  if (fullText.includes('arıza') || fullText.includes('ariza') || fullText.includes('problem')) {
+    return { code: 'A', interpretation: 'ARIZA' };
+  }
+
+  // 3. DURUM KONTROLÜ
+  if (durumStr === 'FAAL' || durumStr === 'F') return { code: 'F', interpretation: 'FAAL' };
+
+  const isGayriFaal = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('G.FAAL');
+  if (isGayriFaal) return { code: 'A', interpretation: 'ARIZA' };
 
   return { code: 'F', interpretation: 'FAAL' };
 };
@@ -209,7 +250,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         sheetId: config.sheetId,
         sheetName: config.sheetName || '',
@@ -343,6 +384,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         assignedCode: analysis.code,
         aiInterpretation: analysis.interpretation,
         sheetId: config.sheetId,
+        sheetName: config.sheetName,
         appsScriptUrl: config.appsScriptUrl,
         mapping: config.mapping,
         seriNo: formatValueToString(item.govdeSN ?? item.B ?? item.seriNo),
@@ -414,7 +456,7 @@ export const fetchOPLData = async (
   try {
     const response = await fetch(scriptUrl, {
       method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({
         action: "getOPLData",
         sheetId,
@@ -443,7 +485,7 @@ export const fetchAircraftSpecificData = async (
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'getAircraftSpecificData',
         sheetId,
@@ -463,18 +505,22 @@ export const updateAircraftData = async (
   sheetId: string,
   kuyrukNo: string,
   updates: Record<string, any>,
-  mapping: any
+  mapping: any,
+  sheetName?: string,
+  aircraftType?: string
 ): Promise<{ success: boolean; message: string }> => {
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'updateAircraftData',
         sheetId,
+        sheetName,
         kuyrukNo,
         updates,
-        mapping
+        mapping,
+        aircraftType
       })
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);

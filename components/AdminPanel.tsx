@@ -292,11 +292,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-white/10">
-                            {notifications.map((n) => {
+                            {notifications.map((n, idx) => {
                               const isAssignment = n.kolon === 'ANALİZ / ÇİZELGE' || n.kolon === 'ATAMA KODU';
                               return (
                                 <tr 
-                                  key={n.id} 
+                                  key={`${n.id}-${idx}`} 
                                   className={`group border-b border-white/5 transition-all ${isAssignment ? 'bg-orange-600/20 hover:bg-orange-600/30 cursor-pointer' : 'hover:bg-white/5'}`}
                                 >
                                   <td className="px-8 py-6 text-emerald-400 font-black text-xs">{n.tarih}</td>
@@ -530,8 +530,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                                   </tr>
                                </thead>
                                <tbody className="divide-y divide-white/5">
-                                  {recipients.map((r) => (
-                                    <tr key={r.id} className="text-white text-xs">
+                                  {recipients.map((r, idx) => (
+                                    <tr key={`${r.id}-${idx}`} className="text-white text-xs">
                                        <td className="py-4 font-bold">{r.name}</td>
                                        <td className="py-4 opacity-70 italic">{r.email}</td>
                                        <td className="py-4">
