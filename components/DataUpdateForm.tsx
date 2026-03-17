@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Aircraft, Status, DailyStatusCode } from '../types';
-import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus } from '../services/sheetService';
+import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog } from '../services/sheetService';
 
 interface DataUpdateFormProps {
   fleet: Aircraft[];
@@ -92,7 +92,8 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
     durumAyrintisi: '',
     aciklama: '',
     intraDayStartTime: '',
-    intraDayEndTime: ''
+    intraDayEndTime: '',
+    islemTarihi: new Date().toISOString().split('T')[0]
   });
 
   const handleTypeSelect = (type: string) => {
@@ -175,7 +176,8 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
         durumAyrintisi: aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? aircraft.durumAyrintisi : '',
         aciklama: aircraft.aciklama && aircraft.aciklama !== '-' ? aircraft.aciklama : '',
         intraDayStartTime: '',
-        intraDayEndTime: ''
+        intraDayEndTime: '',
+        islemTarihi: new Date().toISOString().split('T')[0]
       });
 
       if (aircraft.tip === 'AT-802') {
@@ -255,6 +257,39 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
     }
 
     try {
+      const today = new Date().toISOString().split('T')[0];
+      const isPastDate = formData.islemTarihi !== today;
+
+      if (isPastDate) {
+        // GEÇMİŞ TARİHLİ GÜNCELLEME: Sadece Gövde Uçuş Saati güncellenir (Envanter Log)
+        if (formData.govdeUcusSaati) {
+          const dateParts = formData.islemTarihi.split('-');
+          const formattedDate = `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}`;
+          
+          const result = await updatePastEnvanterLog(
+            selectedAircraft.appsScriptUrl || '',
+            selectedAircraft.sheetId || '',
+            selectedAircraft.kuyrukNo,
+            formattedDate,
+            formData.govdeUcusSaati
+          );
+
+          if (result.success) {
+            setMessage({ type: 'success', text: 'Geçmiş tarihli Gövde Uçuş Saati başarıyla güncellendi.' });
+            setTimeout(() => {
+              onSuccess(selectedAircraft.tip);
+            }, 1500);
+          } else {
+            setMessage({ type: 'error', text: result.message || 'Geçmiş gün güncellemesi başarısız.' });
+          }
+        } else {
+          setMessage({ type: 'error', text: 'Geçmiş tarihli güncelleme için Gövde Uçuş Saati girmelisiniz.' });
+        }
+        return; // Geçmiş tarih ise burada bitir
+      }
+
+      // GÜNCEL TARİH (BUGÜN): Mevcut düzen devam eder
+      
       // Gün içi faaliyet kaydı (Eğer saat girilmişse)
       if (onSaveIntraDay && (formData.intraDayStartTime || formData.intraDayEndTime)) {
         const analysis = analyzeStatus({ 
@@ -301,6 +336,10 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
   const isBell429 = selectedAircraft?.tip === 'Bell-429';
   const isT70 = selectedAircraft?.tip === 'T-70';
   const isB360OrC650 = selectedAircraft?.tip === 'B-360' || selectedAircraft?.tip === 'C-650';
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const isPastDate = formData.islemTarihi !== todayStr && formData.islemTarihi < todayStr;
+  const disabledClass = isPastDate ? " opacity-50 cursor-not-allowed" : "";
 
   return (
     <div className="min-h-screen bg-[#021a0c] p-4 md:p-12">
@@ -351,21 +390,32 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
             </div>
           ) : (
             <>
-              <div className="mb-8 md:mb-12">
-                <div className="flex justify-between items-center mb-4">
-                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">{selectedType} HAVA ARACI SEÇİMİ</label>
-                  <button onClick={() => { setIsAuth(false); setSelectedType(null); setSelectedKuyruk(''); }} className="text-xs font-black text-white/40 hover:text-white uppercase tracking-widest">TİP DEĞİŞTİR</button>
+              <div className="mb-8 md:mb-12 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em] mb-4">İŞLEM TARİHİ</label>
+                  <input 
+                    type="date" 
+                    value={formData.islemTarihi}
+                    onChange={(e) => handleInputChange('islemTarihi', e.target.value)}
+                    className="w-full bg-black/40 border-2 border-white/10 rounded-2xl px-4 md:px-6 py-4 text-white font-bold focus:border-emerald-500 outline-none transition-all"
+                  />
                 </div>
-                <select 
-                  value={selectedKuyruk}
-                  onChange={(e) => setSelectedKuyruk(e.target.value)}
-                  className="w-full bg-black/40 border-2 border-white/10 rounded-2xl px-4 md:px-6 py-4 text-white font-bold focus:border-emerald-500 outline-none transition-all appearance-none"
-                >
-                  <option value="">Kuyruk Numarası Seçiniz...</option>
-                  {filteredFleet.map(a => (
-                    <option key={a.kuyrukNo} value={a.kuyrukNo}>{a.kuyrukNo} ({a.cagriKodu})</option>
-                  ))}
-                </select>
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">{selectedType} HAVA ARACI SEÇİMİ</label>
+                    <button onClick={() => { setIsAuth(false); setSelectedType(null); setSelectedKuyruk(''); }} className="text-xs font-black text-white/40 hover:text-white uppercase tracking-widest">TİP DEĞİŞTİR</button>
+                  </div>
+                  <select 
+                    value={selectedKuyruk}
+                    onChange={(e) => setSelectedKuyruk(e.target.value)}
+                    className="w-full bg-black/40 border-2 border-white/10 rounded-2xl px-4 md:px-6 py-4 text-white font-bold focus:border-emerald-500 outline-none transition-all appearance-none"
+                  >
+                    <option value="">Kuyruk Numarası Seçiniz...</option>
+                    {filteredFleet.map(a => (
+                      <option key={a.kuyrukNo} value={a.kuyrukNo}>{a.kuyrukNo} ({a.cagriKodu})</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {selectedAircraft ? (
@@ -378,22 +428,22 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                       </div>
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">SAAT ESASLI BAKIM (50H)</label>
-                        <input type="text" placeholder="YENİ SAAT" value={formData.bakim50H} onChange={(e) => handleInputChange('bakim50H', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim50H} onChange={(e) => handleInputChange('bakim50H', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                       <div className="space-y-2 md:col-span-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">TAKVİM ESASLI BAKIM (TARİH)</label>
-                        <input type="date" value={formData.bakimTakvim} onChange={(e) => handleInputChange('bakimTakvim', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="date" value={formData.bakimTakvim} onChange={(e) => handleInputChange('bakimTakvim', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                     </div>
                     <div className="h-px bg-white/10 w-full"></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">HELİKOPTER GÖREV YERİ</label>
-                        <input type="text" placeholder="YENİ KONUM" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="text" placeholder="YENİ KONUM" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">HELİKOPTER DURUMU</label>
-                        <select value={formData.durum} onChange={(e) => { handleInputChange('durum', e.target.value); if (e.target.value === Status.FAAL) handleInputChange('durumAyrintisi', '-'); }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
+                        <select disabled={isPastDate} value={formData.durum} onChange={(e) => { handleInputChange('durum', e.target.value); if (e.target.value === Status.FAAL) handleInputChange('durumAyrintisi', '-'); }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
                           <option value={Status.FAAL}>{Status.FAAL}</option>
                           <option value={Status.GAYRI_FAAL}>{Status.GAYRI_FAAL}</option>
                         </select>
@@ -402,11 +452,11 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                         <>
                           <div className="space-y-2 md:col-span-2">
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GAYRI FAAL BAŞLANGIÇ SAATİ</label>
-                            <input type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                            <input disabled={isPastDate} type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                           </div>
                           <div className="space-y-2 md:col-span-2">
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUM AYRINTISI</label>
-                            <input type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                            <input disabled={isPastDate} type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                             <datalist id="status-details">
                               <option value="BAKIM">BAKIM</option>
                               <option value="BAKIM BEKLER">BAKIM BEKLER</option>
@@ -423,12 +473,12 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                       {formData.durum === Status.FAAL && selectedAircraft.durum === Status.GAYRI_FAAL && (
                         <div className="space-y-2 md:col-span-2">
                           <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FAAL OLDUĞU SAAT</label>
-                          <input type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                          <input disabled={isPastDate} type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                         </div>
                       )}
                       <div className="space-y-2 md:col-span-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">AÇIKLAMA</label>
-                        <textarea rows={4} value={formData.aciklama} onChange={(e) => handleInputChange('aciklama', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-2xl px-4 md:px-6 py-4 font-bold focus:border-emerald-500 outline-none transition-all resize-none"></textarea>
+                        <textarea disabled={isPastDate} rows={4} value={formData.aciklama} onChange={(e) => handleInputChange('aciklama', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-2xl px-4 md:px-6 py-4 font-bold focus:border-emerald-500 outline-none transition-all resize-none"></textarea>
                       </div>
                     </div>
                     {message && (
@@ -449,30 +499,30 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                       </div>
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">40 SAAT BAKIM</label>
-                        <input type="text" placeholder="YENİ SAAT" value={formData.bakim40H} onChange={(e) => handleInputChange('bakim40H', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim40H} onChange={(e) => handleInputChange('bakim40H', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">120 SAAT BAKIM</label>
-                        <input type="text" placeholder="YENİ SAAT" value={formData.bakim120H} onChange={(e) => handleInputChange('bakim120H', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim120H} onChange={(e) => handleInputChange('bakim120H', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">480 SAAT BAKIM</label>
-                        <input type="text" placeholder="YENİ SAAT" value={formData.bakim480H} onChange={(e) => handleInputChange('bakim480H', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim480H} onChange={(e) => handleInputChange('bakim480H', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">TAKVİM ESASLI BAKIM (TARİH)</label>
-                        <input type="date" value={formData.bakimTakvimTarih} onChange={(e) => handleInputChange('bakimTakvimTarih', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="date" value={formData.bakimTakvimTarih} onChange={(e) => handleInputChange('bakimTakvimTarih', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                     </div>
                     <div className="h-px bg-white/10 w-full"></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">KONUM</label>
-                        <input type="text" placeholder="YENİ KONUM" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="text" placeholder="YENİ KONUM" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUMU</label>
-                        <select value={formData.durum} onChange={(e) => { handleInputChange('durum', e.target.value); if (e.target.value === Status.FAAL) handleInputChange('durumAyrintisi', '-'); }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
+                        <select disabled={isPastDate} value={formData.durum} onChange={(e) => { handleInputChange('durum', e.target.value); if (e.target.value === Status.FAAL) handleInputChange('durumAyrintisi', '-'); }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
                           <option value={Status.FAAL}>{Status.FAAL}</option>
                           <option value={Status.GAYRI_FAAL}>{Status.GAYRI_FAAL}</option>
                         </select>
@@ -481,11 +531,11 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                         <>
                           <div className="space-y-2 md:col-span-2">
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GAYRI FAAL BAŞLANGIÇ SAATİ</label>
-                            <input type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                            <input disabled={isPastDate} type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                           </div>
                           <div className="space-y-2 md:col-span-2">
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUM AYRINTISI</label>
-                            <input type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                            <input disabled={isPastDate} type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                             <datalist id="status-details">
                               <option value="BAKIM">BAKIM</option>
                               <option value="BAKIM BEKLER">BAKIM BEKLER</option>
@@ -502,12 +552,12 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                       {formData.durum === Status.FAAL && selectedAircraft.durum === Status.GAYRI_FAAL && (
                         <div className="space-y-2 md:col-span-2">
                           <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FAAL OLDUĞU SAAT</label>
-                          <input type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                          <input disabled={isPastDate} type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                         </div>
                       )}
                       <div className="space-y-2 md:col-span-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">AÇIKLAMA</label>
-                        <textarea rows={4} value={formData.aciklama} onChange={(e) => handleInputChange('aciklama', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-2xl px-4 md:px-6 py-4 font-bold focus:border-emerald-500 outline-none transition-all resize-none"></textarea>
+                        <textarea disabled={isPastDate} rows={4} value={formData.aciklama} onChange={(e) => handleInputChange('aciklama', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-2xl px-4 md:px-6 py-4 font-bold focus:border-emerald-500 outline-none transition-all resize-none"></textarea>
                       </div>
                     </div>
                     {message && (
@@ -528,26 +578,26 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                       </div>
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">LANDING</label>
-                        <input type="text" placeholder="YENİ DEĞER" value={formData.landings} onChange={(e) => handleInputChange('landings', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="text" placeholder="YENİ DEĞER" value={formData.landings} onChange={(e) => handleInputChange('landings', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">SAAT ESASLI BAKIM ZAMANI (200 SAAT)</label>
-                        <input type="text" placeholder="YENİ SAAT" value={formData.bakim200H} onChange={(e) => handleInputChange('bakim200H', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim200H} onChange={(e) => handleInputChange('bakim200H', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">TAKVİM ESASLI BAKIM TARİHİ</label>
-                        <input type="date" value={formData.bakimTakvimTarih} onChange={(e) => handleInputChange('bakimTakvimTarih', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="date" value={formData.bakimTakvimTarih} onChange={(e) => handleInputChange('bakimTakvimTarih', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                     </div>
                     <div className="h-px bg-white/10 w-full"></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">KONUM</label>
-                        <input type="text" placeholder="YENİ KONUM" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                        <input disabled={isPastDate} type="text" placeholder="YENİ KONUM" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUMU</label>
-                        <select value={formData.durum} onChange={(e) => { handleInputChange('durum', e.target.value); if (e.target.value === Status.FAAL) handleInputChange('durumAyrintisi', '-'); }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
+                        <select disabled={isPastDate} value={formData.durum} onChange={(e) => { handleInputChange('durum', e.target.value); if (e.target.value === Status.FAAL) handleInputChange('durumAyrintisi', '-'); }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
                           <option value={Status.FAAL}>{Status.FAAL}</option>
                           <option value={Status.GAYRI_FAAL}>{Status.GAYRI_FAAL}</option>
                         </select>
@@ -556,11 +606,11 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                         <>
                           <div className="space-y-2 md:col-span-2">
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GAYRI FAAL BAŞLANGIÇ SAATİ</label>
-                            <input type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                            <input disabled={isPastDate} type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                           </div>
                           <div className="space-y-2 md:col-span-2">
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUM AYRINTISI</label>
-                            <input type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                            <input disabled={isPastDate} type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                             <datalist id="status-details">
                               <option value="BAKIM">BAKIM</option>
                               <option value="BAKIM BEKLER">BAKIM BEKLER</option>
@@ -577,12 +627,12 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                       {formData.durum === Status.FAAL && selectedAircraft.durum === Status.GAYRI_FAAL && (
                         <div className="space-y-2 md:col-span-2">
                           <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FAAL OLDUĞU SAAT</label>
-                          <input type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                          <input disabled={isPastDate} type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                         </div>
                       )}
                       <div className="space-y-2 md:col-span-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">AÇIKLAMA</label>
-                        <textarea rows={4} value={formData.aciklama} onChange={(e) => handleInputChange('aciklama', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-2xl px-4 md:px-6 py-4 font-bold focus:border-emerald-500 outline-none transition-all resize-none"></textarea>
+                        <textarea disabled={isPastDate} rows={4} value={formData.aciklama} onChange={(e) => handleInputChange('aciklama', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-2xl px-4 md:px-6 py-4 font-bold focus:border-emerald-500 outline-none transition-all resize-none"></textarea>
                       </div>
                     </div>
                     {message && (
@@ -610,11 +660,11 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">Ac TT</label>
-                                  <input type="text" value={at802Data.acTT} onChange={e => setAt802Data({...at802Data, acTT: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                  <input disabled={isPastDate} type="text" value={at802Data.acTT} onChange={e => setAt802Data({...at802Data, acTT: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                 </div>
                                 <div className="space-y-2">
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">Landings</label>
-                                  <input type="text" value={at802Data.landings} onChange={e => setAt802Data({...at802Data, landings: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                  <input disabled={isPastDate} type="text" value={at802Data.landings} onChange={e => setAt802Data({...at802Data, landings: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                 </div>
                               </div>
                             </div>
@@ -623,11 +673,11 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">Starts</label>
-                                  <input type="text" value={at802Data.starts} onChange={e => setAt802Data({...at802Data, starts: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                  <input disabled={isPastDate} type="text" value={at802Data.starts} onChange={e => setAt802Data({...at802Data, starts: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                 </div>
                                 <div className="space-y-2">
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">Flights</label>
-                                  <input type="text" value={at802Data.flights} onChange={e => setAt802Data({...at802Data, flights: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                  <input disabled={isPastDate} type="text" value={at802Data.flights} onChange={e => setAt802Data({...at802Data, flights: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                 </div>
                               </div>
                             </div>
@@ -636,7 +686,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FRDS TESTİ HAFTALIK YAPILDIĞI TARİH</label>
-                                  <input type="date" value={at802Data.frdsTest} onChange={e => setAt802Data({...at802Data, frdsTest: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                  <input disabled={isPastDate} type="date" value={at802Data.frdsTest} onChange={e => setAt802Data({...at802Data, frdsTest: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                   {at802Data.frdsTest && (
                                     <div className="mt-1 space-y-0.5">
                                       <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">BİR SONRAKİ TEST: {getNextDate(at802Data.frdsTest)}</div>
@@ -648,7 +698,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                                 </div>
                                 <div className="space-y-2">
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">MOTOR ÇALIŞMASI YAPILDIĞI TARİH</label>
-                                  <input type="date" value={at802Data.motorCalisma} onChange={e => setAt802Data({...at802Data, motorCalisma: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                  <input disabled={isPastDate} type="date" value={at802Data.motorCalisma} onChange={e => setAt802Data({...at802Data, motorCalisma: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                   {at802Data.motorCalisma && (
                                     <div className="mt-1 space-y-0.5">
                                       <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">BİR SONRAKİ ÇALIŞMA: {getNextDate(at802Data.motorCalisma)}</div>
@@ -673,11 +723,11 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                           <div className="space-y-4">
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">HELİKOPTER GÖREV YERİ / KONUM</label>
-                            <input type="text" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                            <input disabled={isPastDate} type="text" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                           </div>
                           <div className="space-y-4">
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUMU</label>
-                            <select value={formData.durum} onChange={(e) => { handleInputChange('durum', e.target.value); if (e.target.value === Status.FAAL) handleInputChange('durumAyrintisi', '-'); }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
+                            <select disabled={isPastDate} value={formData.durum} onChange={(e) => { handleInputChange('durum', e.target.value); if (e.target.value === Status.FAAL) handleInputChange('durumAyrintisi', '-'); }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
                               <option value={Status.FAAL}>{Status.FAAL}</option>
                               <option value={Status.GAYRI_FAAL}>{Status.GAYRI_FAAL}</option>
                             </select>
@@ -686,11 +736,11 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                             <>
                               <div className="space-y-4 md:col-span-2">
                                 <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GAYRI FAAL BAŞLANGIÇ SAATİ</label>
-                                <input type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                <input disabled={isPastDate} type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                               </div>
                               <div className="space-y-4 md:col-span-2">
                                 <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">G.FAAL SEBEBİ / DURUM AYRINTISI</label>
-                                <input type="text" list="status-details" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                <input disabled={isPastDate} type="text" list="status-details" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                 <datalist id="status-details">
                                   <option value="BAKIM">BAKIM</option>
                                   <option value="BAKIM BEKLER">BAKIM BEKLER</option>
@@ -707,12 +757,12 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, onBack, onSucces
                           {formData.durum === Status.FAAL && selectedAircraft.durum === Status.GAYRI_FAAL && (
                             <div className="space-y-4 md:col-span-2">
                               <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FAAL OLDUĞU SAAT</label>
-                              <input type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                              <input disabled={isPastDate} type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                             </div>
                           )}
                           <div className="space-y-4 md:col-span-2">
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">AÇIKLAMA</label>
-                            <textarea rows={4} value={formData.aciklama} onChange={(e) => handleInputChange('aciklama', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-2xl px-4 md:px-6 py-4 font-bold focus:border-emerald-500 outline-none transition-all resize-none"></textarea>
+                            <textarea disabled={isPastDate} rows={4} value={formData.aciklama} onChange={(e) => handleInputChange('aciklama', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-2xl px-4 md:px-6 py-4 font-bold focus:border-emerald-500 outline-none transition-all resize-none"></textarea>
                           </div>
                         </div>
                         {message && (

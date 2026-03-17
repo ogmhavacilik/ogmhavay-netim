@@ -73,73 +73,61 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
       <meta charset="utf-8" />
       <style>
         table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
-        th, td { border: 1px solid black; padding: 5px; text-align: center; vertical-align: middle; font-size: 12px; }
-        .title-row { background-color: #f2f2f2; font-weight: bold; font-size: 14px; }
-        .header-row th { background-color: #d9d9d9; font-weight: bold; }
-        .date-text { color: red; font-weight: bold; text-align: right; }
+        th, td { border: 1px solid black; padding: 8px; text-align: center; vertical-align: middle; font-size: 11px; }
+        .title-row { background-color: #1a472a; color: white; font-weight: bold; font-size: 16px; }
+        .header-row th { background-color: #2d5a27; color: white; font-weight: bold; }
+        .date-text { color: #d32f2f; font-weight: bold; text-align: right; font-size: 14px; }
+        .faal { background-color: #c6efce; color: #006100; }
+        .gayrifaal { background-color: #ffc7ce; color: #9c0006; }
+        .kuyruk-cell { background-color: #f8f9fa; font-weight: bold; }
+        .abbr-text { color: #d32f2f; font-weight: bold; margin-left: 4px; }
       </style>
     </head>
     <body>
       <table>
         <tr>
-          <td colspan="7" class="date-text" style="border: none; text-align: right; color: red; font-weight: bold;">${dateStr}</td>
+          <td colspan="6" class="date-text" style="border: none;">${dateStr}</td>
         </tr>
         <tr>
-          <td colspan="7" class="title-row" style="text-align: center; font-weight: bold; background-color: #f2f2f2;">OGM HAVA ARAÇLARI DURUM ÖZETLERİ</td>
+          <td colspan="6" class="title-row">OGM HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td>
         </tr>
         <tr class="header-row">
-          <th style="background-color: #d9d9d9;">ÇAĞRI KODU</th>
-          <th style="background-color: #d9d9d9;">KUYRUK NUMARASI</th>
-          <th style="background-color: #d9d9d9;">DURUM</th>
-          <th style="background-color: #d9d9d9;">DURUM AYRINTISI</th>
-          <th style="background-color: #d9d9d9;">KONUM</th>
-          <th style="background-color: #d9d9d9;">FAYDALI SAAT</th>
-          <th style="background-color: #d9d9d9;">AÇIKLAMA</th>
+          <th>ÇAĞRI KODU</th>
+          <th>KUYRUK NO</th>
+          <th>DURUM</th>
+          <th>KONUM</th>
+          <th>FAYDALİ SAAT</th>
+          <th>AÇIKLAMA</th>
         </tr>
   `;
 
   sortedFleet.forEach(aircraft => {
-    const aciklama = (aircraft.aciklama || '').replace(/\n/g, '<br/>');
+    const aciklama = (aircraft.aciklama || '').replace(/\n/g, ' ');
     const faydaliSaat = aircraft.faydaliSaat ? formatToHHMM(aircraft.faydaliSaat) : '';
     const abbr = getAbbreviation(aircraft.kuyrukNo);
     
-    const durumAyrintisi = aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' 
-      ? `(${aircraft.durumAyrintisi})` 
-      : (aircraft.durumAyrintisi || '');
+    const isFaal = String(aircraft.durum).toUpperCase().includes("FAAL") && !String(aircraft.durum).toUpperCase().includes("GAYRİ") && !String(aircraft.durum).toUpperCase().includes("GAYRI");
+    const durumClass = isFaal ? "faal" : "gayrifaal";
+
+    let durumText = aircraft.durum || '';
+    const alertText = aircraft.durumAyrintisi || '';
+    if (alertText && alertText !== '-') {
+      durumText += ` (${alertText})`;
+    }
     
     html += `
       <tr>
-        <td style="background-color: #e6e6e6;">${aircraft.cagriKodu || ''}</td>
-        <td style="background-color: #e6e6e6;">${aircraft.kuyrukNo || ''}<span style="color: red; font-weight: bold;">${abbr}</span></td>
-        <td style="background-color: ${aircraft.durum === Status.FAAL ? '#c6efce' : '#ffc7ce'}; color: ${aircraft.durum === Status.FAAL ? '#006100' : '#9c0006'}; font-weight: bold;">${aircraft.durum || ''}</td>
-        <td>${durumAyrintisi}</td>
+        <td>${aircraft.cagriKodu || ''}</td>
+        <td class="kuyruk-cell">${aircraft.kuyrukNo || ''}<span class="abbr-text">${abbr}</span></td>
+        <td class="${durumClass}" style="font-weight: bold;">${durumText}</td>
         <td>${aircraft.konum || ''}</td>
-        <td style="mso-number-format:'\\@'; font-weight: bold; color: #0000ff;">${faydaliSaat}</td>
-        <td style="text-align: left; vertical-align: top; font-style: italic; font-size: 10px;">${aciklama}</td>
+        <td style="mso-number-format:'\\@'; font-weight: bold; color: #1a73e8;">${faydaliSaat}</td>
+        <td style="text-align: left; font-style: italic;">${aciklama}</td>
       </tr>
     `;
   });
 
   html += `
-        <tr><td colspan="7" style="border: none;">&nbsp;</td></tr>
-        <tr>
-          <td colspan="7" style="border: none; text-align: left; font-weight: bold;">KISALTMALAR:</td>
-        </tr>
-        <tr>
-          <td colspan="7" style="border: none; text-align: left;">(DA): DUAL AMFİBİ</td>
-        </tr>
-        <tr>
-          <td colspan="7" style="border: none; text-align: left;">(SA): SINGLE AMFİBİ</td>
-        </tr>
-        <tr>
-          <td colspan="7" style="border: none; text-align: left;">(DL): DUAL LAND</td>
-        </tr>
-        <tr>
-          <td colspan="7" style="border: none; text-align: left;">(SL): SINGLE LAND</td>
-        </tr>
-        <tr>
-          <td colspan="7" style="border: none; text-align: left;">(H): HELİTAK</td>
-        </tr>
       </table>
     </body>
     </html>

@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { SheetConfig, Aircraft, AppNotification, DailyStatusCode } from '../types';
 import { fetchAircraftDataFromAppsScript, formatToHHMM, parseSingleCellToHour } from '../services/sheetService';
-import { getMailRecipients, saveMailRecipient, deleteMailRecipient, MailRecipient, sendManualEmail, testMail } from '../src/services/mailService';
+import { getMailRecipients, saveMailRecipient, deleteMailRecipient, MailRecipient, sendManualEmail, testMail, setupAutoMailTrigger, setupMidnightTrigger } from '../src/services/mailService';
 import { generateFleetExcelHtml } from '../src/services/excelService';
 
 interface AdminPanelProps {
@@ -144,6 +144,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
     const res = await testMail(email);
     if (res.success) alert('Test e-postası gönderildi!');
     else alert('Hata: ' + res.message);
+  };
+
+  const handleSetupAutoMail = async () => {
+    if (confirm('Otomatik mail tetikleyicisini kurmak istiyor musunuz? (15 dakikada bir kontrol eder)')) {
+      const res = await setupAutoMailTrigger();
+      alert(res.message || (res.success ? 'Tetikleyici kuruldu.' : 'Hata oluştu.'));
+    }
+  };
+
+  const handleSetupMidnight = async () => {
+    if (confirm('Gece yarısı loglama tetikleyicisini kurmak istiyor musunuz? (Her gün 00:05)')) {
+      const res = await setupMidnightTrigger();
+      alert(res.message || (res.success ? 'Tetikleyici kuruldu.' : 'Hata oluştu.'));
+    }
   };
 
   const toggleDay = (day: string) => {
@@ -362,10 +376,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                          <tr>
                             <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Platform</th>
                             <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Kuyruk</th>
+                            <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Durum</th>
                             <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Gövde Saati</th>
                             <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Faydalı Saat (MIN V:AI)</th>
                             <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Analiz Kodu (DÜZELTMEK İÇİN ÇİFT TIKLA)</th>
-                            <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Detay Analizi</th>
+                            <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Açıklama</th>
                          </tr>
                       </thead>
                       <tbody>
@@ -373,6 +388,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                           <tr key={i} className="border-b border-white/5 text-white text-sm font-medium hover:bg-white/5 transition-colors">
                             <td className="px-8 py-4"><span className="text-[10px] font-black bg-emerald-900/50 px-2 py-1 rounded text-emerald-400">{row.tip || "BELİRSİZ"}</span></td>
                             <td className="px-8 py-4 font-bold">{row.kuyrukNo}</td>
+                            <td className="px-8 py-4">
+                               <div className="flex flex-col">
+                                  <span className={`font-black ${String(row.durum).toUpperCase().includes('FAAL') && !String(row.durum).toUpperCase().includes('GAYRİ') ? 'text-emerald-400' : 'text-red-400'}`}>
+                                     {row.durum}
+                                  </span>
+                                  {row.durumAyrintisi && row.durumAyrintisi !== '-' && (
+                                    <span className="text-[10px] text-orange-400 font-bold italic">({row.durumAyrintisi})</span>
+                                  )}
+                               </div>
+                            </td>
                             <td className="px-8 py-4 text-blue-400 font-black">{row.govdeUcusSaati || '-'}</td>
                             <td className="px-8 py-4 text-emerald-400 font-black">
                               {(row.tip === 'B-360' || row.tip === 'C-650' || row.tip === 'Bell-429') 
@@ -399,7 +424,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                                )}
                             </td>
                             <td className="px-8 py-4 italic text-gray-400">
-                               <div className="text-[10px] text-emerald-500 mb-1 font-black">{row.durumAyrintisi}</div>
                                <div className="text-xs truncate max-w-xs">"{row.aciklama}"</div>
                             </td>
                           </tr>
@@ -415,12 +439,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                       <h1 className="text-white text-3xl font-black uppercase italic">Otomail Sistemi</h1>
                       <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mt-2">Rapor Gönderim ve Alıcı Yönetimi</p>
                    </div>
-                   <button 
-                      onClick={handleTestMail}
-                      className="text-emerald-500 hover:text-emerald-400 font-black text-[10px] uppercase tracking-widest border border-emerald-500/30 px-4 py-2 rounded-xl hover:bg-emerald-500/10 transition-all"
-                   >
-                      EKİ TEST MAİLİ GÖNDER
-                   </button>
+                   <div className="flex space-x-3">
+                      <button 
+                         onClick={handleSetupAutoMail}
+                         title="Otomatik mail tetikleyicisini kur"
+                         className="text-emerald-500 hover:text-emerald-400 font-black text-[9px] uppercase tracking-widest border border-emerald-500/30 px-3 py-2 rounded-xl hover:bg-emerald-500/10 transition-all"
+                      >
+                         OTO MAİL KUR
+                      </button>
+                      <button 
+                         onClick={handleSetupMidnight}
+                         title="Gece yarısı loglama tetikleyicisini kur"
+                         className="text-emerald-500 hover:text-emerald-400 font-black text-[9px] uppercase tracking-widest border border-emerald-500/30 px-3 py-2 rounded-xl hover:bg-emerald-500/10 transition-all"
+                      >
+                         GECE LOG KUR
+                      </button>
+                      <button 
+                         onClick={handleTestMail}
+                         className="text-emerald-500 hover:text-emerald-400 font-black text-[10px] uppercase tracking-widest border border-emerald-500/30 px-4 py-2 rounded-xl hover:bg-emerald-500/10 transition-all"
+                      >
+                         EKİ TEST MAİLİ GÖNDER
+                      </button>
+                   </div>
                 </div>
                 <div className="bg-[#021a0c] p-10 flex-1 overflow-y-auto custom-scrollbar rounded-b-[3rem]">
                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">

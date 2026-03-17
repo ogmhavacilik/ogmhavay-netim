@@ -123,3 +123,79 @@ export const testMail = async (email: string): Promise<{ success: boolean; messa
     return { success: false, message: 'Connection error' };
   }
 };
+
+export const setupAutoMailTrigger = async (): Promise<{ success: boolean; message?: string }> => {
+  try {
+    const response = await fetch(LOG_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'setupAutoMailTrigger',
+        sheetId: MAIL_LOG_SHEET_ID
+      })
+    });
+    const result = await response.json();
+    if (result.status === 'success') return { success: true, message: result.data };
+    return { success: false, message: result.error || 'Unknown error' };
+  } catch (error) {
+    console.error('Error setting up auto mail trigger:', error);
+    return { success: false, message: 'Connection error' };
+  }
+};
+
+export const setupMidnightTrigger = async (): Promise<{ success: boolean; message?: string }> => {
+  try {
+    const response = await fetch(LOG_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'setupMidnightTrigger',
+        sheetId: MAIL_LOG_SHEET_ID
+      })
+    });
+    const result = await response.json();
+    if (result.status === 'success') return { success: true, message: result.data };
+    return { success: false, message: result.error || 'Unknown error' };
+  } catch (error) {
+    console.error('Error setting up midnight trigger:', error);
+    return { success: false, message: 'Connection error' };
+  }
+};
+
+export const performDailyMidnightLogging = async (): Promise<{ success: boolean; message?: string }> => {
+  try {
+    const response = await fetch(LOG_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'performDailyMidnightLogging',
+        sheetId: MAIL_LOG_SHEET_ID
+      })
+    });
+    const result = await response.json();
+    if (result.status === 'success') return { success: true, message: result.data };
+    return { success: false, message: result.error || 'Unknown error' };
+  } catch (error) {
+    console.error('Error performing midnight logging:', error);
+    return { success: false, message: 'Connection error' };
+  }
+};
+
+export const debugAutoMail = async (): Promise<{ success: boolean; message?: string }> => {
+  try {
+    const response = await fetch(LOG_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'debugAutoMail',
+        sheetId: MAIL_LOG_SHEET_ID
+      })
+    });
+    const result = await response.json();
+    if (result.status === 'success') return { success: true, message: result.data };
+    return { success: false, message: result.error || 'Unknown error' };
+  } catch (error) {
+    console.error('Error debugging auto mail:', error);
+    return { success: false, message: 'Connection error' };
+  }
+};

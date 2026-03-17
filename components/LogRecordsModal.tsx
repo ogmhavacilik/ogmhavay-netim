@@ -3,7 +3,7 @@ import { Aircraft, OPLItem } from '../types';
 import { fetchOPLData } from '../services/sheetService';
 import * as XLSX from 'xlsx';
 
-import { BELL_SCRIPT_URL, AT802_SCRIPT_URL, T70_SCRIPT_URL, B360_SCRIPT_URL, C650_SCRIPT_URL } from '../constants';
+import { BELL_SCRIPT_URL, AT802_SCRIPT_URL, T70_SCRIPT_URL, B360_SCRIPT_URL, C650_SCRIPT_URL, LOG_SCRIPT_URL } from '../constants';
 
 import { exportOPLToPDF } from '../services/pdfService';
 
@@ -11,6 +11,23 @@ interface LogRecordsModalProps {
   aircraft: Aircraft;
   onClose: () => void;
 }
+
+const OPL_EXPORT_HEADERS = [
+  "SIRA NU:",
+  "HAVA ARACI NU:",
+  "ÖMÜR TİPİ",
+  "PARÇA ADI",
+  "ANA PARÇA",
+  "PARÇA NU:",
+  "SERİ NU:",
+  "ÖMRÜ",
+  "DEĞİŞİME KALAN SAAT",
+  "DEĞİŞİME KALAN GÜN",
+  "DEĞİŞİME KALAN SAYKIL",
+  "DEĞİŞİM YAPILACAK HAVA ARACI / MOTOR UÇUŞ SAATİ",
+  "DEĞİŞİM YAPILACAK GÜN",
+  "DEĞİŞİM YAPILACAK HAVA ARACI SAYKIL"
+];
 
 const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) => {
   const [view, setView] = useState<'menu' | 'opl' | 'maintenance' | 'sheet'>('menu');
@@ -49,53 +66,119 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
     link.click();
     URL.revokeObjectURL(url);
   };
+  const findExportValue = (row: any, header: string) => {
+    const normalize = (s: string) => s.replace(/[:\s_]/g, '').toUpperCase();
+    const normalizedHeader = normalize(header);
+    
+    if (header === "HAVA ARACI NU:") {
+      const key = Object.keys(row).find(k => normalize(k) === normalizedHeader);
+      const val = key ? row[key] : null;
+      return (val === "-" || !val) ? aircraft.kuyrukNo : val;
+    }
+    
+    if (header === "HAVA ARACI") {
+      return aircraft.tip || "-";
+    }
+
+    const key = Object.keys(row).find(k => normalize(k) === normalizedHeader);
+    let value = key ? row[key] : "-";
+
+    if (header === "SIRA NU:" && row['IS_MERGED_RECORD'] === 'BİRLEŞİK') {
+      value = `BİRLEŞİK ${value === "-" ? "" : value}`.trim();
+    }
+
+    return value;
+  };
+
   const exportOPLToExcel = () => {
-    if (!filteredData || filteredData.length === 0) return;
+    if (!oplData || oplData.length === 0) return;
 
-    const requestedHeaders = [
-      "SIRA NU:",
-      "HAVA ARACI NU:",
-      "ÖMÜR TİPİ",
-      "PARÇA ADI",
-      "ANA PARÇA",
-      "PARÇA NU:",
-      "SERİ NU:",
-      "ÖMRÜ",
-      "DEĞİŞİME KALAN SAAT",
-      "DEĞİŞİME KALAN GÜN",
-      "DEĞİŞİME KALAN SAYKIL",
-      "DEĞİŞİM YAPILACAK HAVA ARACI / MOTOR UÇUŞ SAATİ",
-      "DEĞİŞİM YAPILACAK GÜN"
-    ];
+    // Search filter but NO alert sorting for export
+    let exportData = oplData;
+    const term = searchTerm.toLocaleLowerCase('tr-TR').trim();
+    if (term) {
+      exportData = oplData.filter((item) => {
+        return Object.entries(item).some(([key, val]) => {
+          if (key === 'IS_MERGED_RECORD') return false;
+          return String(val || "").toLocaleLowerCase('tr-TR').includes(term);
+        });
+      });
+    }
 
-    const exportData = filteredData.map(row => {
-      const newRow: any = {};
-      requestedHeaders.forEach(header => {
-        const normalize = (s: string) => s.replace(/[:\s_]/g, '').toUpperCase();
-        const normalizedHeader = normalize(header);
-        
-        const key = Object.keys(row).find(k => normalize(k) === normalizedHeader);
-        let value = key ? row[key] : "-";
+    const tableHtml = `
+      <table border="1">
+        <thead>
+          <tr style="background-color: #ddeaf6; font-weight: bold;">
+            ${OPL_EXPORT_HEADERS.map(h => `<th>${h}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${exportData.map(row => {
+            const { alertCols, hasOplAlertValue } = checkRowAlert(row);
+            return `
+              <tr>
+                ${OPL_EXPORT_HEADERS.map(h => {
+                  const val = findExportValue(row, h);
+                  const normalize = (s: string) => s.replace(/[:\s_]/g, '').toUpperCase();
+                  const normalizedH = normalize(h);
+                  const isAlertCol = alertCols.some(ac => normalize(ac) === normalizedH);
+                  const isPartNumCol = normalizedH === "PARÇANU" || normalizedH === "PARCANU";
+                  
+                  const style = (isAlertCol || (isPartNumCol && hasOplAlertValue)) ? 'style="color: #FF0000; font-weight: bold;"' : '';
+                  return `<td ${style}>${val}</td>`;
+                }).join('')}
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
 
-        // Özel durumlar
-        if (header === "HAVA ARACI NU:" && (value === "-" || !value)) {
-          value = aircraft.kuyrukNo;
-        }
-        
-        // Birleşik hücre kontrolü (Sıra No kolonuna ekle)
-        if (header === "SIRA NU:" && row['IS_MERGED_RECORD'] === 'BİRLEŞİK') {
-          value = `BİRLEŞİK ${value === "-" ? "" : value}`.trim();
-        }
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>ÖPL Listesi</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+      </head>
+      <body>
+        ${tableHtml}
+      </body>
+      </html>
+    `;
 
-        newRow[header] = value;
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${aircraft.kuyrukNo}_OPL_Listesi.xls`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportOPLToPDFHandler = () => {
+    if (!oplData || oplData.length === 0) return;
+    
+    // Search filter but NO alert sorting for export
+    let exportData = oplData;
+    const term = searchTerm.toLocaleLowerCase('tr-TR').trim();
+    if (term) {
+      exportData = oplData.filter((item) => {
+        return Object.entries(item).some(([key, val]) => {
+          if (key === 'IS_MERGED_RECORD') return false;
+          return String(val || "").toLocaleLowerCase('tr-TR').includes(term);
+        });
+      });
+    }
+
+    const preparedData = exportData.map(row => {
+      const newRow: any = { ...row };
+      OPL_EXPORT_HEADERS.forEach(h => {
+        newRow[h] = findExportValue(row, h);
       });
       return newRow;
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "ÖPL Listesi");
-    XLSX.writeFile(workbook, `${aircraft.kuyrukNo}_OPL_Listesi.xlsx`);
+    exportOPLToPDF(aircraft.kuyrukNo, preparedData, OPL_EXPORT_HEADERS);
   };
 
   const [oplData, setOplData] = useState<OPLItem[]>([]);
@@ -113,11 +196,11 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
   };
 
   const SCRIPT_URLS: Record<string, string> = {
-    'AT-802': AT802_SCRIPT_URL,
-    'Bell-429': BELL_SCRIPT_URL,
-    'T-70': T70_SCRIPT_URL,
-    'B-360': B360_SCRIPT_URL,
-    'C-650': C650_SCRIPT_URL
+    'AT-802': LOG_SCRIPT_URL,
+    'Bell-429': LOG_SCRIPT_URL,
+    'T-70': LOG_SCRIPT_URL,
+    'B-360': LOG_SCRIPT_URL,
+    'C-650': LOG_SCRIPT_URL
   };
 
   const handleFetchOPL = async () => {
@@ -297,6 +380,22 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
 
     let hasAlert = false;
     let alertCols: string[] = [];
+    let hasOplAlertValue = false;
+
+    // Check for explicit OPL ALERT column
+    const oplAlertKey = Object.keys(row).find(k => {
+      const n = k.replace(/[\s_]/g, '').toUpperCase();
+      return n.includes("ÖPLALERT") || n.includes("OPLALERT");
+    });
+
+    if (oplAlertKey) {
+      const v = String(row[oplAlertKey] || "").trim();
+      if (v !== "" && v !== "-" && v !== "0") {
+        hasOplAlertValue = true;
+        hasAlert = true;
+        alertCols.push(oplAlertKey);
+      }
+    }
 
     if (kalanSaat !== null && kalanSaat <= 100) {
       hasAlert = true;
@@ -309,7 +408,7 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
       if (key) alertCols.push(key);
     }
 
-    return { hasAlert, alertCols };
+    return { hasAlert, alertCols, hasOplAlertValue };
   }, []);
 
   const filteredData = useMemo(() => {
@@ -328,16 +427,24 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
     }
 
     return [...processedData].sort((a, b) => {
-      const aAlert = checkRowAlert(a).hasAlert;
-      const bAlert = checkRowAlert(b).hasAlert;
-      if (aAlert && !bAlert) return -1;
-      if (!aAlert && bAlert) return 1;
-      return 0;
+      const alertA = checkRowAlert(a).hasAlert ? 1 : 0;
+      const alertB = checkRowAlert(b).hasAlert ? 1 : 0;
+      return alertB - alertA;
     });
   }, [oplData, searchTerm, checkRowAlert]);
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md p-2 md:p-6">
+      <style>{`
+        @keyframes blink {
+          0% { opacity: 1; }
+          50% { opacity: 0.1; }
+          100% { opacity: 1; }
+        }
+        .animate-blink {
+          animation: blink 0.5s infinite;
+        }
+      `}</style>
       <div className="bg-white w-full max-w-[98%] h-[95vh] rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col border border-emerald-900/20">
         
         {/* Header */}
@@ -461,25 +568,34 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
                           className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-colors flex items-center space-x-2"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                          <span>İNDİR</span>
+                          <span>İNDİR (XLS)</span>
+                        </button>
+                      )}
+                      {hasOPLSupport && (
+                        <button 
+                          onClick={exportOPLToPDFHandler}
+                          className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-colors flex items-center space-x-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                          <span>İNDİR (PDF)</span>
                         </button>
                       )}
                     </div>
-                  <div className="flex items-center space-x-3">
-                   <span className="text-[10px] font-black text-emerald-700 uppercase">TABLO İÇİ ARAMA:</span>
-                   <input type="text" placeholder="Kelime bazlı süz..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-80 px-4 py-2 bg-gray-50 border rounded-xl text-sm font-bold outline-none focus:border-emerald-500 transition-all shadow-sm" />
-                 </div>
-               </div>
-               <div className="flex-grow p-4 overflow-hidden">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-[10px] font-black text-emerald-700 uppercase">TABLO İÇİ ARAMA:</span>
+                      <input type="text" placeholder="Kelime bazlı süz..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-80 px-4 py-2 bg-gray-50 border rounded-xl text-sm font-bold outline-none focus:border-emerald-500 transition-all shadow-sm" />
+                    </div>
+                </div>
+                <div className="flex-grow p-4 overflow-hidden">
                   <div className="bg-white rounded-3xl shadow-xl border overflow-hidden flex flex-col h-full">
                     {loading ? (
                       <div className="flex-grow flex flex-col items-center justify-center space-y-4">
                         <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-                        <span className="text-xs font-black text-emerald-900 uppercase">HÜCRE BİRLEŞTİRMELERİ ÇÖZÜLÜYOR...</span>
+                        <span className="text-xs font-black text-emerald-900 uppercase">VERİLER YÜKLENİYOR...</span>
                       </div>
                     ) : (
                       <div className="overflow-auto custom-scrollbar flex-grow bg-white" id="opl-table-container">
-                        <table id="opl-table" className="w-full text-left border-collapse min-w-[3000px] table-fixed">
+                        <table id="opl-table" className="w-full text-left border-collapse min-w-[3500px] table-fixed">
                            <thead className="sticky top-0 z-20">
                              <tr className="bg-[#ddeaf6]">
                                <th className="px-3 py-4 border border-black text-[9px] font-black uppercase text-center w-28 bg-gray-100">KAYIT DURUMU</th>
@@ -490,17 +606,32 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
                            </thead>
                            <tbody>
                              {filteredData.map((row, rIdx) => {
-                               const { hasAlert, alertCols } = checkRowAlert(row);
+                               const { hasAlert, alertCols, hasOplAlertValue } = checkRowAlert(row);
+                               
                                return (
-                               <tr key={rIdx} className={`transition-colors h-10 ${hasAlert ? 'bg-red-900 hover:bg-red-800 outline outline-2 outline-red-500 animate-pulse' : 'hover:bg-blue-50/50'}`}>
-                                 <td className={`px-3 py-1.5 border border-black text-[9px] font-black text-center uppercase italic ${hasAlert ? 'text-white bg-red-800' : 'text-orange-600 bg-orange-50/20'}`}>
+                               <tr key={rIdx} className={`transition-colors h-10 hover:bg-blue-50/50 ${hasAlert ? 'bg-red-700' : ''}`}>
+                                 <td className={`px-3 py-1.5 border border-black text-[9px] font-black text-center uppercase italic ${hasAlert ? 'text-white bg-red-800 animate-blink' : 'text-orange-600 bg-orange-50/20'}`}>
                                    {row['IS_MERGED_RECORD'] || ''}
                                  </td>
                                  {dynamicHeaders.map((header, cIdx) => {
-                                   const isAlertCol = alertCols.includes(header);
+                                   const normalize = (s: string) => s.replace(/[:\s_]/g, '').toUpperCase();
+                                   const normalizedHeader = normalize(header);
+                                   const isAlertCol = alertCols.some(ac => normalize(ac) === normalizedHeader);
+                                   const isOplAlert = normalizedHeader.includes("ÖPLALERT") || normalizedHeader.includes("OPLALERT");
+                                   const isPartNumCol = normalizedHeader === "PARÇANU" || normalizedHeader === "PARCANU";
+                                   
+                                   let val = row[header] || "-";
+                                   
+                                   if (normalizedHeader === "SIRANU" && row['IS_MERGED_RECORD'] === 'BİRLEŞİK') {
+                                     val = `BİRLEŞİK ${val === "-" ? "" : val}`.trim();
+                                   }
+
+                                   const isBlinking = isPartNumCol && (isAlertCol || hasOplAlertValue);
+                                   const isDarkRed = isPartNumCol && (isAlertCol || hasOplAlertValue);
+
                                    return (
-                                   <td key={cIdx} className={`px-3 py-1.5 border border-black text-[11px] font-bold whitespace-nowrap overflow-hidden text-ellipsis ${isAlertCol ? 'text-white font-black bg-red-700' : (hasAlert ? 'text-red-100' : 'text-gray-800')}`}>
-                                     {String(row[header] || '-')}
+                                   <td key={cIdx} className={`px-3 py-1.5 border border-black text-[11px] font-bold whitespace-nowrap overflow-hidden text-ellipsis ${isBlinking ? 'animate-blink' : ''} ${(isAlertCol || isOplAlert || isDarkRed) ? 'text-white bg-red-900 font-black' : hasAlert ? 'text-white font-bold' : 'text-gray-800'}`}>
+                                     {String(val)}
                                    </td>
                                    );
                                  })}
@@ -513,7 +644,7 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
                       </div>
                     )}
                   </div>
-               </div>
+                </div>
             </div>
           )}
         </div>

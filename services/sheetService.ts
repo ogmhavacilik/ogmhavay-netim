@@ -243,14 +243,20 @@ const formatDateIfISO = (val: any): string => {
 };
 
 export const fetchAircraftDataFromAppsScript = async (url: string, config: SheetConfig): Promise<Partial<Aircraft>[]> => {
-  if (!url || !url.startsWith('http')) {
+  const cleanUrl = url?.trim();
+  if (!cleanUrl || !cleanUrl.startsWith('http')) {
     console.warn(`Geçersiz veya boş Apps Script URL'si (${config.aircraftType}). Lütfen konfigürasyonu kontrol edin.`);
     return [];
   }
+  if (!cleanUrl.includes('script.google.com/macros/')) {
+    console.error(`Hatalı URL Formatı (${config.aircraftType}): Lütfen Google Sheets URL'si yerine Google Apps Script Web App URL'sini girin. URL: ${cleanUrl}`);
+    return [];
+  }
   try {
-    const response = await fetch(url, {
+    const response = await fetch(cleanUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
+      redirect: 'follow',
       body: JSON.stringify({
         sheetId: config.sheetId,
         sheetName: config.sheetName || '',
@@ -438,7 +444,10 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
       return aircraft;
     }).filter((a): a is Partial<Aircraft> => a !== null);
   } catch (error) {
-    console.error(`fetchAircraftDataFromAppsScript Hatası:`, error);
+    console.error(`fetchAircraftDataFromAppsScript Hatası (${config.aircraftType}):`, error);
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      console.error(`Olası CORS hatası veya geçersiz URL. Lütfen Apps Script'in "Herkes" (Anyone) erişimiyle dağıtıldığından emin olun. URL: ${url}`);
+    }
     return [];
   }
 };
@@ -452,11 +461,20 @@ export const fetchOPLData = async (
   sheetId: string,
   kuyrukNo: string
 ): Promise<OPLItem[]> => {
-  if (!scriptUrl || !scriptUrl.startsWith('http')) return [];
+  const cleanUrl = scriptUrl?.trim();
+  if (!cleanUrl || !cleanUrl.startsWith('http')) {
+    console.warn("fetchOPLData: Geçersiz URL", scriptUrl);
+    return [];
+  }
+  if (!cleanUrl.includes('script.google.com/macros/')) {
+    console.error(`fetchOPLData: Hatalı URL Formatı. Lütfen Google Sheets URL'si yerine Google Apps Script Web App URL'sini girin. URL: ${cleanUrl}`);
+    return [];
+  }
   try {
-    const response = await fetch(scriptUrl, {
+    const response = await fetch(cleanUrl, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
+      redirect: 'follow',
       body: JSON.stringify({
         action: "getOPLData",
         sheetId,
@@ -464,14 +482,20 @@ export const fetchOPLData = async (
       })
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      console.warn(`fetchOPLData: HTTP Hatası ${response.status} - ${scriptUrl}`);
+      return [];
+    }
 
     const result = await response.json();
-    if (!result || !result.success || !Array.isArray(result.data)) return [];
+    if (!result || !result.success || !Array.isArray(result.data)) {
+      console.warn("fetchOPLData: Geçersiz veri yapısı", result);
+      return [];
+    }
 
     return result.data;
   } catch (error) {
-    console.error("fetchOPLData Hatası:", error);
+    console.error(`fetchOPLData Hatası (${kuyrukNo} - ${scriptUrl}):`, error);
     return [];
   }
 };
@@ -481,9 +505,11 @@ export const fetchAircraftSpecificData = async (
   sheetId: string,
   kuyrukNo: string
 ): Promise<any> => {
-  if (!url || !url.startsWith('http')) return { success: false };
+  const cleanUrl = url?.trim();
+  if (!cleanUrl || !cleanUrl.startsWith('http')) return { success: false };
+  if (!cleanUrl.includes('script.google.com/macros/')) return { success: false };
   try {
-    const response = await fetch(url, {
+    const response = await fetch(cleanUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
@@ -509,8 +535,10 @@ export const updateAircraftData = async (
   sheetName?: string,
   aircraftType?: string
 ): Promise<{ success: boolean; message: string }> => {
+  const cleanUrl = url?.trim();
+  if (!cleanUrl || !cleanUrl.includes('script.google.com/macros/')) return { success: false, message: 'Geçersiz URL formatı.' };
   try {
-    const response = await fetch(url, {
+    const response = await fetch(cleanUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
@@ -525,12 +553,47 @@ export const updateAircraftData = async (
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const result = await response.json();
+    const message = typeof result.data === 'string' ? result.data : (result.data?.message || result.message || result.error);
     return {
-      success: result.success || false,
-      message: result.message || (result.success ? 'Başarıyla güncellendi.' : 'Güncelleme başarısız.')
+      success: result.success || result.status === 'success' || false,
+      message: message || (result.success ? 'Başarıyla güncellendi.' : 'Güncelleme başarısız.')
     };
   } catch (error) {
     console.error('updateAircraftData Hatası:', error);
+    return { success: false, message: 'Sunucu bağlantı hatası.' };
+  }
+};
+
+export const updatePastEnvanterLog = async (
+  url: string,
+  sheetId: string,
+  kuyrukNo: string,
+  date: string,
+  newHours: string
+): Promise<{ success: boolean; message: string }> => {
+  const cleanUrl = url?.trim();
+  if (!cleanUrl || !cleanUrl.includes('script.google.com/macros/')) return { success: false, message: 'Geçersiz URL formatı.' };
+  try {
+    const response = await fetch(cleanUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'updatePastEnvanterLog',
+        sheetId,
+        kuyrukNo,
+        date,
+        newHours
+      })
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
+    const message = typeof result.data === 'string' ? result.data : (result.data?.message || result.message || result.error);
+    return {
+      success: result.success || result.status === 'success' || false,
+      message: message || (result.success ? 'Geçmiş gün verisi güncellendi.' : 'Güncelleme başarısız.')
+    };
+  } catch (error) {
+    console.error('updatePastEnvanterLog Hatası:', error);
     return { success: false, message: 'Sunucu bağlantı hatası.' };
   }
 };

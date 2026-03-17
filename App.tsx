@@ -171,7 +171,7 @@ const App = () => {
         durumAyrintisi: 'D3:D16', 
         konum: 'E3:E16', 
         faydaliSaat: 'V3:AI16', 
-        aciklama: 'AL3:AL16',   
+        aciklama: 'AJ3:AJ16',   
         govdeUcusSaati: 'F3:F16',
         gelisTarihi: 'U24:V39',
         gelisKuyrukNo: 'T24:T39'
@@ -631,7 +631,7 @@ const App = () => {
     setOplCheckStatus(prev => ({ ...prev, [aircraft.kuyrukNo]: 'checking' }));
     
     try {
-      const data = await fetchOPLData(aircraft.appsScriptUrl, aircraft.sheetId, aircraft.kuyrukNo);
+      const data = await fetchOPLData(LOG_SCRIPT_URL, aircraft.sheetId, aircraft.kuyrukNo);
       const alerts: string[] = [];
       
       const findValue = (item: any, possibleKeys: string[]) => {

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Aircraft, Status, OPLItem, AircraftActivity } from '../types';
 import LogRecordsModal from './LogRecordsModal';
 import { fetchOPLData, formatToHHMM } from '../services/sheetService';
+import { LOG_SCRIPT_URL } from '../constants';
 
 interface AircraftDetailModalProps {
   aircraft: Aircraft;
@@ -60,7 +61,7 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
       if (!aircraft.appsScriptUrl || !aircraft.sheetId) return;
       setIsLoadingOPL(true);
       try {
-        const data = await fetchOPLData(aircraft.appsScriptUrl, aircraft.sheetId, aircraft.kuyrukNo);
+        const data = await fetchOPLData(LOG_SCRIPT_URL, aircraft.sheetId, aircraft.kuyrukNo);
         const alerts: string[] = [];
         
         const findValue = (item: any, possibleKeys: string[]) => {
