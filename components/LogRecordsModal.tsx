@@ -196,11 +196,11 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
   };
 
   const SCRIPT_URLS: Record<string, string> = {
-    'AT-802': LOG_SCRIPT_URL,
-    'Bell-429': LOG_SCRIPT_URL,
-    'T-70': LOG_SCRIPT_URL,
-    'B-360': LOG_SCRIPT_URL,
-    'C-650': LOG_SCRIPT_URL
+    'AT-802': AT802_SCRIPT_URL,
+    'Bell-429': BELL_SCRIPT_URL,
+    'T-70': T70_SCRIPT_URL,
+    'B-360': B360_SCRIPT_URL,
+    'C-650': C650_SCRIPT_URL
   };
 
   const handleFetchOPL = async () => {

@@ -1,6 +1,7 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AircraftActivity, DailyStatusCode } from '../types';
+import { X } from 'lucide-react';
 
 interface ActivityGridProps {
   activities: AircraftActivity[];
@@ -8,9 +9,12 @@ interface ActivityGridProps {
   endDate: Date;
   title: string;
   onExport?: () => void;
+  onDayClick?: (date: Date) => void;
 }
 
-const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endDate, title, onExport }) => {
+const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endDate, title, onExport, onDayClick }) => {
+  const [selectedDayView, setSelectedDayView] = useState<{ activity: AircraftActivity, date: Date } | null>(null);
+
   const isHourlyView = useMemo(() => {
     const s = new Date(startDate);
     const e = new Date(endDate);
@@ -232,8 +236,19 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                             const status = act.dailyStatuses[dateStrKey] || '';
                             const isCompletedToday = act.intraDayCompletions?.[dateStrKey];
                             return (
-                              <td key={dIdx} className={`border border-black text-center text-[10px] ${getStatusClass(status)}`} style={getStatusStyle(status)}>
-                                {status === 'F' ? (isCompletedToday ? <span className="text-orange-500 font-black text-sm">*</span> : '') : status}
+                              <td 
+                                key={dIdx} 
+                                className={`border border-black text-center text-[10px] ${getStatusClass(status)} ${isCompletedToday ? 'cursor-pointer hover:opacity-80' : ''}`} 
+                                style={getStatusStyle(status)}
+                                onClick={() => {
+                                  if (isCompletedToday) {
+                                    setSelectedDayView({ activity: act, date: date });
+                                  } else if (onDayClick) {
+                                    onDayClick(date);
+                                  }
+                                }}
+                              >
+                                {status === 'F' ? (isCompletedToday ? <span className="text-orange-500 font-black text-sm">★</span> : '') : status}
                               </td>
                             );
                           })
@@ -290,7 +305,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
            </div>
            <div className="flex flex-col space-y-1">
               <div className="bg-white border border-black px-2 py-1 text-[9px] font-black w-64 flex items-center">
-                <span className="text-orange-500 font-black text-sm mr-2">*</span>
+                <span className="text-orange-500 font-black text-sm mr-2">★</span>
                 GÜN İÇERSİNDE TAMAMLANAN BAKIM VEYA ARIZA FAALİYETLERİ
               </div>
            </div>
@@ -300,6 +315,80 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
           Soluk alanlar veri tabanında bulunmamaktadır.
         </div>
       </div>
+
+      {/* Hourly View Modal */}
+      {selectedDayView && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-5xl max-h-[90vh] overflow-hidden shadow-2xl border-4 border-emerald-500/20 flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-emerald-50">
+              <div>
+                <h3 className="text-2xl font-black text-emerald-900 uppercase tracking-tight">
+                  {selectedDayView.activity.kuyrukNo} - {selectedDayView.date.toLocaleDateString('tr-TR')} SAATLİK GÖRÜNÜM
+                </h3>
+                <p className="text-emerald-600 font-bold text-sm uppercase tracking-widest">GÜN İÇİ DURUM DETAYLARI</p>
+              </div>
+              <button 
+                onClick={() => setSelectedDayView(null)}
+                className="p-2 hover:bg-white rounded-full transition-all text-emerald-900"
+              >
+                <X className="w-8 h-8" />
+              </button>
+            </div>
+            
+            <div className="p-8 overflow-auto">
+              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+                {hours.map((hour, idx) => {
+                  const dateStrKey = `${selectedDayView.date.getFullYear()}-${String(selectedDayView.date.getMonth() + 1).padStart(2, '0')}-${String(selectedDayView.date.getDate()).padStart(2, '0')}`;
+                  const status = selectedDayView.activity.hourlyStatuses?.[dateStrKey]?.[hour] || selectedDayView.activity.dailyStatuses[dateStrKey] || 'F';
+                  
+                  return (
+                    <div key={idx} className="flex flex-col items-center">
+                      <div className="text-[10px] font-black text-gray-400 mb-1">{hour}</div>
+                      <div 
+                        className={`w-full h-12 flex items-center justify-center border border-black/10 rounded-lg font-black text-xs ${getStatusClass(status)}`}
+                        style={{ 
+                          ...getStatusStyle(status), 
+                          color: status === 'F' ? '#059669' : getStatusStyle(status).color,
+                          backgroundColor: status === 'F' ? '#ecfdf5' : getStatusStyle(status).backgroundColor
+                        }}
+                      >
+                        {status === 'F' ? 'FAAL' : status}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-8 p-6 bg-gray-50 rounded-2xl border border-gray-100">
+                <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm mb-4">GÜN ÖZETİ</h4>
+                <div className="flex space-x-8">
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 bg-white border border-black/20 mr-2 rounded"></div>
+                    <span className="text-xs font-bold text-gray-600">FAAL</span>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 bg-[#FFFF00] border border-black/20 mr-2 rounded"></div>
+                    <span className="text-xs font-bold text-gray-600">BAKIM</span>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 bg-[#FF0000] border border-black/20 mr-2 rounded"></div>
+                    <span className="text-xs font-bold text-gray-600">ARIZA</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-emerald-50 border-t border-gray-100 flex justify-end">
+              <button 
+                onClick={() => setSelectedDayView(null)}
+                className="px-8 py-3 bg-emerald-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-emerald-500 transition-all shadow-lg"
+              >
+                KAPAT
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

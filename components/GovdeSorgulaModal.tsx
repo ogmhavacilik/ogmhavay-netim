@@ -11,6 +11,7 @@ interface SorguResult {
   baslangicSaat: number;
   bitisSaat: number;
   fark: number;
+  isDecimal?: boolean;
 }
 
 const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }) => {
@@ -23,30 +24,44 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
 
   if (!isOpen) return null;
 
-  const parseHour = (val: any): number | null => {
-    if (val === null || val === undefined || String(val).trim() === "" || String(val).toUpperCase() === "N/A") return null;
+  const parseHour = (val: any): { val: number | null, isDecimal: boolean } => {
+    if (val === null || val === undefined || String(val).trim() === "" || String(val).toUpperCase() === "N/A") {
+      return { val: null, isDecimal: false };
+    }
+    
     if (typeof val === 'string' && val.includes('T') && val.includes('Z')) {
       const d = new Date(val);
       const epoch = new Date(Date.UTC(1899, 11, 30));
-      return (d.getTime() - epoch.getTime()) / (1000 * 60 * 60);
+      return { val: (d.getTime() - epoch.getTime()) / (1000 * 60 * 60), isDecimal: false };
     }
+
     const s = String(val).trim().replace(',', '.');
     if (s.includes(':')) {
       const parts = s.split(':').map(Number);
-      if (parts.length >= 2) return (parts[0] || 0) + (parts[1] || 0) / 60;
+      if (parts.length >= 2) return { val: (parts[0] || 0) + (parts[1] || 0) / 60, isDecimal: false };
     }
+
     const n = parseFloat(s);
-    return isNaN(n) ? null : n;
+    if (isNaN(n)) return { val: null, isDecimal: false };
+    
+    // If it contains a dot or comma but no colon, it's likely decimal
+    const isDec = String(val).includes('.') || String(val).includes(',');
+    return { val: n, isDecimal: isDec };
   };
 
   const formatHour = (hours: number): string => {
-    let h = Math.floor(hours);
-    let m = Math.round((hours - h) * 60);
+    let h = Math.floor(Math.abs(hours));
+    let m = Math.round((Math.abs(hours) - h) * 60);
     if (m === 60) {
       h += 1;
       m = 0;
     }
-    return `${h}:${m.toString().padStart(2, '0')}`;
+    const sign = hours < 0 ? '-' : '';
+    return `${sign}${h}:${m.toString().padStart(2, '0')}`;
+  };
+
+  const formatDecimal = (hours: number): string => {
+    return hours.toFixed(2).replace('.', ',');
   };
 
   const handleSorgula = async () => {
@@ -66,6 +81,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
         body: JSON.stringify({
           action: 'getAircraftData',
           sheetId: '1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg',
+          sheetName: 'Envanter Log',
           mapping: {
             tarih: 'B2:B10000',
             kuyrukNo: 'C2:C10000',
@@ -75,12 +91,13 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
         })
       });
       
-      const data = await res.json();
+      const result = await res.json();
+      const data = (result && result.success && Array.isArray(result.data)) ? result.data : (Array.isArray(result) ? result : []);
       
       const startD = new Date(startDate);
       const endD = new Date(endDate);
 
-      const todayStr = new Date().toISOString().split('T')[0];
+      const decimalTypes = ['B-360', 'C-650', 'Bell-429'];
 
       const startData = data.filter((row: any) => {
         if (!row.tarih) return false;
@@ -99,33 +116,43 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
       const resultMap: Record<string, SorguResult> = {};
 
       startData.forEach((row: any) => {
-        const h = parseHour(row.govdeUcusSaati);
+        const { val: h, isDecimal: parsedIsDecimal } = parseHour(row.govdeUcusSaati);
+        const isDecimal = parsedIsDecimal || decimalTypes.includes(row.tip);
         if (h !== null) {
           if (!resultMap[row.kuyrukNo]) {
             resultMap[row.kuyrukNo] = {
               kuyrukNo: row.kuyrukNo,
               baslangicSaat: h,
               bitisSaat: 0,
-              fark: 0
+              fark: 0,
+              isDecimal: isDecimal
             };
           } else {
-            resultMap[row.kuyrukNo].baslangicSaat = Math.max(resultMap[row.kuyrukNo].baslangicSaat, h);
+            if (h > resultMap[row.kuyrukNo].baslangicSaat) {
+              resultMap[row.kuyrukNo].baslangicSaat = h;
+              resultMap[row.kuyrukNo].isDecimal = isDecimal;
+            }
           }
         }
       });
 
       endData.forEach((row: any) => {
-        const h = parseHour(row.govdeUcusSaati);
+        const { val: h, isDecimal: parsedIsDecimal } = parseHour(row.govdeUcusSaati);
+        const isDecimal = parsedIsDecimal || decimalTypes.includes(row.tip);
         if (h !== null) {
           if (!resultMap[row.kuyrukNo]) {
             resultMap[row.kuyrukNo] = {
               kuyrukNo: row.kuyrukNo,
               baslangicSaat: 0,
               bitisSaat: h,
-              fark: 0
+              fark: 0,
+              isDecimal: isDecimal
             };
           } else {
-            resultMap[row.kuyrukNo].bitisSaat = Math.max(resultMap[row.kuyrukNo].bitisSaat, h);
+            if (h > resultMap[row.kuyrukNo].bitisSaat) {
+              resultMap[row.kuyrukNo].bitisSaat = h;
+              if (!resultMap[row.kuyrukNo].isDecimal) resultMap[row.kuyrukNo].isDecimal = isDecimal;
+            }
           }
         }
       });
@@ -175,24 +202,26 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
           .kuyruk-col { font-weight: bold; color: #064e3b; font-size: 14px; }
           .saat-col { font-weight: bold; color: #475569; }
           .fark-col { font-weight: bold; color: #2563eb; font-size: 14px; background-color: #eff6ff; }
+          .decimal-info { color: #94a3b8; font-size: 10px; }
         </style>
       </head>
       <body>
         <table>
           <tr>
-            <td colspan="4" style="border: none; text-align: right; color: gray; font-size: 10px;">Veri Çekiliş Tarihi: ${dateStr}</td>
+            <td colspan="5" style="border: none; text-align: right; color: gray; font-size: 10px;">Veri Çekiliş Tarihi: ${dateStr}</td>
           </tr>
           <tr>
-            <td colspan="4" class="title-row" style="text-align: center;">GÖVDE UÇUŞ SAATİ SORGULAMA SONUÇLARI (${type})</td>
+            <td colspan="5" class="title-row" style="text-align: center;">GÖVDE UÇUŞ SAATİ SORGULAMA SONUÇLARI (${type})</td>
           </tr>
           <tr>
-            <td colspan="4" style="text-align: center; font-weight: bold; color: #475569; background-color: #f8fafc;">Başlangıç: ${startDate} | Bitiş: ${endDate}</td>
+            <td colspan="5" style="text-align: center; font-weight: bold; color: #475569; background-color: #f8fafc;">Başlangıç: ${startDate} | Bitiş: ${endDate}</td>
           </tr>
           <tr class="header-row">
             <th>KUYRUK NO</th>
             <th>BAŞLANGIÇ GÖVDE SAATİ</th>
             <th>BİTİŞ GÖVDE SAATİ</th>
-            <th>TOPLAM UÇUŞ SÜRESİ</th>
+            <th>TOPLAM UÇUŞ (ONDALIK)</th>
+            <th>SAATLİK KARŞILIĞI</th>
           </tr>
     `;
 
@@ -200,8 +229,9 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
       html += `
         <tr>
           <td class="kuyruk-col">${r.kuyrukNo}</td>
-          <td class="saat-col" style="mso-number-format:'\@';">${formatHour(r.baslangicSaat)}</td>
-          <td class="saat-col" style="mso-number-format:'\@';">${formatHour(r.bitisSaat)}</td>
+          <td class="saat-col" style="mso-number-format:'\@';">${r.isDecimal ? formatDecimal(r.baslangicSaat) : formatHour(r.baslangicSaat)}</td>
+          <td class="saat-col" style="mso-number-format:'\@';">${r.isDecimal ? formatDecimal(r.bitisSaat) : formatHour(r.bitisSaat)}</td>
+          <td class="fark-col" style="mso-number-format:'\@';">${r.isDecimal ? formatDecimal(r.fark) : '-'}</td>
           <td class="fark-col" style="mso-number-format:'\@';">${formatHour(r.fark)}</td>
         </tr>
       `;
@@ -224,7 +254,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="bg-emerald-900 p-6 flex justify-between items-center shrink-0">
           <div>
             <h2 className="text-2xl font-black text-white uppercase tracking-widest">Gövde Uçuş Saati Sorgula</h2>
@@ -293,19 +323,29 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-emerald-900 text-white">
-                    <th className="px-6 py-4 text-left text-xs font-black uppercase tracking-widest border-r border-emerald-800">KUYRUK NO</th>
-                    <th className="px-6 py-4 text-center text-xs font-black uppercase tracking-widest border-r border-emerald-800">BAŞLANGIÇ GÖVDE SAATİ</th>
-                    <th className="px-6 py-4 text-center text-xs font-black uppercase tracking-widest border-r border-emerald-800">BİTİŞ GÖVDE SAATİ</th>
-                    <th className="px-6 py-4 text-center text-xs font-black uppercase tracking-widest">TOPLAM UÇUŞ SÜRESİ</th>
+                    <th className="px-4 py-4 text-left text-[10px] font-black uppercase tracking-widest border-r border-emerald-800">KUYRUK NO</th>
+                    <th className="px-4 py-4 text-center text-[10px] font-black uppercase tracking-widest border-r border-emerald-800">BAŞLANGIÇ GÖVDE SAATİ</th>
+                    <th className="px-4 py-4 text-center text-[10px] font-black uppercase tracking-widest border-r border-emerald-800">BİTİŞ GÖVDE SAATİ</th>
+                    <th className="px-4 py-4 text-center text-[10px] font-black uppercase tracking-widest border-r border-emerald-800">TOPLAM UÇUŞ (ONDALIK)</th>
+                    <th className="px-4 py-4 text-center text-[10px] font-black uppercase tracking-widest">SAATLİK KARŞILIĞI</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {results.map((r, i) => (
                     <tr key={i} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 font-black text-emerald-900 text-lg border-r border-slate-100">{r.kuyrukNo}</td>
-                      <td className="px-6 py-4 text-center font-bold text-slate-600 border-r border-slate-100">{formatHour(r.baslangicSaat)}</td>
-                      <td className="px-6 py-4 text-center font-bold text-slate-600 border-r border-slate-100">{formatHour(r.bitisSaat)}</td>
-                      <td className="px-6 py-4 text-center font-black text-blue-600 text-xl bg-blue-50/30">{formatHour(r.fark)}</td>
+                      <td className="px-4 py-4 font-black text-emerald-900 text-base border-r border-slate-100">{r.kuyrukNo}</td>
+                      <td className="px-4 py-4 text-center font-bold text-slate-600 border-r border-slate-100">
+                        {r.isDecimal ? formatDecimal(r.baslangicSaat) : formatHour(r.baslangicSaat)}
+                      </td>
+                      <td className="px-4 py-4 text-center font-bold text-slate-600 border-r border-slate-100">
+                        {r.isDecimal ? formatDecimal(r.bitisSaat) : formatHour(r.bitisSaat)}
+                      </td>
+                      <td className="px-4 py-4 text-center font-bold text-slate-500 border-r border-slate-100 bg-slate-50/50">
+                        {r.isDecimal ? formatDecimal(r.fark) : '-'}
+                      </td>
+                      <td className="px-4 py-4 text-center font-black text-blue-600 text-lg bg-blue-50/30">
+                        {formatHour(r.fark)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

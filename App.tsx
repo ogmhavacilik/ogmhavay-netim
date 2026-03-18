@@ -72,6 +72,7 @@ const App = () => {
     endTime: string;
     status: DailyStatusCode;
     description: string;
+    date?: string;
   }) => {
     setIsSavingIntraDay(true);
     try {
@@ -82,7 +83,7 @@ const App = () => {
           action: 'saveIntraDayActivity',
           data: {
             ...data,
-            date: new Date().toISOString().split('T')[0]
+            date: data.date || new Date().toISOString().split('T')[0]
           }
         })
       });
@@ -171,7 +172,7 @@ const App = () => {
         durumAyrintisi: 'D3:D16', 
         konum: 'E3:E16', 
         faydaliSaat: 'V3:AI16', 
-        aciklama: 'AJ3:AJ16',   
+        aciklama: 'AL3:AL16',   
         govdeUcusSaati: 'F3:F16',
         gelisTarihi: 'U24:V39',
         gelisKuyrukNo: 'T24:T39'
@@ -445,7 +446,9 @@ const App = () => {
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ 
           action: 'getFaaliyetLog',
-          sheetId: MAIL_LOG_SHEET_ID
+          sheetId: MAIL_LOG_SHEET_ID,
+          intraDaySheetName: 'Saatlik Faaliyet Günlüğü',
+          dailySheetName: 'Envanter Log'
         })
       });
       
@@ -544,42 +547,103 @@ const App = () => {
         });
 
         // Process Intra-Day Logs
+        const intraDayGroups = new Map<string, any[]>();
         intraDayData.forEach((log: any) => {
           const kuyrukNo = String(log.kuyrukNo || '').trim();
           if (!kuyrukNo) return;
 
-          const dateStr = log.tarih; // yyyy-MM-dd
-          const startHour = parseInt(log.startTime?.split(':')[0] || '0');
-          const endHour = parseInt(log.endTime?.split(':')[0] || '23');
-          const status = log.status as DailyStatusCode;
+          let dateStr = '';
+          if (log.tarih) {
+            const d = new Date(log.tarih);
+            if (!isNaN(d.getTime())) {
+              dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            }
+          }
+          if (!dateStr) return;
 
+          const key = `${kuyrukNo}_${dateStr}`;
+          if (!intraDayGroups.has(key)) intraDayGroups.set(key, []);
+          intraDayGroups.get(key)!.push(log);
+        });
+
+        intraDayGroups.forEach((logs, key) => {
+          const [kuyrukNo, dateStr] = key.split('_');
+          
+          // Collect events: { time: number, type: 'G' | 'F', status?: DailyStatusCode }
+          const events: { time: number, type: 'G' | 'F', status?: DailyStatusCode }[] = [];
+          
+          const parseAndRoundHour = (timeStr: string) => {
+            if (!timeStr || timeStr === '-' || timeStr === 'undefined') return null;
+            const parts = timeStr.trim().split(':');
+            if (parts.length < 1) return null;
+            const h = parseInt(parts[0]);
+            if (isNaN(h)) return null;
+            const m = parts.length >= 2 ? parseInt(parts[1]) : 0;
+            if (!isNaN(m) && m >= 30) return h + 1;
+            return h;
+          };
+
+          logs.forEach(log => {
+            const gStartStr = String(log.gayriFaalBaslangicSaati || log.gayriFaalBaslangic || log.startTime || '').trim();
+            const fStartStr = String(log.faalBaslangicSaati || log.faalBaslangic || log.endTime || '').trim();
+            
+            const gHour = parseAndRoundHour(gStartStr);
+            if (gHour !== null) {
+              const status = (log.durum || log.status || 'B') as DailyStatusCode;
+              events.push({ time: gHour, type: 'G', status });
+            }
+
+            const fHour = parseAndRoundHour(fStartStr);
+            if (fHour !== null) {
+              events.push({ time: fHour, type: 'F' });
+            }
+          });
+          
+          if (events.length === 0) return;
+
+          // Sort events by time
+          events.sort((a, b) => a.time - b.time);
+          
           let act = activityMap.get(kuyrukNo);
           if (!act) {
             act = {
-              kuyrukNo: kuyrukNo,
+              kuyrukNo,
               cagriKodu: getCallSignByTail(kuyrukNo),
-              tip: log.tip || 'Bilinmiyor',
+              tip: logs[0].tip || 'Bilinmiyor',
               dailyStatuses: {},
               hourlyStatuses: {},
               intraDayCompletions: {}
             };
             activityMap.set(kuyrukNo, act);
           }
-
+          
           if (!act.hourlyStatuses) act.hourlyStatuses = {};
           if (!act.hourlyStatuses[dateStr]) act.hourlyStatuses[dateStr] = {};
           
-          for (let h = startHour; h <= endHour; h++) {
-            const hourStr = `${String(h).padStart(2, '0')}:00`;
-            act.hourlyStatuses[dateStr][hourStr] = status;
+          // Apply events to mark "Gayri Faal" periods
+          // Logic: If a 'G' event starts, it marks hours until an 'F' event or end of day
+          for (let i = 0; i < events.length; i++) {
+            const event = events[i];
+            if (event.type === 'G') {
+              // Find the next 'F' event that happens after this 'G' event
+              const nextFEvent = events.find((e, idx) => idx > i && e.type === 'F');
+              const endHour = nextFEvent ? nextFEvent.time : 24;
+              
+              for (let h = event.time; h < endHour; h++) {
+                if (h >= 24) break;
+                const hourStr = `${String(h).padStart(2, '0')}:00`;
+                act.hourlyStatuses[dateStr][hourStr] = event.status || 'B';
+              }
+            }
           }
-
+          
           // Mark as intra-day completion if it was G.Faal and turned back to Faal within the day
-          // Or if the user specifically logged it. 
-          // The requirement says: "FAAL OLARAK GÜNÜ KAPATAN KUTUCUKALR NORMALDE BOŞ İKEN KUTUNUN İÇİNE TURUNCU * ATILIR"
-          // This usually implies a transition happened.
-          if (!act.intraDayCompletions) act.intraDayCompletions = {};
-          act.intraDayCompletions[dateStr] = true;
+          const hasTransition = events.some((e, idx) => e.type === 'G' && events.some((e2, idx2) => idx2 > idx && e2.type === 'F'));
+          
+          if (hasTransition) {
+            if (!act.intraDayCompletions) act.intraDayCompletions = {};
+            act.intraDayCompletions[dateStr] = true;
+          }
         });
 
         return Array.from(activityMap.values());
@@ -631,7 +695,7 @@ const App = () => {
     setOplCheckStatus(prev => ({ ...prev, [aircraft.kuyrukNo]: 'checking' }));
     
     try {
-      const data = await fetchOPLData(LOG_SCRIPT_URL, aircraft.sheetId, aircraft.kuyrukNo);
+      const data = await fetchOPLData(aircraft.appsScriptUrl, aircraft.sheetId, aircraft.kuyrukNo);
       const alerts: string[] = [];
       
       const findValue = (item: any, possibleKeys: string[]) => {
@@ -1085,6 +1149,11 @@ const App = () => {
                endDate={new Date(filterEndDate)} 
                title={`${new Date(filterStartDate).toLocaleDateString('tr-TR')} - ${new Date(filterEndDate).toLocaleDateString('tr-TR')} FAALİYET ÇİZELGESİ`} 
                onExport={() => exportTableToMHTML('activity-table', `Faaliyet_Cizelgesi_${filterStartDate}_${filterEndDate}`)} 
+               onDayClick={(date) => {
+                 const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                 setFilterStartDate(dateStr);
+                 setFilterEndDate(dateStr);
+               }}
              />
            </div>
         </div>

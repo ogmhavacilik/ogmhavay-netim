@@ -421,6 +421,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         aircraft.engineFlights = formatValueToString(item.engineFlights);
         aircraft.frdsTestDate = formatDateIfISO(item.frdsTestDate);
         aircraft.motorRunDate = formatDateIfISO(item.motorRunDate);
+        aircraft.bakimTakvimTarih = formatDateIfISO(item.bakimTakvimTarih);
       } else if (config.aircraftType === 'T-70') {
         aircraft.govdeSN = formatValueToString(item.govdeSN);
         aircraft.motor1SN = formatValueToString(item.motor1SN);
@@ -496,6 +497,9 @@ export const fetchOPLData = async (
     return result.data;
   } catch (error) {
     console.error(`fetchOPLData Hatası (${kuyrukNo} - ${scriptUrl}):`, error);
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      console.error(`fetchOPLData: Olası CORS hatası veya geçersiz URL. Lütfen Apps Script'in "Herkes" (Anyone) erişimiyle dağıtıldığından emin olun. URL: ${scriptUrl}`);
+    }
     return [];
   }
 };
