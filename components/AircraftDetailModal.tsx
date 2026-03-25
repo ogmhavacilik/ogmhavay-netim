@@ -59,6 +59,46 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
     return diffDays;
   };
 
+  const getAT802NextTestInfo = (lastDateStr: string | undefined) => {
+    if (!lastDateStr || lastDateStr === '-' || lastDateStr.trim() === '') return { nextDateStr: '-', daysRemaining: null };
+    
+    let parts = lastDateStr.split('.');
+    let lastDate: Date;
+    if (parts.length === 3) {
+      lastDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+    } else {
+      lastDate = new Date(lastDateStr);
+    }
+    
+    if (isNaN(lastDate.getTime())) return { nextDateStr: lastDateStr, daysRemaining: null };
+    
+    const nextDate = new Date(lastDate);
+    nextDate.setDate(nextDate.getDate() + 7);
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    nextDate.setHours(0, 0, 0, 0);
+    
+    const diffTime = nextDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    const d = nextDate.getDate().toString().padStart(2, '0');
+    const m = (nextDate.getMonth() + 1).toString().padStart(2, '0');
+    const y = nextDate.getFullYear();
+    
+    return {
+      nextDateStr: `${d}.${m}.${y}`,
+      daysRemaining: diffDays
+    };
+  };
+
+  const getAT802ColorClass = (days: number | null) => {
+    if (days === null) return 'text-gray-400';
+    if (days >= 5) return 'text-emerald-600';
+    if (days === 4) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
   const getNonFunctionalStartDate = () => {
     const activity = activities.find(a => a.kuyrukNo === aircraft.kuyrukNo);
     if (!activity) return null;
@@ -223,6 +263,47 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                         <div className="flex justify-between items-center text-[13px]">
                           <span className="text-gray-400 font-black uppercase tracking-widest">KONUM:</span>
                           <span className="font-black text-gray-900 uppercase">{aircraft.konum}</span>
+                        </div>
+
+                        <div className="border border-red-50 rounded-xl overflow-hidden mt-4">
+                          <div className="bg-red-50 px-3 py-1.5 text-[9px] font-black text-red-700 uppercase tracking-widest">BAKIM VE TEST ZAMANLARI</div>
+                          <div className="p-3 space-y-3 bg-white">
+                            {aircraft.bakimTakvimTarih && aircraft.bakimTakvimTarih !== '-' && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase leading-none">TAKVİM ESASLI BAKIM:</span>
+                                <div className="flex flex-col items-end">
+                                  <span className="text-sm font-black text-gray-800 tracking-tighter">{aircraft.bakimTakvimTarih}</span>
+                                  {getDaysRemaining(aircraft.bakimTakvimTarih) !== null && (
+                                    <span className={`text-[10px] font-black uppercase ${getDaysRemaining(aircraft.bakimTakvimTarih)! <= 30 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                      {getDaysRemaining(aircraft.bakimTakvimTarih)} GÜN KALDI
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            <div className="flex justify-between items-center">
+                              <span className="text-[10px] font-bold text-gray-500 uppercase leading-none">SONRAKİ FRDS TEST:</span>
+                              <div className="flex flex-col items-end">
+                                <span className="text-sm font-black text-gray-800 tracking-tighter">{getAT802NextTestInfo(aircraft.frdsTestDate).nextDateStr}</span>
+                                {getAT802NextTestInfo(aircraft.frdsTestDate).daysRemaining !== null && (
+                                  <span className={`text-[10px] font-black uppercase ${getAT802ColorClass(getAT802NextTestInfo(aircraft.frdsTestDate).daysRemaining)}`}>
+                                    {getAT802NextTestInfo(aircraft.frdsTestDate).daysRemaining} GÜN KALDI
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-[10px] font-bold text-gray-500 uppercase leading-none">SONRAKİ MOTOR ÇALIŞTIRMA:</span>
+                              <div className="flex flex-col items-end">
+                                <span className="text-sm font-black text-gray-800 tracking-tighter">{getAT802NextTestInfo(aircraft.motorRunDate).nextDateStr}</span>
+                                {getAT802NextTestInfo(aircraft.motorRunDate).daysRemaining !== null && (
+                                  <span className={`text-[10px] font-black uppercase ${getAT802ColorClass(getAT802NextTestInfo(aircraft.motorRunDate).daysRemaining)}`}>
+                                    {getAT802NextTestInfo(aircraft.motorRunDate).daysRemaining} GÜN KALDI
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     ) : !isBell429 && !isT70 && !isB360OrC650 ? (
@@ -427,10 +508,10 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                        <div className="text-[10px] font-black text-emerald-800 uppercase tracking-widest mb-1">HAVA ARACI MODELİ</div>
                        <div className="text-sm font-black text-emerald-900">
                          {isAT802 ? (
-                           aircraft.platformTipi === 'DA' || aircraft.platformTipi === 'D-A' ? 'DA : DUAL AMFİBİ' : 
-                           aircraft.platformTipi === 'SA' || aircraft.platformTipi === 'S-A' ? 'SA : SINGLE AMFİBİ' :
-                           aircraft.platformTipi === 'DL' || aircraft.platformTipi === 'D-L' ? 'DL : DUAL LAND' :
-                           aircraft.platformTipi === 'SL' || aircraft.platformTipi === 'S-L' ? 'SL : SINGLE LAND' :
+                           aircraft.platformTipi === 'DA' ? 'DA : DUAL AMFİBİ' : 
+                           aircraft.platformTipi === 'SA' ? 'SA : SINGLE AMFİBİ' :
+                           aircraft.platformTipi === 'DL' ? 'DL : DUAL LAND' :
+                           aircraft.platformTipi === 'SL' ? 'SL : SINGLE LAND' :
                            aircraft.platformTipi
                          ) : isBell429 ? (
                            'BELL 429 GLOBALRANGER'
@@ -444,7 +525,7 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                        </div>
                     </div>
                     
-                    {!isBell429 && !isT70 && !isB360OrC650 && (
+                    {!isBell429 && !isT70 && !isB360OrC650 && !isAT802 && (
                       <div className="mt-8 pt-6 border-t-2 border-emerald-50">
                         <div className="flex justify-between items-end">
                           <div className="flex flex-col">
@@ -476,7 +557,7 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                    </h3>
                    <div className="flex items-center gap-2">
                      <span className="text-[9px] font-black px-2 py-1 bg-blue-50 text-blue-600 rounded uppercase tracking-widest">
-                        EN YAKIN: {isT70 ? (aircraft.bakimKalanSaat || '-') : (isB360OrC650 || isBell429) ? formatToHHMM(aircraft.faydaliSaat) : aircraft.faydaliSaat} SAAT
+                        EN YAKIN: {isT70 ? formatToHHMM(aircraft.faydaliSaat) : (isB360OrC650 || isBell429) ? formatToHHMM(aircraft.faydaliSaat) : aircraft.faydaliSaat} SAAT
                      </span>
                      {(isB360OrC650 || isBell429) && aircraft.faydaliSaat !== null && (
                        <span className="text-[8px] font-bold text-gray-400 italic">
@@ -491,24 +572,18 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                        <tr>
                           <th className="px-5 py-3 text-left text-gray-400 font-black uppercase tracking-widest">Bakıma kalan Saat</th>
                           <th className="px-5 py-3 text-right text-gray-400 font-black uppercase tracking-widest">Kalan Saat</th>
-                       </tr>
-                     </thead>
-                     <tbody>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {isT70 ? (
                           <>
-                            <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                              <td className="px-5 py-4 font-bold text-gray-600 uppercase tracking-tighter">Bakıma Kalan Saat</td>
-                              <td className="px-5 py-4 text-right font-black text-2xl tracking-tighter text-red-600">
-                                {aircraft.bakimKalanSaat ? aircraft.bakimKalanSaat.split(/\n|\s*\/\s*/)[0].trim() : '-'}
-                              </td>
-                            </tr>
                             {aircraft.maintenanceHours.map((mh, i) => (
                               <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                                 <td className="px-5 py-4 font-bold text-gray-600 uppercase tracking-tighter">
-                                  {mh.bakimTuru === 'KALAN' ? 'Bakıma Kalan Saat (120 Saat)' : mh.bakimTuru}
+                                  {mh.bakimTuru}
                                 </td>
-                                <td className={`px-5 py-4 text-right font-black text-2xl tracking-tighter ${mh.kalanSaat < 50 ? 'text-red-500' : 'text-emerald-600'}`}>
-                                  {mh.kalanSaat}
+                                <td className={`px-5 py-4 text-right font-black text-2xl tracking-tighter ${Number(mh.kalanSaat) < 50 ? 'text-red-500' : 'text-emerald-600'}`}>
+                                  {formatToHHMM(Number(mh.kalanSaat))}
                                 </td>
                               </tr>
                             ))}

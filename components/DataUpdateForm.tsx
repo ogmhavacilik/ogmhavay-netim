@@ -149,9 +149,16 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     nextDateMidnight.setHours(0, 0, 0, 0);
     
     const diffTime = nextDateMidnight.getTime() - today.getTime();
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
     return diffDays;
+  };
+
+  const getAT802ColorClass = (days: number | null) => {
+    if (days === null) return 'text-white/40';
+    if (days >= 5) return 'text-emerald-400';
+    if (days === 4) return 'text-yellow-400';
+    return 'text-red-400';
   };
 
   const prevKuyrukRef = React.useRef<string>('');
@@ -192,7 +199,6 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           flights: aircraft.engineFlights && aircraft.engineFlights !== '-' ? aircraft.engineFlights : '',
           frdsTest: formatForDateInput(aircraft.frdsTestDate),
           motorCalisma: formatForDateInput(aircraft.motorRunDate),
-          bakimTakvimTarih: formatForDateInput(aircraft.bakimTakvimTarih)
         });
         
         setIsLoadingSpecific(true);
@@ -241,15 +247,18 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       });
     }
 
-    // AT-802 için teknik veriler boşsa gönderme (üzerine yazmasın)
+    // AT-802 için teknik veriler boşsa veya güncellenmemesi gerekiyorsa gönderme
     if (selectedAircraft.tip === 'AT-802') {
-      const techFields = ['acTT', 'landings', 'starts', 'flights', 'frdsTest', 'motorCalisma', 'bakimTakvimTarih'];
+      // Bu alanlar artık AT-802 için güncellenmeyecek (sadece FRDS ve Motor Çalıştırma güncellenecek)
+      const excludeFields = ['acTT', 'landings', 'starts', 'flights', 'bakimTakvimTarih', 'bakimTakvim'];
+      excludeFields.forEach(field => {
+        delete finalData[field];
+      });
+
+      const techFields = ['frdsTest', 'motorCalisma'];
       techFields.forEach(field => {
         if (finalData[field] === '' || finalData[field] === null || finalData[field] === undefined) {
           delete finalData[field];
-        } else if (field === 'acTT' && typeof finalData[field] === 'string') {
-          // Format acTT to use comma for decimals
-          finalData[field] = finalData[field].replace(':', ',').replace('.', ',');
         }
       });
     }
@@ -438,7 +447,6 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
               flights: logEntry.engineFlights ? String(logEntry.engineFlights).replace('.', ',') : prev.flights,
               frdsTest: formatForDateInput(logEntry.frdsTestDate),
               motorCalisma: formatForDateInput(logEntry.motorRunDate),
-              bakimTakvimTarih: formatForDateInput(logEntry.bakimTakvimTarih)
             }));
           }
         }
@@ -834,38 +842,8 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                             <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                            <div className="space-y-6 md:col-span-2 bg-white/5 p-6 rounded-2xl border border-white/10">
-                              <h4 className="text-white font-black tracking-widest border-b border-white/10 pb-2">AIRFRAME</h4>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">Ac TT</label>
-                                  <input type="text" value={at802Data.acTT} onChange={e => setAt802Data({...at802Data, acTT: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                                </div>
-                                <div className="space-y-2">
-                                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">Landings</label>
-                                  <input disabled={isPastDate} type="text" value={at802Data.landings} onChange={e => setAt802Data({...at802Data, landings: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                                </div>
-                                <div className="space-y-2">
-                                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">TAKVİM ESASLI BAKIM TARİHİ</label>
-                                  <input disabled={isPastDate} type="date" value={at802Data.bakimTakvimTarih} onChange={e => setAt802Data({...at802Data, bakimTakvimTarih: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                                </div>
-                              </div>
-                            </div>
-                            <div className="space-y-6 md:col-span-2 bg-white/5 p-6 rounded-2xl border border-white/10">
-                              <h4 className="text-white font-black tracking-widest border-b border-white/10 pb-2">ENGINE</h4>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">Starts</label>
-                                  <input disabled={isPastDate} type="text" value={at802Data.starts} onChange={e => setAt802Data({...at802Data, starts: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                                </div>
-                                <div className="space-y-2">
-                                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">Flights</label>
-                                  <input disabled={isPastDate} type="text" value={at802Data.flights} onChange={e => setAt802Data({...at802Data, flights: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                                </div>
-                              </div>
-                            </div>
-                            <div className="space-y-6 md:col-span-2 bg-white/5 p-6 rounded-2xl border border-white/10">
+                          <div className="grid grid-cols-1 gap-6 md:gap-8">
+                            <div className="space-y-6 bg-white/5 p-6 rounded-2xl border border-white/10">
                               <h4 className="text-white font-black tracking-widest border-b border-white/10 pb-2">TEST VE ÇALIŞMALAR</h4>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
@@ -874,7 +852,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                                   {at802Data.frdsTest && (
                                     <div className="mt-1 space-y-0.5">
                                       <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">BİR SONRAKİ TEST: {getNextDate(at802Data.frdsTest)}</div>
-                                      <div className={`text-[10px] font-black uppercase tracking-widest ${getRemainingDays(at802Data.frdsTest)! < 0 ? 'text-red-400' : 'text-white/40'}`}>
+                                      <div className={`text-[10px] font-black uppercase tracking-widest ${getAT802ColorClass(getRemainingDays(at802Data.frdsTest))}`}>
                                         KALAN GÜN SAYISI: {getRemainingDays(at802Data.frdsTest)! < 0 ? `${Math.abs(getRemainingDays(at802Data.frdsTest)!)} GÜN GEÇTİ` : `${getRemainingDays(at802Data.frdsTest)} GÜN`}
                                       </div>
                                     </div>
@@ -886,7 +864,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                                   {at802Data.motorCalisma && (
                                     <div className="mt-1 space-y-0.5">
                                       <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">BİR SONRAKİ ÇALIŞMA: {getNextDate(at802Data.motorCalisma)}</div>
-                                      <div className={`text-[10px] font-black uppercase tracking-widest ${getRemainingDays(at802Data.motorCalisma)! < 0 ? 'text-red-400' : 'text-white/40'}`}>
+                                      <div className={`text-[10px] font-black uppercase tracking-widest ${getAT802ColorClass(getRemainingDays(at802Data.motorCalisma))}`}>
                                         KALAN GÜN SAYISI: {getRemainingDays(at802Data.motorCalisma)! < 0 ? `${Math.abs(getRemainingDays(at802Data.motorCalisma)!)} GÜN GEÇTİ` : `${getRemainingDays(at802Data.motorCalisma)} GÜN`}
                                       </div>
                                     </div>

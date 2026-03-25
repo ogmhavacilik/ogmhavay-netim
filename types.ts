@@ -1,10 +1,10 @@
 
 export enum PlatformType {
   H = 'H',
-  SA = 'S-A',
-  DA = 'D-A',
-  SL = 'S-L',
-  DL = 'D-L'
+  SA = 'SA',
+  DA = 'DA',
+  SL = 'SL',
+  DL = 'DL'
 }
 
 export enum Status {
@@ -90,7 +90,9 @@ export interface AircraftActivity {
   tip: string;
   dailyStatuses: { [dateStr: string]: DailyStatusCode };
   hourlyStatuses?: { [dateStr: string]: { [hour: string]: DailyStatusCode } };
+  hourlyDescriptions?: { [dateStr: string]: { [hour: string]: string } };
   intraDayCompletions?: { [dateStr: string]: boolean };
+  intraDayDurations?: { [dateStr: string]: number };
 }
 
 export interface SheetMapping {
@@ -98,7 +100,7 @@ export interface SheetMapping {
   durum: string;
   durumAyrintisi: string;
   konum: string;
-  faydaliSaat: string;
+  faydaliSaat?: string;
   aciklama: string;
   govdeUcusSaati?: string;
   gelisTarihi?: string;
@@ -121,13 +123,15 @@ export interface SheetMapping {
   starts?: string;
   flights?: string;
   frdsTestDate?: string;
+  frdsTestDateMain?: string;
+  frdsTestDateAlt?: string;
   motorRunDate?: string;
+  bakimTakvimTarih?: string;
 
   // T-70 mappings
   bakim40H?: string;
   bakim120H?: string;
   bakim480H?: string;
-  bakimTakvimTarih?: string;
   bakimKalanSaat?: string;
 
   // B-360 & C-650 mappings

@@ -1,7 +1,8 @@
 
 import React, { useMemo, useState } from 'react';
 import { AircraftActivity, DailyStatusCode } from '../types';
-import { X } from 'lucide-react';
+import { X, Clock, Calendar, Activity } from 'lucide-react';
+import { motion } from 'motion/react';
 
 interface ActivityGridProps {
   activities: AircraftActivity[];
@@ -42,27 +43,29 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
   const visibleDates = getDaysInRange(startDate, endDate);
   const totalDaysInMonth = visibleDates.length;
 
-  const getStatusClass = (code: DailyStatusCode | string) => {
+  const getStatusClass = (code: DailyStatusCode | string, isKarma?: boolean) => {
+    if (isKarma) return 'bg-orange-500 text-black font-black border-black';
     switch (code) {
       case 'B': case 'BB': case 'KM': return 'bg-[#FFFF00] text-black font-black border-black'; // SARI
-      case 'A': case 'PB': case 'KK': return 'bg-[#FF0000] text-white font-black border-black'; // KIRMIZI
-      case 'X': return 'bg-[#7030A0] text-white font-black border-black'; // MOR
+      case 'A': case 'PB': case 'KK': return 'bg-[#FF0000] text-black font-black border-black'; // KIRMIZI
+      case 'X': return 'bg-[#7030A0] text-black font-black border-black'; // MOR
       case 'TB': return 'bg-[#40E0D0] text-black font-black border-black'; // TURKUAZ
-      case 'F': return 'bg-white text-transparent';
+      case 'F': return 'bg-[#DCFCE7] text-black font-black border-black';
       case '': return 'bg-gray-200 text-transparent'; // Veri yok
-      default: return 'bg-white';
+      default: return 'bg-white text-black';
     }
   };
 
-  const getStatusStyle = (code: DailyStatusCode | string): React.CSSProperties => {
+  const getStatusStyle = (code: DailyStatusCode | string, isKarma?: boolean): React.CSSProperties => {
+    if (isKarma) return { backgroundColor: '#f97316', color: '#000000' };
     switch (code) {
       case 'B': case 'BB': case 'KM': return { backgroundColor: '#FFFF00', color: '#000000' };
-      case 'A': case 'PB': case 'KK': return { backgroundColor: '#FF0000', color: '#FFFFFF' };
-      case 'X': return { backgroundColor: '#7030A0', color: '#FFFFFF' };
+      case 'A': case 'PB': case 'KK': return { backgroundColor: '#FF0000', color: '#000000' };
+      case 'X': return { backgroundColor: '#7030A0', color: '#000000' };
       case 'TB': return { backgroundColor: '#40E0D0', color: '#000000' };
-      case 'F': return { backgroundColor: '#FFFFFF', color: '#FFFFFF' };
+      case 'F': return { backgroundColor: '#DCFCE7', color: '#000000' };
       case '': return { backgroundColor: '#e5e7eb', color: 'transparent' }; // Veri yok
-      default: return { backgroundColor: '#FFFFFF' };
+      default: return { backgroundColor: '#FFFFFF', color: '#000000' };
     }
   };
 
@@ -209,10 +212,10 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                           <span className="text-red-600 ml-1">
                             {(() => {
                               const tail = String(act.kuyrukNo).trim().toUpperCase();
-                              if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return '(D-A)';
-                              if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return '(S-A)';
-                              if (tail === 'OR-2036') return '(D-L)';
-                              if (tail === 'OR-2038') return '(S-L)';
+                              if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return '(DA)';
+                              if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return '(SA)';
+                              if (tail === 'OR-2036') return '(DL)';
+                              if (tail === 'OR-2038') return '(SL)';
                               if (tail === 'OR-1020') return '(H)';
                               return '';
                             })()}
@@ -238,17 +241,18 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                             return (
                               <td 
                                 key={dIdx} 
-                                className={`border border-black text-center text-[10px] ${getStatusClass(status)} ${isCompletedToday ? 'cursor-pointer hover:opacity-80' : ''}`} 
-                                style={getStatusStyle(status)}
+                                className={`border border-black text-center text-[10px] relative ${getStatusClass(status, isCompletedToday)} cursor-pointer hover:opacity-80`} 
+                                style={getStatusStyle(status, isCompletedToday)}
                                 onClick={() => {
-                                  if (isCompletedToday) {
-                                    setSelectedDayView({ activity: act, date: date });
-                                  } else if (onDayClick) {
-                                    onDayClick(date);
-                                  }
+                                  setSelectedDayView({ activity: act, date: date });
                                 }}
                               >
-                                {status === 'F' ? (isCompletedToday ? <span className="text-orange-500 font-black text-sm">★</span> : '') : status}
+                                <div className="flex items-center justify-center min-h-[24px]">
+                                  {status !== 'F' && !isCompletedToday && status}
+                                  {isCompletedToday && (
+                                    <span className="text-white font-black text-sm">⭐</span>
+                                  )}
+                                </div>
                               </td>
                             );
                           })
@@ -306,7 +310,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
            <div className="flex flex-col space-y-1">
               <div className="bg-white border border-black px-2 py-1 text-[9px] font-black w-64 flex items-center">
                 <span className="text-orange-500 font-black text-sm mr-2">★</span>
-                GÜN İÇERSİNDE TAMAMLANAN BAKIM VEYA ARIZA FAALİYETLERİ
+                KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)
               </div>
            </div>
         </div>
@@ -318,73 +322,169 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
 
       {/* Hourly View Modal */}
       {selectedDayView && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-5xl max-h-[90vh] overflow-hidden shadow-2xl border-4 border-emerald-500/20 flex flex-col">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-emerald-50">
-              <div>
-                <h3 className="text-2xl font-black text-emerald-900 uppercase tracking-tight">
-                  {selectedDayView.activity.kuyrukNo} - {selectedDayView.date.toLocaleDateString('tr-TR')} SAATLİK GÖRÜNÜM
-                </h3>
-                <p className="text-emerald-600 font-bold text-sm uppercase tracking-widest">GÜN İÇİ DURUM DETAYLARI</p>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[9999] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-[2rem] w-full max-w-4xl shadow-[0_0_50px_rgba(0,0,0,0.3)] border-4 border-emerald-900 flex flex-col animate-in zoom-in duration-300">
+            <div className="p-6 border-b-4 border-emerald-900 flex justify-between items-center bg-emerald-900 rounded-t-[1.6rem]">
+              <div className="flex items-center space-x-5">
+                <div className="bg-white/20 p-3 rounded-2xl shadow-inner">
+                  <Clock className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-white uppercase tracking-tighter leading-none">
+                    SAATLİK FAALİYET GÖRÜNÜMÜ
+                  </h3>
+                  <p className="text-white/80 font-bold text-xs uppercase tracking-[0.2em] mt-1">
+                    {selectedDayView.activity.kuyrukNo} — {selectedDayView.activity.cagriKodu}
+                  </p>
+                </div>
               </div>
               <button 
                 onClick={() => setSelectedDayView(null)}
-                className="p-2 hover:bg-white rounded-full transition-all text-emerald-900"
+                className="p-3 hover:bg-white/20 rounded-full transition-all text-white active:scale-90"
               >
-                <X className="w-8 h-8" />
+                <X className="w-10 h-10" />
               </button>
             </div>
             
             <div className="p-8 overflow-auto">
-              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+              <div className="flex justify-between items-center mb-8 bg-emerald-50 p-6 rounded-[2rem] border-2 border-emerald-100 shadow-inner">
+                <div className="flex items-center space-x-4">
+                  <div className="bg-emerald-100 p-4 rounded-2xl">
+                    <Calendar className="w-8 h-8 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">Seçili Tarih</p>
+                    <p className="text-2xl font-black text-emerald-900">
+                      {selectedDayView.date.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right flex flex-col items-end">
+                  <p className="text-[10px] font-black text-red-400 uppercase tracking-[0.2em] mb-2">TOPLAM GAYRİ FAAL SÜRE</p>
+                  <div className="bg-red-600 px-8 py-4 rounded-2xl shadow-xl shadow-red-200 border-b-4 border-red-800">
+                    <span className="text-3xl font-black text-white tracking-tighter">
+                      {(() => {
+                        const dateStrKey = `${selectedDayView.date.getFullYear()}-${String(selectedDayView.date.getMonth() + 1).padStart(2, '0')}-${String(selectedDayView.date.getDate()).padStart(2, '0')}`;
+                        const durationMins = selectedDayView.activity.intraDayDurations?.[dateStrKey];
+                        
+                        if (durationMins !== undefined) {
+                          const h = Math.floor(durationMins / 60);
+                          const m = durationMins % 60;
+                          return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} SAAT`;
+                        }
+
+                        const hourlyData = selectedDayView.activity.hourlyStatuses?.[dateStrKey] || {};
+                        const gayriFaalHours = Object.values(hourlyData).filter(s => s !== 'F' && s !== '').length;
+                        return `${gayriFaalHours.toString().padStart(2, '0')}:00 SAAT`;
+                      })()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-8">
+                <h4 className="text-lg font-black text-emerald-900 mb-4 uppercase tracking-tight flex items-center">
+                  <Activity className="w-6 h-6 mr-2" />
+                  GÜNLÜK FAALİYET AKIŞI
+                </h4>
+                <div className="bg-white border-2 border-emerald-100 rounded-2xl overflow-hidden">
+                  <div className="grid grid-cols-12 bg-emerald-900 text-white text-[10px] font-black uppercase py-2">
+                    <div className="col-span-2 text-center">SAAT</div>
+                    <div className="col-span-3 text-center">DURUM</div>
+                    <div className="col-span-7 px-4">AÇIKLAMA</div>
+                  </div>
+                  <div className="max-h-[300px] overflow-y-auto">
+                    {hours.map((hour, idx) => {
+                      const dateStrKey = `${selectedDayView.date.getFullYear()}-${String(selectedDayView.date.getMonth() + 1).padStart(2, '0')}-${String(selectedDayView.date.getDate()).padStart(2, '0')}`;
+                      
+                      // Gelecek saat kontrolü
+                      const now = new Date();
+                      const isToday = selectedDayView.date.toDateString() === now.toDateString();
+                      const currentHour = now.getHours();
+                      const hourInt = parseInt(hour.split(':')[0]);
+                      const isFuture = isToday && hourInt > currentHour;
+
+                      const hourlyData = selectedDayView.activity.hourlyStatuses?.[dateStrKey] || {};
+                      const hasHourlyData = Object.keys(hourlyData).length > 0;
+                      const dailyStatus = selectedDayView.activity.dailyStatuses[dateStrKey] || 'F';
+
+                      const status = isFuture ? '' : (hourlyData[hour] || (hasHourlyData ? 'F' : dailyStatus));
+                      const isGayriFaal = status !== 'F' && status !== '';
+                      
+                      return (
+                        <div key={idx} className={`grid grid-cols-12 border-b border-emerald-50 py-2 items-center ${isGayriFaal ? 'bg-red-50/30' : 'bg-white'}`}>
+                          <div className="col-span-2 text-center font-bold text-gray-500">{hour}</div>
+                          <div className="col-span-3 flex justify-center">
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-black ${getStatusClass(status)}`} style={getStatusStyle(status)}>
+                              {status === '' ? '' : (status === 'F' ? 'FAAL' : status)}
+                            </span>
+                          </div>
+                          <div className="col-span-7 px-4 text-[11px] font-medium text-gray-600 italic">
+                            {selectedDayView.activity.hourlyDescriptions?.[dateStrKey]?.[hour] || (isGayriFaal ? 'Gayri Faal Durum Devam Ediyor' : 'Uçuşa Elverişli / Faal')}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-12 gap-3">
                 {hours.map((hour, idx) => {
                   const dateStrKey = `${selectedDayView.date.getFullYear()}-${String(selectedDayView.date.getMonth() + 1).padStart(2, '0')}-${String(selectedDayView.date.getDate()).padStart(2, '0')}`;
-                  const status = selectedDayView.activity.hourlyStatuses?.[dateStrKey]?.[hour] || selectedDayView.activity.dailyStatuses[dateStrKey] || 'F';
+                  
+                  const now = new Date();
+                  const isToday = selectedDayView.date.toDateString() === now.toDateString();
+                  const currentHour = now.getHours();
+                  const hourInt = parseInt(hour.split(':')[0]);
+                  const isFuture = isToday && hourInt > currentHour;
+
+                  const hourlyData = selectedDayView.activity.hourlyStatuses?.[dateStrKey] || {};
+                  const hasHourlyData = Object.keys(hourlyData).length > 0;
+                  const dailyStatus = selectedDayView.activity.dailyStatuses[dateStrKey] || 'F';
+
+                  const status = isFuture ? '' : (hourlyData[hour] || (hasHourlyData ? 'F' : dailyStatus));
                   
                   return (
-                    <div key={idx} className="flex flex-col items-center">
-                      <div className="text-[10px] font-black text-gray-400 mb-1">{hour}</div>
+                    <div key={idx} className="flex flex-col items-center group">
+                      <div className="text-[9px] font-black text-gray-400 mb-1 group-hover:text-emerald-600 transition-colors">{hour}</div>
                       <div 
-                        className={`w-full h-12 flex items-center justify-center border border-black/10 rounded-lg font-black text-xs ${getStatusClass(status)}`}
+                        className={`w-full h-14 flex items-center justify-center border-2 border-black/5 rounded-2xl font-black text-lg shadow-sm transition-all hover:scale-105 ${getStatusClass(status)}`}
                         style={{ 
                           ...getStatusStyle(status), 
-                          color: status === 'F' ? '#059669' : getStatusStyle(status).color,
+                          color: status === 'F' ? '#000000' : getStatusStyle(status).color,
                           backgroundColor: status === 'F' ? '#ecfdf5' : getStatusStyle(status).backgroundColor
                         }}
                       >
-                        {status === 'F' ? 'FAAL' : status}
+                        {status}
                       </div>
                     </div>
                   );
                 })}
               </div>
 
-              <div className="mt-8 p-6 bg-gray-50 rounded-2xl border border-gray-100">
-                <h4 className="font-black text-gray-900 uppercase tracking-widest text-sm mb-4">GÜN ÖZETİ</h4>
+              <div className="mt-10 p-6 bg-slate-50 rounded-[2rem] border-2 border-slate-100 flex justify-between items-center">
                 <div className="flex space-x-8">
                   <div className="flex items-center">
-                    <div className="w-4 h-4 bg-white border border-black/20 mr-2 rounded"></div>
-                    <span className="text-xs font-bold text-gray-600">FAAL</span>
+                    <div className="w-5 h-5 bg-[#ecfdf5] border-2 border-emerald-200 mr-2 rounded-lg"></div>
+                    <span className="text-[11px] font-black text-slate-600 uppercase tracking-widest">FAAL</span>
                   </div>
                   <div className="flex items-center">
-                    <div className="w-4 h-4 bg-[#FFFF00] border border-black/20 mr-2 rounded"></div>
-                    <span className="text-xs font-bold text-gray-600">BAKIM</span>
+                    <div className="w-5 h-5 bg-[#FFFF00] border-2 border-yellow-400 mr-2 rounded-lg"></div>
+                    <span className="text-[11px] font-black text-slate-600 uppercase tracking-widest">BAKIM</span>
                   </div>
                   <div className="flex items-center">
-                    <div className="w-4 h-4 bg-[#FF0000] border border-black/20 mr-2 rounded"></div>
-                    <span className="text-xs font-bold text-gray-600">ARIZA</span>
+                    <div className="w-5 h-5 bg-[#FF0000] border-2 border-red-400 mr-2 rounded-lg"></div>
+                    <span className="text-[11px] font-black text-slate-600 uppercase tracking-widest">ARIZA</span>
                   </div>
                 </div>
+                <button 
+                  onClick={() => setSelectedDayView(null)}
+                  className="px-16 py-5 bg-gray-900 text-white rounded-2xl font-black text-[14px] uppercase tracking-[0.2em] hover:bg-black transition-all shadow-2xl active:scale-95 border-b-4 border-gray-700"
+                >
+                  PENCEREYİ KAPAT
+                </button>
               </div>
-            </div>
-
-            <div className="p-6 bg-emerald-50 border-t border-gray-100 flex justify-end">
-              <button 
-                onClick={() => setSelectedDayView(null)}
-                className="px-8 py-3 bg-emerald-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-emerald-500 transition-all shadow-lg"
-              >
-                KAPAT
-              </button>
             </div>
           </div>
         </div>

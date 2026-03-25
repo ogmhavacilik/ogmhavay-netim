@@ -1,3 +1,42 @@
+function getAT802Cells(kNo) {
+  var frdsCell = "M10";
+  var motorCell = "J16";
+  
+  if (kNo === "OR-2021" || kNo === "OR-2022") {
+    frdsCell = "M11";
+    motorCell = "J16";
+  } else if (kNo === "OR-2023") {
+    frdsCell = "L9";
+    motorCell = "J15";
+  } else if (kNo === "OR-2024") {
+    frdsCell = "M7";
+    motorCell = "K13";
+  } else if (kNo === "OR-2025" || kNo === "OR-2026") {
+    frdsCell = "L8";
+    motorCell = "J14";
+  } else if (kNo === "OR-2027") {
+    frdsCell = "N12";
+    motorCell = "K19";
+  } else if (kNo === "OR-2028" || kNo === "OR-2029") {
+    frdsCell = "M8";
+    motorCell = "J14";
+  } else if (kNo === "OR-2030" || kNo === "OR-2031") {
+    frdsCell = "N11";
+    motorCell = "K17:Q17";
+  } else if (kNo === "OR-2036") {
+    frdsCell = "N11";
+    motorCell = "J16";
+  } else if (kNo === "OR-2037") {
+    frdsCell = "M12";
+    motorCell = "J18";
+  } else if (kNo === "OR-2038") {
+    frdsCell = "M10";
+    motorCell = "J16";
+  }
+  
+  return { frds: frdsCell, motor: motorCell };
+}
+
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents)
@@ -379,7 +418,7 @@ function doPost(e) {
       var testRecipient = {
         "PERSONEL ADI": "Test Kullanıcısı",
         "PERSONEL MAİL ADRESİ": email,
-        "GÖNDERİLECEK MAİLİN EKİ": "ENVANTER RAPORU,FAALİYET ÇİZELGESİ",
+        "GÖNDERİLECEK MAİLİN EKİ": "ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU,FAALİYET ÇİZELGESİ",
       };
 
       try {
@@ -426,6 +465,7 @@ function doPost(e) {
         } catch (e) {}
       }
 
+      var allSheets = (params.fetchTechnicalDetails || params.aircraftType === "AT-802") ? ss.getSheets() : [];
       for (var i = 0; i < numRows; i++) {
         var item = {};
         Object.keys(rawData).forEach(function (key) {
@@ -447,41 +487,56 @@ function doPost(e) {
             if (match) {
               kNo = match[0].toUpperCase();
             }
-            var techSheetName = kNo + " Genel";
-            var techSheet = ss.getSheetByName(techSheetName);
+            var techSheet = null;
+            var searchKNo = kNo.toUpperCase().replace(/[\s\.-]/g, "");
+            for (var s = 0; s < allSheets.length; s++) {
+              var sName = allSheets[s].getName().toUpperCase().replace(/[\s\.-]/g, "");
+              if (sName.indexOf(searchKNo) !== -1 && sName.indexOf("GENEL") !== -1) {
+                techSheet = allSheets[s];
+                break;
+              }
+            }
+            if (!techSheet) {
+              for (var s = 0; s < allSheets.length; s++) {
+                var sName = allSheets[s].getName().toUpperCase().replace(/[\s\.-]/g, "");
+                if (sName === searchKNo) {
+                  techSheet = allSheets[s];
+                  break;
+                }
+              }
+            }
+            
             if (techSheet) {
               try {
                 item.govdeSN = techSheet.getRange("H10").getDisplayValue();
                 item.motor1SN = techSheet.getRange("H14").getDisplayValue();
                 item.uretimYili = techSheet.getRange("F7:H7").getDisplayValue();
 
-                var frdsCell = "M10";
-                var motorCell = "J16";
-                if (kNo === "OR-2023") {
-                  frdsCell = "L9";
-                  motorCell = "J15:P15";
-                } else if (kNo === "OR-2024") {
-                  frdsCell = "M7";
-                  motorCell = "K13:Q13";
-                } else if (kNo === "OR-2025") {
-                  frdsCell = "L8";
-                  motorCell = "J14:P14";
-                } else if (kNo === "OR-2026") {
-                  frdsCell = "L8";
-                  motorCell = "J14:P14";
-                } else if (kNo === "OR-2027") {
-                  frdsCell = "N12";
-                  motorCell = "K19:Q19";
-                } else if (kNo === "OR-2028") {
-                  frdsCell = "M8";
-                  motorCell = "J14:P14";
-                } else if (kNo === "OR-2037") {
-                  frdsCell = "M12";
-                  motorCell = "J18:P18";
-                }
+                var cells = getAT802Cells(kNo);
+                var frdsCell = cells.frds;
+                var motorCell = cells.motor;
 
-                item.frdsTestDate = getFirstNonEmpty(techSheet, frdsCell);
-                item.motorRunDate = getFirstNonEmpty(techSheet, motorCell);
+                var techFrds = getFirstNonEmpty(techSheet, frdsCell);
+                
+                if (techFrds && techFrds !== "-") {
+                  item.frdsTestDate = techFrds;
+                  item.frdsTest = techFrds;
+                }
+                
+                var techMotor = getFirstNonEmpty(techSheet, motorCell);
+                if (techMotor && techMotor !== "-") {
+                  item.motorRunDate = techMotor;
+                  item.motorCalisma = techMotor;
+                }
+                
+                // Bakım Takvim Tarihi (Eğer teknik sayfada varsa alalım)
+                // Bazı uçaklarda M12 veya N12 gibi yerlerde olabilir
+                var techBakim = techSheet.getRange("M12").getDisplayValue();
+                if (techBakim && techBakim !== "-" && techBakim !== "") {
+                   if (!item.bakimTakvimTarih || item.bakimTakvimTarih === "-") {
+                     item.bakimTakvimTarih = techBakim;
+                   }
+                }
               } catch (e) {
                 item.techError = e.toString();
               }
@@ -511,10 +566,29 @@ function doPost(e) {
       if (match) {
         kNo = match[0].toUpperCase();
       }
-      var techSheetName = kNo + " Genel";
-      var techSheet = ss.getSheetByName(techSheetName);
+      
+      var techSheet = null;
+      var allSheets = ss.getSheets();
+      var searchKNo = kNo.toUpperCase().replace(/[\s\.-]/g, "");
+      for (var s = 0; s < allSheets.length; s++) {
+        var sName = allSheets[s].getName().toUpperCase().replace(/[\s\.-]/g, "");
+        if (sName.indexOf(searchKNo) !== -1 && sName.indexOf("GENEL") !== -1) {
+          techSheet = allSheets[s];
+          break;
+        }
+      }
+      if (!techSheet) {
+        for (var s = 0; s < allSheets.length; s++) {
+          var sName = allSheets[s].getName().toUpperCase().replace(/[\s\.-]/g, "");
+          if (sName === searchKNo) {
+            techSheet = allSheets[s];
+            break;
+          }
+        }
+      }
+
       if (!techSheet)
-        return jsonError("Teknik sayfa bulunamadı: " + techSheetName);
+        return jsonError("Teknik sayfa bulunamadı: " + kNo);
 
       var data = {};
       try {
@@ -523,33 +597,13 @@ function doPost(e) {
         data.starts = techSheet.getRange("F15").getDisplayValue();
         data.flights = techSheet.getRange("H15").getDisplayValue();
 
-        var frdsCell = "M10";
-        var motorCell = "J16";
+        var cells = getAT802Cells(kNo);
+        var frdsCell = cells.frds;
+        var motorCell = cells.motor;
 
-        if (kNo === "OR-2023") {
-          frdsCell = "L9";
-          motorCell = "J15";
-        } else if (kNo === "OR-2024") {
-          frdsCell = "M7";
-          motorCell = "K13";
-        } else if (kNo === "OR-2025") {
-          frdsCell = "L8";
-          motorCell = "J14";
-        } else if (kNo === "OR-2026") {
-          frdsCell = "L8";
-          motorCell = "J14";
-        } else if (kNo === "OR-2027") {
-          frdsCell = "N12";
-          motorCell = "K19";
-        } else if (kNo === "OR-2028") {
-          frdsCell = "M8";
-          motorCell = "J14";
-        } else if (kNo === "OR-2037") {
-          frdsCell = "M12";
-          motorCell = "J18";
-        }
-
-        data.frdsTest = getFirstNonEmpty(techSheet, frdsCell);
+        var techFrds = getFirstNonEmpty(techSheet, frdsCell);
+        
+        data.frdsTest = techFrds;
         data.motorCalisma = getFirstNonEmpty(techSheet, motorCell);
       } catch (e) {
         return jsonError("Veri okuma hatası: " + e.toString());
@@ -664,37 +718,14 @@ function doPost(e) {
           if (updates.flights !== undefined)
             techSheet.getRange("H15").setValue(updates.flights);
 
-          var frdsCell = "M10";
-          var motorCell = "J16";
-
-          if (kNo === "OR-2023") {
-            frdsCell = "L9";
-            motorCell = "J15";
-          } else if (kNo === "OR-2024") {
-            frdsCell = "M7";
-            motorCell = "K13";
-          } else if (kNo === "OR-2025") {
-            frdsCell = "L8";
-            motorCell = "J14";
-          } else if (kNo === "OR-2026") {
-            frdsCell = "L8";
-            motorCell = "J14";
-          } else if (kNo === "OR-2027") {
-            frdsCell = "N12";
-            motorCell = "K19";
-          } else if (kNo === "OR-2028") {
-            frdsCell = "M8";
-            motorCell = "J14";
-          } else if (kNo === "OR-2037") {
-            frdsCell = "M12";
-            motorCell = "J18";
-          }
+          var cells = getAT802Cells(kNo);
+          var frdsCell = cells.frds;
+          var motorCell = cells.motor;
 
           if (updates.frdsTest !== undefined)
-            techSheet.getRange(frdsCell).setValue(updates.frdsTest);
-          if (updates.motorCalisma !== undefined) {
-            techSheet.getRange(motorCell).setValue(updates.motorCalisma);
-          }
+            updateLastInLog(techSheet, frdsCell, updates.frdsTest);
+          if (updates.motorCalisma !== undefined)
+            updateLastInLog(techSheet, motorCell, updates.motorCalisma);
         }
       }
 
@@ -929,6 +960,40 @@ function jsonSuccess(data) {
   ).setMimeType(ContentService.MimeType.JSON);
 }
 
+function updateLastInLog(sheet, rangeStr, value) {
+  var range = sheet.getRange(rangeStr);
+  if (range.getNumRows() === 1 && range.getNumColumns() === 1) {
+    range.setValue(value);
+    return;
+  }
+
+  var values = range.getValues();
+  var row = range.getRow();
+  var col = range.getColumn();
+  var lastR = -1;
+  var lastC = -1;
+
+  for (var r = 0; r < values.length; r++) {
+    for (var c = 0; c < values[r].length; c++) {
+      if (
+        values[r][c] !== "" &&
+        values[r][c] !== null &&
+        values[r][c] !== undefined &&
+        values[r][c] !== "-"
+      ) {
+        lastR = r;
+        lastC = c;
+      }
+    }
+  }
+
+  if (lastR !== -1) {
+    sheet.getRange(row + lastR, col + lastC).setValue(value);
+  } else {
+    sheet.getRange(row, col).setValue(value);
+  }
+}
+
 function getFirstNonEmpty(sheet, rangeStr) {
   try {
     if (!rangeStr.includes(":")) {
@@ -946,12 +1011,14 @@ function getFirstNonEmpty(sheet, rangeStr) {
 
     var values = sheet.getRange(rangeStr).getValues();
     var displayValues = sheet.getRange(rangeStr).getDisplayValues();
-    for (var r = 0; r < values.length; r++) {
-      for (var c = 0; c < values[r].length; c++) {
+    // Scan backwards to get the latest entry in a log range
+    for (var r = values.length - 1; r >= 0; r--) {
+      for (var c = values[r].length - 1; c >= 0; c--) {
         if (
           values[r][c] !== "" &&
           values[r][c] !== null &&
-          values[r][c] !== undefined
+          values[r][c] !== undefined &&
+          values[r][c] !== "-"
         ) {
           if (values[r][c] instanceof Date) {
             return Utilities.formatDate(
@@ -962,7 +1029,8 @@ function getFirstNonEmpty(sheet, rangeStr) {
           }
           if (
             displayValues[r][c] &&
-            displayValues[r][c].toString().trim() !== ""
+            displayValues[r][c].toString().trim() !== "" &&
+            displayValues[r][c].toString().trim() !== "-"
           ) {
             return displayValues[r][c].toString().trim();
           }
@@ -1004,7 +1072,7 @@ function sendReportEmail(recipient, customAttachments, ss) {
           att.name,
         ),
       );
-      if (att.name.includes("ENVANTER RAPORU")) skipEnvanter = true;
+      if (att.name.toUpperCase().includes("ENVANTER RAPOR") || att.name.toUpperCase().includes("ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU")) skipEnvanter = true;
     });
   }
 
@@ -1036,10 +1104,12 @@ function sendReportEmail(recipient, customAttachments, ss) {
     return;
   }
 
+  var upperReports = selectedReports.toUpperCase();
   if (
     !skipEnvanter &&
-    (selectedReports.includes("ENVANTER RAPORU") ||
-      selectedReports.includes("ENVANTER HAVA ARACI DURUM RAPORU"))
+    (upperReports.includes("ENVANTER RAPORU") ||
+      upperReports.includes("ENVANTER HAVA ARACI DURUM RAPORU") ||
+      upperReports.includes("ENVANTER RAPOR"))
   ) {
     try {
       var blob = generateEnvanterExcelBlob();
@@ -1050,7 +1120,7 @@ function sendReportEmail(recipient, customAttachments, ss) {
   }
 
   // Faaliyet Çizelgesi ve diğer online excellere dokunmuyoruz ama log sayfalarını dahil etmiyoruz
-  if (selectedReports.includes("HAVA ARACI EXCELİ (ONLİNE)")) {
+  if (upperReports.includes("HAVA ARACI EXCELİ (ONLİNE)") || upperReports.includes("HAVA ARACI EXCELI")) {
     var platformIds = {
       "Bell-429": "1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ",
       "AT-802": "1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4",
@@ -1106,7 +1176,10 @@ function getSheetAsExcel(ssId, name) {
         n.includes("FAALİYET LOG") ||
         n.includes("FAALIYET LOG") ||
         n.includes("SAATLİK FAALİYET GÜNLÜĞÜ") ||
-        n.includes("SAATLIK FAALIYET GUNLUGU")
+        n.includes("SAATLIK FAALIYET GUNLUGU") ||
+        n.includes("LOG KAYITLARI") ||
+        n.includes("LOG KAYITLARI") ||
+        n.includes("LOG")
       );
     });
 
@@ -1127,7 +1200,10 @@ function getSheetAsExcel(ssId, name) {
             n.includes("FAALİYET LOG") ||
             n.includes("FAALIYET LOG") ||
             n.includes("SAATLİK FAALİYET GÜNLÜĞÜ") ||
-            n.includes("SAATLIK FAALIYET GUNLUGU")
+            n.includes("SAATLIK FAALIYET GUNLUGU") ||
+            n.includes("LOG KAYITLARI") ||
+            n.includes("LOG KAYITLARI") ||
+            n.includes("LOG")
           ) {
             if (tempSs.getSheets().length > 1) {
               tempSs.deleteSheet(s);
@@ -1788,30 +1864,40 @@ function generateEnvanterExcelBlob() {
   );
 
   var html =
-    '<html><head><meta charset="utf-8" /><style>' +
+    '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8" /><style>' +
     "table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }" +
     "th, td { border: 1px solid black; padding: 8px; text-align: center; vertical-align: middle; font-size: 11px; }" +
-    ".title-row { background-color: #1a472a; color: white; font-weight: bold; font-size: 16px; }" +
-    ".header-row th { background-color: #2d5a27; color: white; font-weight: bold; }" +
-    ".date-text { color: #d32f2f; font-weight: bold; text-align: right; font-size: 14px; }" +
-    ".faal { background-color: #c6efce; color: #006100; }" +
-    ".gayrifaal { background-color: #ffc7ce; color: #9c0006; }" +
-    ".kuyruk-cell { background-color: #f8f9fa; font-weight: bold; }" +
+    ".title-row { font-weight: bold; font-size: 14px; text-align: center; }" +
+    ".header-row th { font-weight: bold; background-color: #ffffff; color: black; }" +
+    ".date-text { color: #d32f2f; font-weight: bold; text-align: right; font-size: 12px; }" +
+    ".faal { background-color: #c6efce; color: #006100; font-weight: bold; }" +
+    ".gayrifaal { background-color: #ffc7ce; color: #9c0006; font-weight: bold; }" +
     ".abbr-text { color: #d32f2f; font-weight: bold; margin-left: 4px; }" +
+    ".aciklama-cell { text-align: left; font-style: italic; white-space: pre-wrap; }" +
     "</style></head><body><table>" +
-    '<tr><td colspan="6" class="date-text" style="border: none;">' +
+    '<tr><td colspan="7" class="date-text" style="border: none;">' +
     dateStr +
     "</td></tr>" +
-    '<tr><td colspan="6" class="title-row">OGM HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td></tr>' +
+    '<tr><td colspan="7" class="title-row">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td></tr>' +
     '<tr class="header-row">' +
     "<th>ÇAĞRI KODU</th>" +
-    "<th>KUYRUK NO</th>" +
+    "<th>KUYRUK NUMARASI</th>" +
     "<th>DURUM</th>" +
+    "<th>DURUM AYRINTISI</th>" +
     "<th>KONUM</th>" +
     "<th>FAYDALİ SAAT</th>" +
     "<th>AÇIKLAMA</th></tr>";
 
+  var currentTip = "";
+  var isGray = false;
+
   fleet.forEach(function (a) {
+    if (a.tip !== currentTip) {
+      currentTip = a.tip || "";
+      isGray = !isGray;
+    }
+    var bgClass = isGray ? "background-color: #f2f2f2;" : "background-color: #ffffff;";
+
     var abbr = "";
     var tail = String(a.kuyrukNo).trim().toUpperCase();
     if (["OR-2021", "OR-2022", "OR-2023", "OR-2037"].includes(tail))
@@ -1838,47 +1924,55 @@ function generateEnvanterExcelBlob() {
       !String(a.durum).toUpperCase().includes("GAYRİ") &&
       !String(a.durum).toUpperCase().includes("GAYRI");
     var durumClass = isFaal ? "faal" : "gayrifaal";
-    var faydali = formatToHHMM(a.faydaliSaat);
-    var aciklama = (a.aciklama || "").replace(/\n/g, " ");
+    var faydali = a.tip === "T-70" ? (a.bakimKalanSaat || "-") : formatToHHMM(a.faydaliSaat);
+    var aciklama = (a.aciklama || "").replace(/\n/g, "<br>");
 
     var durumText = a.durum || "";
-    var alertText = a.durumAyrintisi || "";
-    if (alertText && alertText !== "-") {
-      durumText += " (" + alertText + ")";
-    }
+    var alertText = a.durumAyrintisi && a.durumAyrintisi !== "-" ? a.durumAyrintisi : "";
 
     html +=
       "<tr>" +
-      "<td>" +
+      '<td style="' + bgClass + ' font-weight: bold;">' +
       (a.cagriKodu || "") +
       "</td>" +
-      '<td class="kuyruk-cell">' +
+      '<td style="' + bgClass + ' font-weight: bold;">' +
       (a.kuyrukNo || "") +
-      '<span class="abbr-text">' +
+      ' <span class="abbr-text">' +
       abbr +
       "</span></td>" +
       '<td class="' +
       durumClass +
-      '" style="font-weight: bold;">' +
+      '">' +
       durumText +
       "</td>" +
-      "<td>" +
+      '<td style="font-weight: bold; text-transform: uppercase;">' +
+      alertText +
+      "</td>" +
+      '<td style="font-weight: bold; text-transform: uppercase;">' +
       (a.konum || "") +
       "</td>" +
-      "<td style=\"mso-number-format:'@'; font-weight: bold; color: #1a73e8;\">" +
+      "<td style=\"mso-number-format:'\\@'; font-weight: bold; color: #1a73e8;\">" +
       faydali +
       "</td>" +
-      '<td style="text-align: left; font-style: italic;">' +
+      '<td class="aciklama-cell">' +
       aciklama +
       "</td></tr>";
   });
 
+  html += "</table><br/>";
+  html += '<table style="width: 300px; border: none;">';
+  html += '<tr><td style="border: none; text-align: left; font-weight: bold; font-size: 11px; padding: 2px;">KISALTMALAR:</td></tr>';
+  html += '<tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(DA): DUAL AMFİBİ</td></tr>';
+  html += '<tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(SA): SINGLE AMFİBİ</td></tr>';
+  html += '<tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(DL): DUAL LAND</td></tr>';
+  html += '<tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(SL): SINGLE LAND</td></tr>';
+  html += '<tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(H): HELİTAK</td></tr>';
   html += "</table></body></html>";
 
   return Utilities.newBlob(
     html,
     "application/vnd.ms-excel",
-    "ENVANTER RAPORU.xls",
+    "ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU.xls",
   );
 }
 

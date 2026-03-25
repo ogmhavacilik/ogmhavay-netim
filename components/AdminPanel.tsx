@@ -114,7 +114,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
     const customAttachments: { name: string, data: string, mimeType: string }[] = [];
     
     // If recipient wants "ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU", generate it from current previewData
-    if (recipient.attachments.includes('ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU')) {
+    if (recipient.attachments && (recipient.attachments.includes('ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU') || recipient.attachments.includes('ENVANTER RAPORU'))) {
       const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const html = generateFleetExcelHtml(previewData as Aircraft[], dateStr);
       

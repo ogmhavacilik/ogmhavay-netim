@@ -7,10 +7,18 @@ import { getCallSignByTail } from '../constants';
 export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretation: string } => {
   if (!item) return { code: 'F', interpretation: 'FAAL' };
   
-  const detail = String(item.durumAyrintisi || '').toLocaleLowerCase('tr-TR').trim();
-  const desc = String(item.aciklama || '').toLocaleLowerCase('tr-TR').trim();
-  const durumStr = String(item.durum || '').toLocaleUpperCase('tr-TR').trim();
-  const detailUpper = String(item.durumAyrintisi || '').toLocaleUpperCase('tr-TR').trim();
+  // Helper to get value from multiple possible keys (headers, column letters, mapping keys)
+  const getVal = (keys: string[]) => {
+    for (const key of keys) {
+      if (item[key] !== undefined && item[key] !== null && item[key] !== '') return String(item[key]);
+    }
+    return '';
+  };
+
+  const detail = getVal(['durumAyrintisi', 'Durum Ayrıntısı', 'DURUM AYRINTISI', 'O', 'o', 'C', 'c', 'durum_ayrintisi']).toLocaleLowerCase('tr-TR').trim();
+  const desc = getVal(['aciklama', 'Açıklama', 'AÇIKLAMA', 'P', 'p', 'D', 'd', 'aciklama']).toLocaleLowerCase('tr-TR').trim();
+  const durumStr = getVal(['durum', 'Durum', 'DURUM', 'N', 'n', 'B', 'b', 'durum']).toLocaleUpperCase('tr-TR').trim();
+  const detailUpper = detail.toLocaleUpperCase('tr-TR');
   
   // 1. KESİN ÖNCELİK: DURUM AYRINTISI (BİREBİR EŞLEŞME VEYA NET ANAHTAR KELİME)
   // Kullanıcı "Eğer durum ayrıntısı varsa birebir onu baz al" dedi.
@@ -232,7 +240,35 @@ const formatValueToString = (val: any): string => {
 };
 
 const formatDateIfISO = (val: any): string => {
+  if (!val) return '-';
   const s = formatValueToString(val);
+  if (s === '-' || s === '') return '-';
+  
+  // If it's already in DD.MM.YYYY format, return it
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) return s;
+  
+  // If it's in YYYY-MM-DD format, convert to DD.MM.YYYY
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const parts = s.split('-');
+    return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  }
+
+  // Handle MM/DD/YYYY or M/D/YYYY -> DD.MM.YYYY
+  // User specifically requested to convert Month/Day/Year to Day.Month.Year
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+    const parts = s.split('/');
+    const month = parts[0].padStart(2, '0');
+    const day = parts[1].padStart(2, '0');
+    const year = parts[2];
+    
+    // If month > 12, it's likely already in DD/MM/YYYY format
+    if (parseInt(month) > 12) {
+      return `${month}.${day}.${year}`;
+    }
+    
+    return `${day}.${month}.${year}`;
+  }
+
   if (typeof s === 'string' && s.includes('T') && s.includes('Z')) {
     const d = new Date(s);
     if (!isNaN(d.getTime())) {
@@ -268,7 +304,14 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    const result = await response.json();
+    let result;
+    const text = await response.text();
+    try {
+      result = JSON.parse(text);
+    } catch (e) {
+      console.error(`fetchAircraftDataFromAppsScript JSON Parse Error (${config.aircraftType}):`, e, "Raw response:", text.substring(0, 200));
+      return [];
+    }
     
     const data = (result && (result.success || result.status === 'success') && Array.isArray(result.data)) 
       ? result.data 
@@ -310,16 +353,33 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
       const kuyrukNo = String(item.kuyrukNo || '').trim();
       const cleanKuyrukNo = kuyrukNo.toUpperCase();
       
-      const faydaliRawCells = Array.isArray(item.faydaliSaat) ? item.faydaliSaat.flat(Infinity) : [item.faydaliSaat];
-      const validFaydaliHours = faydaliRawCells
-        .map(cell => parseSingleCellToHour(cell, config.aircraftType))
-        .filter((h): h is number => h !== null);
-      const finalMinHour = validFaydaliHours.length > 0 ? Math.min(...validFaydaliHours) : null;
-      
-      // C-650 Faydalı Saat should be integer
-      const hourInt = (config.aircraftType === 'C-650' && finalMinHour !== null) 
-        ? Math.floor(finalMinHour) 
-        : (finalMinHour !== null ? Math.floor(finalMinHour) : null);
+      let finalMinHour: number | null = null;
+      let maintenanceHours: { bakimTuru: string, kalanSaat: number }[] = [];
+
+      if (config.aircraftType === 'T-70') {
+        const h40 = parseSingleCellToHour(item.bakim40H, 'T-70');
+        const h120 = parseSingleCellToHour(item.bakim120H, 'T-70');
+        
+        const validHours = [h40, h120].filter((h): h is number => h !== null);
+        finalMinHour = validHours.length > 0 ? Math.min(...validHours) : null;
+        
+        maintenanceHours = [
+          { bakimTuru: 'Bakıma Kalan Saat (40 Saat)', kalanSaat: h40 ?? 0 },
+          { bakimTuru: 'Bakıma Kalan Saat (120 Saat)', kalanSaat: h120 ?? 0 }
+        ];
+      } else {
+        const faydaliRawCells = Array.isArray(item.faydaliSaat) ? item.faydaliSaat.flat(Infinity) : [item.faydaliSaat];
+        const validFaydaliHours = faydaliRawCells
+          .map(cell => parseSingleCellToHour(cell, config.aircraftType))
+          .filter((h): h is number => h !== null);
+        finalMinHour = validFaydaliHours.length > 0 ? Math.min(...validFaydaliHours) : null;
+        
+        const hourInt = (config.aircraftType === 'C-650' && finalMinHour !== null) 
+          ? Math.floor(finalMinHour) 
+          : (finalMinHour !== null ? Math.floor(finalMinHour) : null);
+          
+        maintenanceHours = [{ bakimTuru: 'KALAN', kalanSaat: hourInt || 0 }];
+      }
 
       const govdeStr = formatGovdeHour(item.govdeUcusSaati ?? item.E ?? item.e ?? item[4], config.aircraftType);
 
@@ -336,7 +396,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         aciklama: String(item.aciklama || ''),
         guncellemeTarihi: timestamp,
         durumBaslangic: new Date().toISOString().split('T')[0],
-        maintenanceHours: [{ bakimTuru: 'KALAN', kalanSaat: hourInt || 0 }],
+        maintenanceHours: maintenanceHours,
         photos: (function() {
           // Bell-429
           if (cleanKuyrukNo === 'OR-3125') return ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSvt3kY_8IMmrxMHeZA6by8UcjfIBqYrHXMsA&s'];
@@ -374,17 +434,17 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         platformTipi: (function() {
           if (config.aircraftType === 'Bell-429') return 'H';
           if (config.aircraftType === 'T-70') return 'H';
-          if (config.aircraftType === 'B-360') return 'S-L';
-          if (config.aircraftType === 'C-650') return 'S-L';
+          if (config.aircraftType === 'B-360') return 'SL';
+          if (config.aircraftType === 'C-650') return 'SL';
           if (config.aircraftType === 'AT-802') {
              const tail = cleanKuyrukNo;
-             if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return 'D-A';
-             if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return 'S-A';
-             if (tail === 'OR-2036') return 'D-L';
-             if (tail === 'OR-2038') return 'S-L';
-             return 'S-A';
+             if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return 'DA';
+             if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return 'SA';
+             if (tail === 'OR-2036') return 'DL';
+             if (tail === 'OR-2038') return 'SL';
+             return 'SA';
           }
-          return 'S-A';
+          return 'SA';
         })(),
         tip: config.aircraftType,
         assignedCode: analysis.code,
@@ -419,9 +479,24 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         aircraft.landings = formatValueToString(item.landings);
         aircraft.engineStarts = formatValueToString(item.engineStarts);
         aircraft.engineFlights = formatValueToString(item.engineFlights);
-        aircraft.frdsTestDate = formatDateIfISO(item.frdsTestDate);
-        aircraft.motorRunDate = formatDateIfISO(item.motorRunDate);
         aircraft.bakimTakvimTarih = formatDateIfISO(item.bakimTakvimTarih);
+        
+        // Prioritize technical sheet data (item.frdsTestDate or item.frdsTest) over main sheet data
+        const techDate = item.frdsTestDate || item.frdsTest;
+        const mainDate = (aircraft.kuyrukNo === 'OR-2030' || aircraft.kuyrukNo === 'OR-2031' || aircraft.kuyrukNo === 'OR-2036') 
+          ? (item.frdsTestDateAlt || item.frdsTestDateMain)
+          : item.frdsTestDateMain;
+
+        if (techDate && techDate !== '-' && techDate !== 'N/A' && techDate !== '') {
+          aircraft.frdsTestDate = formatDateIfISO(techDate);
+        } else {
+          aircraft.frdsTestDate = formatDateIfISO(mainDate);
+        }
+        
+        const techMotor = item.motorRunDate || item.motorCalisma;
+        if (techMotor && techMotor !== '-' && techMotor !== 'N/A' && techMotor !== '') {
+          aircraft.motorRunDate = formatDateIfISO(techMotor);
+        }
       } else if (config.aircraftType === 'T-70') {
         aircraft.govdeSN = formatValueToString(item.govdeSN);
         aircraft.motor1SN = formatValueToString(item.motor1SN);

@@ -57,7 +57,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
       m = 0;
     }
     const sign = hours < 0 ? '-' : '';
-    return `${sign}${h}:${m.toString().padStart(2, '0')}`;
+    return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
   };
 
   const formatDecimal = (hours: number): string => {
@@ -113,7 +113,12 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
         return d.getDate() === endD.getDate() && d.getMonth() === endD.getMonth() && d.getFullYear() === endD.getFullYear();
       });
 
-      const resultMap: Record<string, SorguResult> = {};
+      const resultMap: Record<string, {
+        kuyrukNo: string;
+        baslangicSaat: number | null;
+        bitisSaat: number | null;
+        isDecimal: boolean;
+      }> = {};
 
       startData.forEach((row: any) => {
         const { val: h, isDecimal: parsedIsDecimal } = parseHour(row.govdeUcusSaati);
@@ -123,12 +128,11 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
             resultMap[row.kuyrukNo] = {
               kuyrukNo: row.kuyrukNo,
               baslangicSaat: h,
-              bitisSaat: 0,
-              fark: 0,
+              bitisSaat: null,
               isDecimal: isDecimal
             };
           } else {
-            if (h > resultMap[row.kuyrukNo].baslangicSaat) {
+            if (resultMap[row.kuyrukNo].baslangicSaat === null || h > (resultMap[row.kuyrukNo].baslangicSaat || 0)) {
               resultMap[row.kuyrukNo].baslangicSaat = h;
               resultMap[row.kuyrukNo].isDecimal = isDecimal;
             }
@@ -143,13 +147,12 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
           if (!resultMap[row.kuyrukNo]) {
             resultMap[row.kuyrukNo] = {
               kuyrukNo: row.kuyrukNo,
-              baslangicSaat: 0,
+              baslangicSaat: null,
               bitisSaat: h,
-              fark: 0,
               isDecimal: isDecimal
             };
           } else {
-            if (h > resultMap[row.kuyrukNo].bitisSaat) {
+            if (resultMap[row.kuyrukNo].bitisSaat === null || h > (resultMap[row.kuyrukNo].bitisSaat || 0)) {
               resultMap[row.kuyrukNo].bitisSaat = h;
               if (!resultMap[row.kuyrukNo].isDecimal) resultMap[row.kuyrukNo].isDecimal = isDecimal;
             }
@@ -161,12 +164,18 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
       const finalResults: SorguResult[] = [];
       
       Object.values(resultMap).forEach(res => {
-        if (res.baslangicSaat > 0 && res.bitisSaat > 0) {
-          res.fark = res.bitisSaat - res.baslangicSaat;
-          if (res.fark < 0) {
+        if (res.baslangicSaat !== null && res.bitisSaat !== null) {
+          const fark = res.bitisSaat - res.baslangicSaat;
+          if (fark < 0) {
             hasNegative = true;
           }
-          finalResults.push(res);
+          finalResults.push({
+            kuyrukNo: res.kuyrukNo,
+            baslangicSaat: res.baslangicSaat,
+            bitisSaat: res.bitisSaat,
+            fark: fark,
+            isDecimal: res.isDecimal
+          });
         }
       });
 

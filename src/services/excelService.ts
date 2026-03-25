@@ -74,60 +74,77 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
       <style>
         table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
         th, td { border: 1px solid black; padding: 8px; text-align: center; vertical-align: middle; font-size: 11px; }
-        .title-row { background-color: #1a472a; color: white; font-weight: bold; font-size: 16px; }
-        .header-row th { background-color: #2d5a27; color: white; font-weight: bold; }
-        .date-text { color: #d32f2f; font-weight: bold; text-align: right; font-size: 14px; }
-        .faal { background-color: #c6efce; color: #006100; }
-        .gayrifaal { background-color: #ffc7ce; color: #9c0006; }
-        .kuyruk-cell { background-color: #f8f9fa; font-weight: bold; }
+        .title-row { font-weight: bold; font-size: 14px; text-align: center; padding: 15px; }
+        .header-row th { font-weight: bold; background-color: #d9d9d9; color: black; }
+        .date-text { color: #d32f2f; font-weight: bold; text-align: right; font-size: 12px; padding-bottom: 10px; }
+        .faal { background-color: #e8f5e9; color: #2e7d32; font-weight: bold; }
+        .gayrifaal { background-color: #ffebee; color: #c62828; font-weight: bold; }
         .abbr-text { color: #d32f2f; font-weight: bold; margin-left: 4px; }
+        .aciklama-cell { text-align: left; font-style: italic; white-space: pre-wrap; }
       </style>
     </head>
     <body>
       <table>
         <tr>
-          <td colspan="6" class="date-text" style="border: none;">${dateStr}</td>
+          <td colspan="7" class="date-text" style="border: none;">${dateStr}</td>
         </tr>
         <tr>
-          <td colspan="6" class="title-row">OGM HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td>
+          <td colspan="7" class="title-row">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td>
         </tr>
         <tr class="header-row">
           <th>ÇAĞRI KODU</th>
-          <th>KUYRUK NO</th>
+          <th>KUYRUK NUMARASI</th>
           <th>DURUM</th>
+          <th>DURUM AYRINTISI</th>
           <th>KONUM</th>
           <th>FAYDALİ SAAT</th>
           <th>AÇIKLAMA</th>
         </tr>
   `;
 
+  let currentTip = '';
+  let isGray = false;
+
   sortedFleet.forEach(aircraft => {
-    const aciklama = (aircraft.aciklama || '').replace(/\n/g, ' ');
-    const faydaliSaat = aircraft.faydaliSaat ? formatToHHMM(aircraft.faydaliSaat) : '';
-    const abbr = getAbbreviation(aircraft.kuyrukNo);
+    if (aircraft.tip !== currentTip) {
+      currentTip = aircraft.tip || '';
+      isGray = !isGray;
+    }
+    const bgClass = isGray ? 'background-color: #f2f2f2;' : 'background-color: #ffffff;';
+
+    const aciklama = (aircraft.aciklama || '').replace(/\n/g, '<br>');
+    const faydaliSaat = (aircraft.faydaliSaat !== null && aircraft.faydaliSaat !== undefined) ? formatToHHMM(aircraft.faydaliSaat) : '';
+    const abbr = getAbbreviation(aircraft.kuyrukNo || '');
     
     const isFaal = String(aircraft.durum).toUpperCase().includes("FAAL") && !String(aircraft.durum).toUpperCase().includes("GAYRİ") && !String(aircraft.durum).toUpperCase().includes("GAYRI");
     const durumClass = isFaal ? "faal" : "gayrifaal";
 
-    let durumText = aircraft.durum || '';
-    const alertText = aircraft.durumAyrintisi || '';
-    if (alertText && alertText !== '-') {
-      durumText += ` (${alertText})`;
-    }
+    const durumText = aircraft.durum || '';
+    const alertText = aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? aircraft.durumAyrintisi : '';
     
     html += `
       <tr>
-        <td>${aircraft.cagriKodu || ''}</td>
-        <td class="kuyruk-cell">${aircraft.kuyrukNo || ''}<span class="abbr-text">${abbr}</span></td>
-        <td class="${durumClass}" style="font-weight: bold;">${durumText}</td>
-        <td>${aircraft.konum || ''}</td>
+        <td style="${bgClass} font-weight: bold;">${aircraft.cagriKodu || ''}</td>
+        <td style="${bgClass} font-weight: bold;">${aircraft.kuyrukNo || ''} <span class="abbr-text">${abbr}</span></td>
+        <td class="${durumClass}">${durumText}</td>
+        <td style="font-weight: bold; text-transform: uppercase;">${alertText}</td>
+        <td style="font-weight: bold; text-transform: uppercase;">${aircraft.konum || ''}</td>
         <td style="mso-number-format:'\\@'; font-weight: bold; color: #1a73e8;">${faydaliSaat}</td>
-        <td style="text-align: left; font-style: italic;">${aciklama}</td>
+        <td class="aciklama-cell">${aciklama}</td>
       </tr>
     `;
   });
 
   html += `
+      </table>
+      <br />
+      <table style="width: 300px; border: none;">
+        <tr><td style="border: none; text-align: left; font-weight: bold; font-size: 11px; padding: 2px;">KISALTMALAR:</td></tr>
+        <tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(DA): DUAL AMFİBİ</td></tr>
+        <tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(SA): SINGLE AMFİBİ</td></tr>
+        <tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(DL): DUAL LAND</td></tr>
+        <tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(SL): SINGLE LAND</td></tr>
+        <tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(H): HELİTAK</td></tr>
       </table>
     </body>
     </html>
