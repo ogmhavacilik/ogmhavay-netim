@@ -249,13 +249,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
 
     // AT-802 için teknik veriler boşsa veya güncellenmemesi gerekiyorsa gönderme
     if (selectedAircraft.tip === 'AT-802') {
-      // Bu alanlar artık AT-802 için güncellenmeyecek (sadece FRDS ve Motor Çalıştırma güncellenecek)
-      const excludeFields = ['acTT', 'landings', 'starts', 'flights', 'bakimTakvimTarih', 'bakimTakvim'];
-      excludeFields.forEach(field => {
-        delete finalData[field];
-      });
-
-      const techFields = ['frdsTest', 'motorCalisma'];
+      const techFields = ['frdsTest', 'motorCalisma', 'acTT', 'landings', 'starts', 'flights'];
       techFields.forEach(field => {
         if (finalData[field] === '' || finalData[field] === null || finalData[field] === undefined) {
           delete finalData[field];
@@ -843,6 +837,28 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                           </div>
                         ) : (
                           <div className="grid grid-cols-1 gap-6 md:gap-8">
+                            <div className="space-y-6 bg-white/5 p-6 rounded-2xl border border-white/10">
+                              <h4 className="text-white font-black tracking-widest border-b border-white/10 pb-2">TEKNİK VERİLER</h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">AC TT</label>
+                                  <input type="text" value={at802Data.acTT} onChange={e => setAt802Data({...at802Data, acTT: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">LANDINGS</label>
+                                  <input type="text" value={at802Data.landings} onChange={e => setAt802Data({...at802Data, landings: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">ENGINE STARTS</label>
+                                  <input type="text" value={at802Data.starts} onChange={e => setAt802Data({...at802Data, starts: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">ENGINE FLIGHTS</label>
+                                  <input type="text" value={at802Data.flights} onChange={e => setAt802Data({...at802Data, flights: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                </div>
+                              </div>
+                            </div>
+
                             <div className="space-y-6 bg-white/5 p-6 rounded-2xl border border-white/10">
                               <h4 className="text-white font-black tracking-widest border-b border-white/10 pb-2">TEST VE ÇALIŞMALAR</h4>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

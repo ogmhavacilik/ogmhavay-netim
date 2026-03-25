@@ -477,8 +477,8 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
       } else if (config.aircraftType === 'AT-802') {
         aircraft.acTT = formatValueToString(item.acTT);
         aircraft.landings = formatValueToString(item.landings);
-        aircraft.engineStarts = formatValueToString(item.engineStarts);
-        aircraft.engineFlights = formatValueToString(item.engineFlights);
+        aircraft.engineStarts = formatValueToString(item.starts || item.engineStarts);
+        aircraft.engineFlights = formatValueToString(item.flights || item.engineFlights);
         aircraft.bakimTakvimTarih = formatDateIfISO(item.bakimTakvimTarih);
         
         // Prioritize technical sheet data (item.frdsTestDate or item.frdsTest) over main sheet data
