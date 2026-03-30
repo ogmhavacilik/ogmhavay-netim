@@ -160,15 +160,11 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
         }
       });
 
-      let hasNegative = false;
       const finalResults: SorguResult[] = [];
       
       Object.values(resultMap).forEach(res => {
         if (res.baslangicSaat !== null && res.bitisSaat !== null) {
           const fark = res.bitisSaat - res.baslangicSaat;
-          if (fark < 0) {
-            hasNegative = true;
-          }
           finalResults.push({
             kuyrukNo: res.kuyrukNo,
             baslangicSaat: res.baslangicSaat,
@@ -179,12 +175,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
         }
       });
 
-      if (hasNegative) {
-        setError('Hesaplama sonucu negatif bir değer oluştu. Veri tutarsızlığı veya hatalı tarih seçimi. Lütfen kontrol ediniz.');
-        setResults([]);
-      } else {
-        setResults(finalResults.sort((a, b) => a.kuyrukNo.localeCompare(b.kuyrukNo)));
-      }
+      setResults(finalResults.sort((a, b) => a.kuyrukNo.localeCompare(b.kuyrukNo)));
 
     } catch (err) {
       console.error(err);

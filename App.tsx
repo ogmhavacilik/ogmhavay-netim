@@ -88,7 +88,6 @@ const App = () => {
     try {
       const response = await fetch(LOG_SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
           action: 'saveIntraDayActivity',
           sheetId: MAIL_LOG_SHEET_ID,
@@ -333,7 +332,6 @@ const App = () => {
         console.log(`Sending updateLogEntry for ${kuyrukNo} with code ${newCode} on ${displayDateStr}`);
         const res = await fetch(LOG_SCRIPT_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({
             action: 'updateLogEntry',
             sheetId: MAIL_LOG_SHEET_ID,
@@ -451,7 +449,6 @@ const App = () => {
         if (shouldLog && LOG_SCRIPT_URL) {
           fetch(LOG_SCRIPT_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({
               action: 'logSingleAircraftActivity',
               data: {
@@ -485,7 +482,10 @@ const App = () => {
     try {
       const res = await fetch(LOG_SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
+        redirect: 'follow',
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
         body: JSON.stringify({ 
           action: 'getFaaliyetLog',
           sheetId: MAIL_LOG_SHEET_ID,
@@ -651,69 +651,165 @@ const App = () => {
           let hasGayriFaal = false;
 
           const hourlyStatuses: Record<string, string> = {};
+          const hourlyDescriptions: Record<string, string> = {};
+
+          type LogEvent = { hour: number; exactMins: number; type: 'down' | 'up'; status: string; desc: string };
+          const events: LogEvent[] = [];
 
           logs.forEach(log => {
-            const status = String(log.status || log.Status || log.durum || log.Durum || '').trim().toUpperCase();
+            const statusRaw = String(log.status || log.Status || log.durum || log.Durum || '').trim().toUpperCase();
             const startStr = String(log.startTime || log.gayriFaalBaslangicSaati || log['GAYRİ FAAL BAŞLANGIÇ SAATİ'] || '').trim();
             const endStr = String(log.endTime || log.faalBaslangicSaati || log['FAAL BAŞLANGIÇ SAATİ'] || '').trim();
+            const description = String(log.description || log.aciklama || log.Açıklama || '').trim();
 
-            if (status === 'FAAL') {
+            if (statusRaw === 'FAAL') {
               hasFaal = true;
-            } else if (status !== '') {
+            } else if (statusRaw !== '' || startStr !== '' || endStr !== '') {
               hasGayriFaal = true;
               
-              let code = status.substring(0, 2);
-              if (status.includes('BAKIM')) code = 'B';
-              else if (status.includes('ARIZA')) code = 'A';
-              else if (status.includes('PARÇA')) code = 'PB';
-              else if (status.includes('KABUL')) code = 'KM';
-              else if (status.includes('BEKLER') && status.includes('BAKIM')) code = 'BB';
-              else if (status.includes('KAZA')) code = 'KK';
-              else if (status.includes('OLMADIĞI')) code = 'X';
-              else if (status.includes('TECRÜBE')) code = 'TB';
+              let code = statusRaw ? statusRaw.substring(0, 2) : 'B';
+              if (statusRaw.includes('BAKIM')) code = 'B';
+              else if (statusRaw.includes('ARIZA')) code = 'A';
+              else if (statusRaw.includes('PARÇA')) code = 'PB';
+              else if (statusRaw.includes('KABUL')) code = 'KM';
+              else if (statusRaw.includes('BEKLER') && statusRaw.includes('BAKIM')) code = 'BB';
+              else if (statusRaw.includes('KAZA')) code = 'KK';
+              else if (statusRaw.includes('OLMADIĞI')) code = 'X';
+              else if (statusRaw.includes('TECRÜBE')) code = 'TB';
 
-              // Yuvarlama mantığı (Rounding logic)
-              const parseAndRound = (timeStr: string, defaultHour: number) => {
-                if (!timeStr || !timeStr.includes(':')) return defaultHour;
-                const [h, m] = timeStr.split(':').map(Number);
-                if (isNaN(h) || isNaN(m)) return defaultHour;
-                return Math.round(h + m / 60);
-              };
+              const parseExactMins = (timeStr: string) => {
+                if (!timeStr) return -1;
 
-              const sh = parseAndRound(startStr, 0);
-              const eh = parseAndRound(endStr, 23);
-
-              if (!isNaN(sh) && !isNaN(eh)) {
-                for (let h = 0; h < 24; h++) {
-                  const hStr = `${h.toString().padStart(2, '0')}:00`;
-                  if (h >= sh && h <= eh) {
-                    hourlyStatuses[hStr] = code as DailyStatusCode;
-                  } else if (!hourlyStatuses[hStr]) {
-                    // Only set to F if not already set by another log entry
-                    hourlyStatuses[hStr] = 'F';
+                // Handle full date string from Google Sheets (e.g., "Sat Dec 30 1899 08:00:00 GMT+0200 (EET)")
+                if (timeStr.includes('GMT') || timeStr.includes('T')) {
+                  const match = timeStr.match(/(\d{2}):(\d{2}):(\d{2})/);
+                  if (match) {
+                    return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+                  }
+                  const d = new Date(timeStr);
+                  if (!isNaN(d.getTime())) {
+                    return d.getHours() * 60 + d.getMinutes();
                   }
                 }
 
-                // Calculate duration
-                const [startH, startM] = startStr ? startStr.split(':').map(Number) : [0, 0];
-                const [endH, endM] = endStr ? endStr.split(':').map(Number) : [23, 59];
-                const duration = (endH * 60 + endM) - (startH * 60 + startM);
-                if (duration > 0) totalGayriFaalMins += duration;
+                if (!timeStr.includes(':')) return -1;
+                
+                // Handle "08:00" or "08:00:00"
+                const parts = timeStr.split(':');
+                const h = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10);
+                
+                if (isNaN(h) || isNaN(m)) return -1;
+                return h * 60 + m;
+              };
+
+              const sMins = parseExactMins(startStr);
+              const eMins = parseExactMins(endStr);
+
+              if (sMins !== -1) {
+                events.push({ hour: Math.floor(sMins / 60), exactMins: sMins, type: 'down', status: code, desc: description });
+              }
+              if (eMins !== -1) {
+                events.push({ hour: Math.floor(eMins / 60), exactMins: eMins, type: 'up', status: code, desc: description });
               }
             }
           });
 
-          // If the daily status is already non-FAAL, we have Gayri Faal
+          // Sort events by exact time
+          events.sort((a, b) => a.exactMins - b.exactMins);
+
+          // Determine daily status
           if (!act.dailyStatuses) act.dailyStatuses = {};
           const dailyStatus = act.dailyStatuses[dateStr] || 'F';
           if (dailyStatus !== 'F') hasGayriFaal = true;
           else hasFaal = true;
 
+          const now = new Date();
+          const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+          const isToday = dateStr === todayStr;
+          const currentMins = now.getHours() * 60 + now.getMinutes();
+          const endOfDayMins = isToday ? currentMins : 24 * 60;
+
+          totalGayriFaalMins = 0;
+          let isDown = false;
+          let lastDownMins = 0;
+
+          if (events.length > 0 && events[0].type === 'up') {
+            isDown = true;
+            lastDownMins = 0;
+          } else if (events.length === 0 && dailyStatus !== 'F') {
+            totalGayriFaalMins = endOfDayMins;
+          }
+
+          for (const ev of events) {
+            if (ev.type === 'down' && !isDown) {
+              isDown = true;
+              lastDownMins = ev.exactMins;
+            } else if (ev.type === 'up' && isDown) {
+              isDown = false;
+              // If the 'up' event is in the future today, cap it at current time
+              const upMins = isToday ? Math.min(ev.exactMins, currentMins) : ev.exactMins;
+              totalGayriFaalMins += Math.max(0, upMins - lastDownMins);
+            }
+          }
+
+          if (isDown) {
+            totalGayriFaalMins += Math.max(0, endOfDayMins - lastDownMins);
+          }
+
+          let currentState = 'F';
+          let currentDesc = '';
+
+          if (events.length > 0) {
+            if (events[0].type === 'up') {
+              currentState = events[0].status;
+              currentDesc = 'Gayri faal durum devam ediyor';
+            }
+          } else if (dailyStatus !== 'F') {
+            currentState = dailyStatus;
+            const logWithDesc = logs.find(l => String(l.description || l.aciklama || l.Açıklama || '').trim() !== '');
+            if (logWithDesc) {
+              currentDesc = String(logWithDesc.description || logWithDesc.aciklama || logWithDesc.Açıklama || '').trim();
+            }
+          }
+
+          for (let h = 0; h < 24; h++) {
+            const eventsAtHour = events.filter(e => e.hour === h);
+            eventsAtHour.sort((a, b) => (a.type === 'down' ? -1 : 1));
+
+            for (const ev of eventsAtHour) {
+              if (ev.type === 'down') {
+                currentState = ev.status;
+                currentDesc = ev.desc;
+              } else if (ev.type === 'up') {
+                currentState = 'F';
+                currentDesc = ev.desc;
+              }
+            }
+
+            const hStr = `${h.toString().padStart(2, '0')}:00`;
+            hourlyStatuses[hStr] = currentState;
+            
+            let displayDesc = currentDesc;
+            if (currentState === 'F' && eventsAtHour.length === 0) {
+              displayDesc = '';
+            }
+            if (displayDesc) {
+              hourlyDescriptions[hStr] = displayDesc;
+            }
+          }
+
           if (!act.intraDayDurations) act.intraDayDurations = {};
           act.intraDayDurations[dateStr] = totalGayriFaalMins;
           
+          if (!act.intraDayEvents) act.intraDayEvents = {};
+          act.intraDayEvents[dateStr] = events;
+          
           if (!act.hourlyStatuses) act.hourlyStatuses = {};
           act.hourlyStatuses[dateStr] = { ...act.hourlyStatuses[dateStr], ...hourlyStatuses } as Record<string, DailyStatusCode>;
+          
+          if (!act.hourlyDescriptions) act.hourlyDescriptions = {};
+          act.hourlyDescriptions[dateStr] = { ...act.hourlyDescriptions[dateStr], ...hourlyDescriptions };
           
           // Karma day: Both FAAL and GAYRİ FAAL exist
           if (hasFaal && hasGayriFaal) {
@@ -881,7 +977,6 @@ const App = () => {
       try {
         const res = await fetch(LOG_SCRIPT_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({
             action: 'getAircraftData',
             sheetId: MAIL_LOG_SHEET_ID,

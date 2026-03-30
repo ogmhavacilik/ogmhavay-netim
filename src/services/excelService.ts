@@ -73,23 +73,22 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
       <meta charset="utf-8" />
       <style>
         table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
-        th, td { border: 1px solid black; padding: 8px; text-align: center; vertical-align: middle; font-size: 11px; }
-        .title-row { font-weight: bold; font-size: 14px; text-align: center; padding: 15px; }
+        th, td { border: 1.5px solid black; padding: 8px; text-align: center; vertical-align: middle; font-size: 12px; }
+        .title-row { font-weight: bold; font-size: 24px; text-align: center; padding: 15px; color: #1f2937; }
         .header-row th { font-weight: bold; background-color: #d9d9d9; color: black; }
-        .date-text { color: #d32f2f; font-weight: bold; text-align: right; font-size: 12px; padding-bottom: 10px; }
+        .date-text { color: #dc2626; font-weight: bold; text-align: right; font-size: 20px; padding-bottom: 10px; }
         .faal { background-color: #e8f5e9; color: #2e7d32; font-weight: bold; }
         .gayrifaal { background-color: #ffebee; color: #c62828; font-weight: bold; }
-        .abbr-text { color: #d32f2f; font-weight: bold; margin-left: 4px; }
-        .aciklama-cell { text-align: left; font-style: italic; white-space: pre-wrap; }
+        .abbr-text { color: #dc2626; font-weight: bold; margin-left: 4px; }
+        .aciklama-cell { text-align: left; font-style: italic; white-space: pre-wrap; color: #4b5563; font-size: 11px; }
       </style>
     </head>
     <body>
       <table>
         <tr>
-          <td colspan="7" class="date-text" style="border: none;">${dateStr}</td>
-        </tr>
-        <tr>
-          <td colspan="7" class="title-row">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td>
+          <td colspan="2" style="border: none;"></td>
+          <td colspan="3" class="title-row" style="border: none;">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td>
+          <td colspan="2" class="date-text" style="border: none;">${dateStr.split(' ')[0]}</td>
         </tr>
         <tr class="header-row">
           <th>ÇAĞRI KODU</th>
@@ -97,21 +96,12 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
           <th>DURUM</th>
           <th>DURUM AYRINTISI</th>
           <th>KONUM</th>
-          <th>FAYDALİ SAAT</th>
-          <th>AÇIKLAMA</th>
+          <th>FAYDALI SAAT</th>
+          <th style="text-align: left;">AÇIKLAMA</th>
         </tr>
   `;
 
-  let currentTip = '';
-  let isGray = false;
-
   sortedFleet.forEach(aircraft => {
-    if (aircraft.tip !== currentTip) {
-      currentTip = aircraft.tip || '';
-      isGray = !isGray;
-    }
-    const bgClass = isGray ? 'background-color: #f2f2f2;' : 'background-color: #ffffff;';
-
     const aciklama = (aircraft.aciklama || '').replace(/\n/g, '<br>');
     const faydaliSaat = (aircraft.faydaliSaat !== null && aircraft.faydaliSaat !== undefined) ? formatToHHMM(aircraft.faydaliSaat) : '';
     const abbr = getAbbreviation(aircraft.kuyrukNo || '');
@@ -119,17 +109,17 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
     const isFaal = String(aircraft.durum).toUpperCase().includes("FAAL") && !String(aircraft.durum).toUpperCase().includes("GAYRİ") && !String(aircraft.durum).toUpperCase().includes("GAYRI");
     const durumClass = isFaal ? "faal" : "gayrifaal";
 
-    const durumText = aircraft.durum || '';
-    const alertText = aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? aircraft.durumAyrintisi : '';
+    const durumText = aircraft.durum ? aircraft.durum.toUpperCase() : '';
+    const alertText = aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? aircraft.durumAyrintisi.toUpperCase() : '';
     
     html += `
       <tr>
-        <td style="${bgClass} font-weight: bold;">${aircraft.cagriKodu || ''}</td>
-        <td style="${bgClass} font-weight: bold;">${aircraft.kuyrukNo || ''} <span class="abbr-text">${abbr}</span></td>
+        <td style="font-weight: bold; color: #111827;">${aircraft.cagriKodu || ''}</td>
+        <td style="font-weight: bold; color: #111827;">${aircraft.kuyrukNo || ''} <span class="abbr-text">${abbr}</span></td>
         <td class="${durumClass}">${durumText}</td>
-        <td style="font-weight: bold; text-transform: uppercase;">${alertText}</td>
-        <td style="font-weight: bold; text-transform: uppercase;">${aircraft.konum || ''}</td>
-        <td style="mso-number-format:'\\@'; font-weight: bold; color: #1a73e8;">${faydaliSaat}</td>
+        <td style="font-weight: bold; color: #111827;">${alertText}</td>
+        <td style="font-weight: bold; color: #111827; text-transform: uppercase;">${aircraft.konum || ''}</td>
+        <td style="mso-number-format:'\\@'; font-weight: bold; color: #1a73e8; font-size: 16px;">${faydaliSaat}</td>
         <td class="aciklama-cell">${aciklama}</td>
       </tr>
     `;
@@ -138,13 +128,14 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
   html += `
       </table>
       <br />
-      <table style="width: 300px; border: none;">
-        <tr><td style="border: none; text-align: left; font-weight: bold; font-size: 11px; padding: 2px;">KISALTMALAR:</td></tr>
-        <tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(DA): DUAL AMFİBİ</td></tr>
-        <tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(SA): SINGLE AMFİBİ</td></tr>
-        <tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(DL): DUAL LAND</td></tr>
-        <tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(SL): SINGLE LAND</td></tr>
-        <tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(H): HELİTAK</td></tr>
+      <table style="width: 100%; border: none;">
+        <tr>
+          <td style="border: none; text-align: left; font-size: 12px; font-weight: bold; padding: 2px;"><span style="color: #dc2626;">H:</span> HELİTAK</td>
+          <td style="border: none; text-align: left; font-size: 12px; font-weight: bold; padding: 2px;"><span style="color: #dc2626;">SA:</span> SINGLE AMFİBİ</td>
+          <td style="border: none; text-align: left; font-size: 12px; font-weight: bold; padding: 2px;"><span style="color: #dc2626;">DA:</span> DUAL AMFİBİ</td>
+          <td style="border: none; text-align: left; font-size: 12px; font-weight: bold; padding: 2px;"><span style="color: #dc2626;">SL:</span> SINGLE LAND</td>
+          <td style="border: none; text-align: left; font-size: 12px; font-weight: bold; padding: 2px;"><span style="color: #dc2626;">DL:</span> DUAL LAND</td>
+        </tr>
       </table>
     </body>
     </html>

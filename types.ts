@@ -84,6 +84,14 @@ export interface Aircraft {
 
 export type DailyStatusCode = 'B' | 'BB' | 'KM' | 'A' | 'PB' | 'KK' | 'X' | 'F' | 'TB' | '';
 
+export interface LogEvent {
+  hour: number;
+  exactMins: number;
+  type: 'down' | 'up';
+  status: string;
+  desc: string;
+}
+
 export interface AircraftActivity {
   kuyrukNo: string;
   cagriKodu: string;
@@ -93,6 +101,7 @@ export interface AircraftActivity {
   hourlyDescriptions?: { [dateStr: string]: { [hour: string]: string } };
   intraDayCompletions?: { [dateStr: string]: boolean };
   intraDayDurations?: { [dateStr: string]: number };
+  intraDayEvents?: { [dateStr: string]: LogEvent[] };
 }
 
 export interface SheetMapping {

@@ -58,12 +58,38 @@ function doPost(e) {
       // R (18): Durumu Ayrıntı
       // S (19): Açıklama
       
-      if (updates.govdeUcusSaati !== undefined) sheet.getRange(rowIndex, 5).setValue(updates.govdeUcusSaati);
-      if (updates.bakim40H !== undefined) sheet.getRange(rowIndex, 8).setValue(updates.bakim40H);
-      if (updates.bakim120H !== undefined) sheet.getRange(rowIndex, 9).setValue(updates.bakim120H);
-      if (updates.bakim480H !== undefined) sheet.getRange(rowIndex, 10).setValue(updates.bakim480H);
+      function setTimeValue(colIndex, value) {
+        var range = sheet.getRange(rowIndex, colIndex);
+        
+        if (value === null || value === undefined || value === "") {
+          range.setValue("");
+          return;
+        }
+        
+        var valStr = String(value).trim();
+        
+        if (/^\d+$/.test(valStr)) {
+          valStr = valStr + ':00';
+        } else if (/^\d+[.,]\d{2}$/.test(valStr)) {
+          valStr = valStr.replace(/[.,]/, ':');
+        }
+        
+        if (/^\d+:\d{2}(:\d{2})?$/.test(valStr)) {
+          var parts = valStr.split(':');
+          var hours = parseInt(parts[0], 10);
+          var mins = parseInt(parts[1], 10);
+          var secs = parts.length > 2 ? parseInt(parts[2], 10) : 0;
+          var decimalValue = (hours + (mins / 60) + (secs / 3600)) / 24;
+          range.setValue(decimalValue);
+          range.setNumberFormat("[h]:mm");
+        } else {
+          range.setValue(value);
+        }
+      }
+
+      if (updates.govdeUcusSaati !== undefined) setTimeValue(5, updates.govdeUcusSaati);
       if (updates.bakimTakvimTarih !== undefined) sheet.getRange(rowIndex, 11).setValue(updates.bakimTakvimTarih);
-      if (updates.faydaliSaat !== undefined) sheet.getRange(rowIndex, 14).setValue(updates.faydaliSaat);
+      if (updates.faydaliSaat !== undefined) setTimeValue(14, updates.faydaliSaat);
       if (updates.konum !== undefined) sheet.getRange(rowIndex, 16).setValue(updates.konum);
       if (updates.durum !== undefined) sheet.getRange(rowIndex, 17).setValue(updates.durum);
       if (updates.durumAyrintisi !== undefined) sheet.getRange(rowIndex, 18).setValue(updates.durumAyrintisi);

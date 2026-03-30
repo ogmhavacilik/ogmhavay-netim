@@ -287,9 +287,6 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
 
           const response = await fetch(uploadScriptUrl, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'text/plain',
-            },
             redirect: 'follow',
             body: JSON.stringify({
               action: 'replaceEntireSpreadsheet',

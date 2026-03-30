@@ -241,7 +241,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     // B-360 ve C-650 için boş verilerin gönderilmesini engelle
     if (selectedAircraft.tip === 'B-360' || selectedAircraft.tip === 'C-650') {
       Object.keys(finalData).forEach(key => {
-        if (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined) {
+        if (key !== 'aciklama' && (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined)) {
           delete finalData[key];
         }
       });
@@ -264,6 +264,13 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       if (finalData.bakim50H) {
         finalData.bakim50H = finalData.bakim50H.replace(':', ',').replace('.', ',');
       }
+    }
+
+    if (selectedAircraft.tip === 'T-70') {
+      delete finalData.bakim40H;
+      delete finalData.bakim120H;
+      delete finalData.bakim480H;
+      delete finalData.bakimTakvimTarih;
     }
 
     try {
@@ -367,7 +374,6 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           
           await fetch(LOG_SCRIPT_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({
               action: 'logSingleAircraftActivity',
               data: {
@@ -644,26 +650,10 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                   </form>
                 ) : isT70 ? (
                   <form onSubmit={handleSubmit} className="space-y-8 md:space-y-10">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+                    <div className="grid grid-cols-1 gap-6 md:gap-8">
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GÖVDE UÇUŞ SAATİ</label>
                         <input type="text" placeholder="YENİ (00:00)" value={formData.govdeUcusSaati} onChange={(e) => handleInputChange('govdeUcusSaati', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">40 SAAT BAKIM</label>
-                        <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim40H} onChange={(e) => handleInputChange('bakim40H', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">120 SAAT BAKIM</label>
-                        <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim120H} onChange={(e) => handleInputChange('bakim120H', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">480 SAAT BAKIM</label>
-                        <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim480H} onChange={(e) => handleInputChange('bakim480H', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">TAKVİM ESASLI BAKIM (TARİH)</label>
-                        <input disabled={isPastDate} type="date" value={formData.bakimTakvimTarih} onChange={(e) => handleInputChange('bakimTakvimTarih', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                       </div>
                     </div>
                     <div className="h-px bg-white/10 w-full"></div>

@@ -212,7 +212,7 @@ function doPost(e) {
         var data = faalLogSheet.getDataRange().getValues();
         for (var i = 1; i < data.length; i++) {
           var row = data[i];
-          if (!row[0]) continue;
+          if (!row[1] && !row[2]) continue;
 
           var tarihVal = row[1];
           var tarihStr = "";
@@ -242,7 +242,7 @@ function doPost(e) {
         var intraData = intraDaySheet.getDataRange().getValues();
         for (var j = 1; j < intraData.length; j++) {
           var iRow = intraData[j];
-          if (!iRow[0]) continue;
+          if (!iRow[1] && !iRow[2]) continue; // Skip if both Tarih and Kuyruk No are empty
 
           var iTarihVal = iRow[1];
           var iTarihStr = "";
@@ -275,7 +275,7 @@ function doPost(e) {
         var envData = envanterSheet.getDataRange().getValues();
         for (var k = 1; k < envData.length; k++) {
           var eRow = envData[k];
-          if (!eRow[0]) continue;
+          if (!eRow[1] && !eRow[2]) continue;
 
           var eTarihVal = eRow[1];
           var eTarihStr = "";
@@ -748,17 +748,21 @@ function doPost(e) {
       if (rowIndex > 0) {
         var updateErrors = [];
         Object.keys(updates).forEach(function (key) {
-          if (
-            mapping[key] &&
-            updates[key] !== undefined &&
-            updates[key] !== null
-          ) {
+          if (mapping[key]) {
             try {
               // Sadece sütun harfini al ve rowIndex ile birleştir (Örn: "C3:C40" -> "C" + 5 -> "C5")
               var colPart = mapping[key].split(":")[0];
               var colLetter = colPart.replace(/[0-9]/g, "");
               if (colLetter) {
-                sheet.getRange(colLetter + rowIndex).setValue(updates[key]);
+                // If the key is 'aciklama' and the value is empty string or null, set it to empty string
+                var valToSet = updates[key];
+                if (key === 'aciklama' && (valToSet === '' || valToSet === null || valToSet === undefined)) {
+                  valToSet = '';
+                } else if (valToSet === undefined || valToSet === null) {
+                  return; // Skip other undefined/null values
+                }
+                
+                sheet.getRange(colLetter + rowIndex).setValue(valToSet);
                 Logger.log(
                   "Updated " +
                     key +
@@ -766,7 +770,7 @@ function doPost(e) {
                     colLetter +
                     rowIndex +
                     " with " +
-                    updates[key],
+                    valToSet,
                 );
               }
             } catch (e) {

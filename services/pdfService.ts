@@ -81,7 +81,6 @@ export const exportAT802DailyStatusToPDF = async (scriptUrl: string, sheetId: st
   try {
     const response = await fetch(scriptUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'exportAT802PDF',
         sheetId: sheetId

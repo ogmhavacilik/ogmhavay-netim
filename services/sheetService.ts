@@ -291,7 +291,6 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
   try {
     const response = await fetch(cleanUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
       redirect: 'follow',
       body: JSON.stringify({
         sheetId: config.sheetId,
@@ -549,8 +548,10 @@ export const fetchOPLData = async (
   try {
     const response = await fetch(cleanUrl, {
       method: "POST",
-      headers: { "Content-Type": "text/plain" },
       redirect: 'follow',
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
       body: JSON.stringify({
         action: "getOPLData",
         sheetId,
@@ -590,7 +591,10 @@ export const fetchAircraftSpecificData = async (
   try {
     const response = await fetch(cleanUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
+      redirect: 'follow',
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
       body: JSON.stringify({
         action: 'getAircraftSpecificData',
         sheetId,
@@ -619,7 +623,6 @@ export const updateAircraftData = async (
   try {
     const response = await fetch(cleanUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'updateAircraftData',
         sheetId,
@@ -655,7 +658,6 @@ export const updatePastEnvanterLog = async (
   try {
     const response = await fetch(cleanUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'updatePastEnvanterLog',
         sheetId,

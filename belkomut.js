@@ -56,13 +56,13 @@ function doPost(e) {
       // P (16): Saat Esaslı Bakım (50H)
       // Q (17): Takvim Esaslı Bakım (Tarih)
       
-      if (updates.govdeUcusSaati) sheet.getRange(rowIndex, 5).setValue(updates.govdeUcusSaati);
-      if (updates.konum) sheet.getRange(rowIndex, 12).setValue(updates.konum);
-      if (updates.durum) sheet.getRange(rowIndex, 13).setValue(updates.durum);
-      if (updates.durumAyrintisi) sheet.getRange(rowIndex, 14).setValue(updates.durumAyrintisi);
-      if (updates.aciklama) sheet.getRange(rowIndex, 15).setValue(updates.aciklama);
-      if (updates.bakim50H) sheet.getRange(rowIndex, 16).setValue(updates.bakim50H);
-      if (updates.bakimTakvim) sheet.getRange(rowIndex, 17).setValue(updates.bakimTakvim);
+      if (updates.govdeUcusSaati !== undefined) sheet.getRange(rowIndex, 5).setValue(updates.govdeUcusSaati);
+      if (updates.konum !== undefined) sheet.getRange(rowIndex, 12).setValue(updates.konum);
+      if (updates.durum !== undefined) sheet.getRange(rowIndex, 13).setValue(updates.durum);
+      if (updates.durumAyrintisi !== undefined) sheet.getRange(rowIndex, 14).setValue(updates.durumAyrintisi);
+      if (updates.aciklama !== undefined) sheet.getRange(rowIndex, 15).setValue(updates.aciklama);
+      if (updates.bakim50H !== undefined) sheet.getRange(rowIndex, 16).setValue(updates.bakim50H);
+      if (updates.bakimTakvim !== undefined) sheet.getRange(rowIndex, 17).setValue(updates.bakimTakvim);
       
       return ContentService.createTextOutput(JSON.stringify({ success: true, message: "Veriler başarıyla Google E-Tablo'ya işlendi." }))
         .setMimeType(ContentService.MimeType.JSON);

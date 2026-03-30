@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { AircraftActivity, DailyStatusCode } from '../types';
 import { X, Clock, Calendar, Activity } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -24,6 +24,13 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     return s.getTime() === e.getTime();
   }, [startDate, endDate]);
 
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   const getDaysInRange = (start: Date, end: Date) => {
     const dates = [];
     let currentDate = new Date(start);
@@ -44,7 +51,6 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
   const totalDaysInMonth = visibleDates.length;
 
   const getStatusClass = (code: DailyStatusCode | string, isKarma?: boolean) => {
-    if (isKarma) return 'bg-orange-500 text-black font-black border-black';
     switch (code) {
       case 'B': case 'BB': case 'KM': return 'bg-[#FFFF00] text-black font-black border-black'; // SARI
       case 'A': case 'PB': case 'KK': return 'bg-[#FF0000] text-black font-black border-black'; // KIRMIZI
@@ -57,7 +63,6 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
   };
 
   const getStatusStyle = (code: DailyStatusCode | string, isKarma?: boolean): React.CSSProperties => {
-    if (isKarma) return { backgroundColor: '#f97316', color: '#000000' };
     switch (code) {
       case 'B': case 'BB': case 'KM': return { backgroundColor: '#FFFF00', color: '#000000' };
       case 'A': case 'PB': case 'KK': return { backgroundColor: '#FF0000', color: '#000000' };
@@ -226,7 +231,17 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                         {isHourlyView ? (
                           hours.map((hour, hIdx) => {
                             const dateStrKey = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
-                            const status = act.hourlyStatuses?.[dateStrKey]?.[hour] || act.dailyStatuses[dateStrKey] || '';
+                            
+                            const now = new Date();
+                            const isToday = startDate.toDateString() === now.toDateString();
+                            const currentHour = now.getHours();
+                            const hourInt = parseInt(hour.split(':')[0]);
+                            const isFuture = isToday && hourInt > currentHour;
+
+                            const hourlyStatus = act.hourlyStatuses?.[dateStrKey]?.[hour];
+                            let status = hourlyStatus !== undefined ? hourlyStatus : (act.dailyStatuses[dateStrKey] || '');
+                            if (isFuture) status = '';
+
                             return (
                               <td key={hIdx} className={`border border-black text-center text-[10px] ${getStatusClass(status)}`} style={getStatusStyle(status)}>
                                 {status === 'F' ? '' : status}
@@ -244,13 +259,15 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                                 className={`border border-black text-center text-[10px] relative ${getStatusClass(status, isCompletedToday)} cursor-pointer hover:opacity-80`} 
                                 style={getStatusStyle(status, isCompletedToday)}
                                 onClick={() => {
-                                  setSelectedDayView({ activity: act, date: date });
+                                  if (isCompletedToday) {
+                                    setSelectedDayView({ activity: act, date: date });
+                                  }
                                 }}
                               >
                                 <div className="flex items-center justify-center min-h-[24px]">
-                                  {status !== 'F' && !isCompletedToday && status}
+                                  {status !== 'F' && status}
                                   {isCompletedToday && (
-                                    <span className="text-white font-black text-sm">⭐</span>
+                                    <span className="text-orange-500 font-black text-base leading-none ml-0.5">*</span>
                                   )}
                                 </div>
                               </td>
@@ -309,7 +326,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
            </div>
            <div className="flex flex-col space-y-1">
               <div className="bg-white border border-black px-2 py-1 text-[9px] font-black w-64 flex items-center">
-                <span className="text-orange-500 font-black text-sm mr-2">★</span>
+                <span className="text-orange-500 font-black text-base leading-none mr-2">*</span>
                 KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)
               </div>
            </div>
@@ -365,17 +382,46 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                     <span className="text-3xl font-black text-white tracking-tighter">
                       {(() => {
                         const dateStrKey = `${selectedDayView.date.getFullYear()}-${String(selectedDayView.date.getMonth() + 1).padStart(2, '0')}-${String(selectedDayView.date.getDate()).padStart(2, '0')}`;
-                        const durationMins = selectedDayView.activity.intraDayDurations?.[dateStrKey];
+                        const events = selectedDayView.activity.intraDayEvents?.[dateStrKey] || [];
+                        const dailyStatus = selectedDayView.activity.dailyStatuses[dateStrKey] || 'F';
                         
-                        if (durationMins !== undefined) {
-                          const h = Math.floor(durationMins / 60);
-                          const m = durationMins % 60;
+                        const isToday = selectedDayView.date.toDateString() === currentTime.toDateString();
+                        const currentMins = currentTime.getHours() * 60 + currentTime.getMinutes();
+                        const endOfDayMins = isToday ? currentMins : 24 * 60;
+
+                        let totalMins = 0;
+                        let isDown = false;
+                        let lastDownMins = 0;
+
+                        if (events.length > 0 && events[0].type === 'up') {
+                          isDown = true;
+                          lastDownMins = 0;
+                        } else if (events.length === 0 && dailyStatus !== 'F') {
+                          totalMins = endOfDayMins;
+                        }
+
+                        for (const ev of events) {
+                          if (ev.type === 'down' && !isDown) {
+                            isDown = true;
+                            lastDownMins = ev.exactMins;
+                          } else if (ev.type === 'up' && isDown) {
+                            isDown = false;
+                            const upMins = isToday ? Math.min(ev.exactMins, currentMins) : ev.exactMins;
+                            totalMins += Math.max(0, upMins - lastDownMins);
+                          }
+                        }
+
+                        if (isDown) {
+                          totalMins += Math.max(0, endOfDayMins - lastDownMins);
+                        }
+
+                        if (totalMins > 0 || dailyStatus !== 'F') {
+                          const h = Math.floor(totalMins / 60);
+                          const m = totalMins % 60;
                           return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} SAAT`;
                         }
 
-                        const hourlyData = selectedDayView.activity.hourlyStatuses?.[dateStrKey] || {};
-                        const gayriFaalHours = Object.values(hourlyData).filter(s => s !== 'F' && s !== '').length;
-                        return `${gayriFaalHours.toString().padStart(2, '0')}:00 SAAT`;
+                        return '00:00 SAAT';
                       })()}
                     </span>
                   </div>
