@@ -249,6 +249,9 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
 
     // AT-802 için teknik veriler boşsa veya güncellenmemesi gerekiyorsa gönderme
     if (selectedAircraft.tip === 'AT-802') {
+      // GÜNLÜK DURUM sayfasındaki gövde uçuş saati verisini güncellemek yasak
+      delete finalData.govdeUcusSaati;
+      
       const techFields = ['frdsTest', 'motorCalisma', 'acTT', 'landings', 'starts', 'flights'];
       techFields.forEach(field => {
         if (finalData[field] === '' || finalData[field] === null || finalData[field] === undefined) {

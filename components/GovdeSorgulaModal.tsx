@@ -237,6 +237,15 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
       `;
     });
 
+    const totalFark = results.reduce((acc, curr) => acc + curr.fark, 0);
+    html += `
+        <tr style="background-color: #f0fdf4; font-weight: bold;">
+          <td colspan="3" style="text-align: right; padding-right: 20px; color: #064e3b; font-size: 14px;">TOPLAM UÇUŞ SÜRESİ:</td>
+          <td class="fark-col" style="mso-number-format:'\@'; color: #166534; font-size: 16px;">${totalFark.toFixed(2).replace('.', ',')}</td>
+          <td class="fark-col" style="mso-number-format:'\@'; color: #1e40af; font-size: 16px;">${formatHour(totalFark)}</td>
+        </tr>
+    `;
+
     html += `
         </table>
       </body>
@@ -349,6 +358,19 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose }
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="bg-emerald-50 border-t-4 border-emerald-900">
+                    <td colSpan={3} className="px-6 py-6 text-right font-black text-emerald-900 uppercase tracking-widest text-sm">
+                      TOPLAM UÇUŞ SÜRESİ:
+                    </td>
+                    <td className="px-4 py-6 text-center font-black text-emerald-700 text-xl bg-emerald-100/50 border-r border-emerald-200">
+                      {results.reduce((acc, curr) => acc + curr.fark, 0).toFixed(2).replace('.', ',')}
+                    </td>
+                    <td className="px-4 py-6 text-center font-black text-blue-700 text-2xl bg-blue-100/50">
+                      {formatHour(results.reduce((acc, curr) => acc + curr.fark, 0))}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}

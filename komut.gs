@@ -902,7 +902,7 @@ function syncFleetToLogs() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var platformConfigs = [
     { type: 'Bell-429', id: '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ', range: 'A3:O8', map: {kNo:0, durum:12, detail:13, desc:14, loc:11, gHour:4, fHour:8} },
-    { type: 'AT-802', id: '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4', sheet: 'GÜNLÜK DURUM', range: 'B3:AL16', map: {kNo:0, durum:1, detail:2, desc:35, loc:3, gHour:4, fHour:20} },
+    { type: 'AT-802', id: '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4', sheet: 'GÜNLÜK DURUM', range: 'B3:AL16', map: {kNo:0, durum:1, detail:2, desc:36, loc:3, gHour:4, fHour:20} },
     { type: 'T-70', id: '10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw', range: 'A4:S6', map: {kNo:0, durum:16, detail:17, desc:18, loc:15, gHour:4, fHour:13} },
     { type: 'B-360', id: '1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0', range: 'A3:P10', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} },
     { type: 'C-650', id: '1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE', range: 'A3:P10', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} }
@@ -1088,13 +1088,13 @@ function saveLogsToSheets(ss, fleetData) {
       envLogSheet.getRange(row, 4, 1, 7).setValues([[
         aircraft.tip || "", aircraft.govdeUcusSaati || "", 
         aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
-        aircraft.durumAyrintisi || "", aircraft.aciklama || ""
+        aircraft.durumAyrintisi || "", String(aircraft.aciklama || "")
       ]]);
     } else {
       envLogSheet.appendRow([
         envKey, tarihStr, kNo, aircraft.tip || "", aircraft.govdeUcusSaati || "", 
         aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
-        aircraft.durumAyrintisi || "", aircraft.aciklama || ""
+        aircraft.durumAyrintisi || "", String(aircraft.aciklama || "")
       ]);
       // Update map so we don't append again in the same batch
       envIdMap[envKey] = envLogSheet.getLastRow();

@@ -37,6 +37,23 @@ function getAT802Cells(kNo) {
   return { frds: frdsCell, motor: motorCell };
 }
 
+function getTechSheet(allSheets, kNo) {
+  var searchKNo = kNo.toUpperCase().replace(/[\s\.-]/g, "");
+  for (var s = 0; s < allSheets.length; s++) {
+    var sName = allSheets[s].getName().toUpperCase().replace(/[\s\.-]/g, "");
+    if (sName.indexOf(searchKNo) !== -1 && (sName.indexOf("GENEL") !== -1 || sName.indexOf("TEKNIK") !== -1)) {
+      return allSheets[s];
+    }
+  }
+  for (var s = 0; s < allSheets.length; s++) {
+    var sName = allSheets[s].getName().toUpperCase().replace(/[\s\.-]/g, "");
+    if (sName === searchKNo) {
+      return allSheets[s];
+    }
+  }
+  return null;
+}
+
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents)
@@ -487,30 +504,21 @@ function doPost(e) {
             if (match) {
               kNo = match[0].toUpperCase();
             }
-            var techSheet = null;
-            var searchKNo = kNo.toUpperCase().replace(/[\s\.-]/g, "");
-            for (var s = 0; s < allSheets.length; s++) {
-              var sName = allSheets[s].getName().toUpperCase().replace(/[\s\.-]/g, "");
-              if (sName.indexOf(searchKNo) !== -1 && sName.indexOf("GENEL") !== -1) {
-                techSheet = allSheets[s];
-                break;
-              }
-            }
-            if (!techSheet) {
-              for (var s = 0; s < allSheets.length; s++) {
-                var sName = allSheets[s].getName().toUpperCase().replace(/[\s\.-]/g, "");
-                if (sName === searchKNo) {
-                  techSheet = allSheets[s];
-                  break;
-                }
-              }
-            }
+            var techSheet = getTechSheet(allSheets, kNo);
             
             if (techSheet) {
               try {
                 item.govdeSN = techSheet.getRange("H10").getDisplayValue();
                 item.motor1SN = techSheet.getRange("H14").getDisplayValue();
                 item.uretimYili = techSheet.getRange("F7:H7").getDisplayValue();
+                
+                // AT-802 Gövde Uçuş Saati (Önce ana sayfadan geleni koru, yoksa B11 hücresinden oku)
+                if (!item.govdeUcusSaati || item.govdeUcusSaati === "-" || item.govdeUcusSaati === "") {
+                  var techGovdeSaat = techSheet.getRange("B11").getDisplayValue();
+                  if (techGovdeSaat && techGovdeSaat !== "" && techGovdeSaat !== "-") {
+                    item.govdeUcusSaati = techGovdeSaat;
+                  }
+                }
 
                 var cells = getAT802Cells(kNo);
                 var frdsCell = cells.frds;
@@ -762,6 +770,11 @@ function doPost(e) {
                   return; // Skip other undefined/null values
                 }
                 
+                // AT-802 için GÜNLÜK DURUM sayfasında gövde uçuş saati güncellemesini engelle
+                if (params.aircraftType === "AT-802" && key === "govdeUcusSaati" && (sheetName === "GÜNLÜK DURUM" || !sheetName)) {
+                  return;
+                }
+                
                 sheet.getRange(colLetter + rowIndex).setValue(valToSet);
                 Logger.log(
                   "Updated " +
@@ -798,6 +811,55 @@ function doPost(e) {
             " aralığında bulunamadı.",
         );
       }
+    }
+
+    if (action === "logAllAircraftActivity") {
+      var fleetData = params.fleetData;
+      if (!fleetData || !Array.isArray(fleetData)) return jsonError("Filo verisi eksik.");
+      
+      var logSheet = findSheet(ss, "Envanter Log");
+      if (!logSheet) {
+        logSheet = ss.insertSheet("Envanter Log");
+        logSheet.appendRow([
+          "ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", 
+          "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Açıklama"
+        ]);
+      }
+      
+      var dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
+      var logData = logSheet.getRange("A:A").getValues();
+      var idMap = {};
+      for (var i = 1; i < logData.length; i++) {
+        var id = String(logData[i][0]).trim();
+        if (id) idMap[id] = i + 1;
+      }
+      
+      fleetData.forEach(function(data) {
+        var kuyrukNo = data.kuyrukNo;
+        var logId = dateStr + "_" + kuyrukNo;
+        var rowData = [
+          logId,
+          dateStr,
+          kuyrukNo,
+          data.tip,
+          data.govdeUcusSaati || 0,
+          data.faydaliSaat || 0,
+          data.konum,
+          data.durum,
+          data.durumAyrintisi,
+          data.aciklama || ""
+        ];
+        
+        if (idMap[logId]) {
+          logSheet.getRange(idMap[logId], 1, 1, 10).setValues([rowData]);
+          logSheet.getRange(idMap[logId], 10).setNumberFormat("@");
+        } else {
+          logSheet.appendRow(rowData);
+          logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");
+        }
+      });
+      
+      return jsonSuccess("Filo logları başarıyla güncellendi.");
     }
 
     if (action === "logSingleAircraftActivity") {
@@ -841,9 +903,11 @@ function doPost(e) {
                 data.konum,
                 data.durum,
                 data.durumAyrintisi,
-                data.aciklama,
+                data.aciklama || "",
               ],
             ]);
+          // Açıklama sütununu (10. kolon) metin formatına zorla
+          logSheet.getRange(i + 1, 10).setNumberFormat("@");
           foundLog = true;
           break;
         }
@@ -859,8 +923,10 @@ function doPost(e) {
           data.konum,
           data.durum,
           data.durumAyrintisi,
-          data.aciklama,
+          data.aciklama || "",
         ]);
+        // Yeni eklenen satırın açıklama hücresini metin yap
+        logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");
       }
 
       var faalLogSheet = findSheet(ss, "Faaliyet Log");
@@ -1694,6 +1760,8 @@ function performDailyMidnightLogging() {
       item.durumAyrintisi,
       item.aciklama,
     ]);
+    // Açıklama sütununu (10. kolon) metin formatına zorla
+    logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");
   });
 
   var faalLogSheet = findSheet(ss, "Faaliyet Log");
@@ -1734,6 +1802,7 @@ function getFleetDataFromServer() {
         durumAyrintisi: "N3:N8",
         faydaliSaat: "I3:I8",
         aciklama: "O3:O8",
+        govdeUcusSaati: "E3:E8",
       },
     },
     {
@@ -1745,7 +1814,8 @@ function getFleetDataFromServer() {
         durumAyrintisi: "D3:D40",
         konum: "E3:E40",
         faydaliSaat: "V3:AI40",
-        aciklama: "AJ3:AJ40",
+        govdeUcusSaati: "F3:F40",
+        aciklama: "AL3:AL40",
       },
     },
     {
@@ -1758,6 +1828,7 @@ function getFleetDataFromServer() {
         durum: "Q4:Q6",
         durumAyrintisi: "R4:R6",
         aciklama: "S4:S6",
+        govdeUcusSaati: "E4:E6",
       },
     },
     {
@@ -1770,6 +1841,7 @@ function getFleetDataFromServer() {
         durum: "N3:N10",
         durumAyrintisi: "O3:O10",
         aciklama: "P3:P10",
+        govdeUcusSaati: "E3:E10",
       },
     },
     {
@@ -1782,6 +1854,7 @@ function getFleetDataFromServer() {
         durum: "N3:N10",
         durumAyrintisi: "O3:O10",
         aciklama: "P3:P10",
+        govdeUcusSaati: "E3:E10",
       },
     },
   ];
@@ -1806,12 +1879,21 @@ function getFleetDataFromServer() {
       }
 
       var numRows = data.kuyrukNo.length;
+      var allSheets = config.type === "AT-802" ? ss.getSheets() : [];
+
       for (var i = 0; i < numRows; i++) {
-        var kNo = data.kuyrukNo[i][0];
-        if (kNo && kNo.trim() !== "") {
-          var item = { tip: config.type };
+        var kNoRaw = data.kuyrukNo[i][0];
+        if (kNoRaw && String(kNoRaw).trim() !== "") {
+          var kNo = String(kNoRaw).trim();
+          var kNoMatch = kNo.match(/OR-\d+/i);
+          if (kNoMatch) {
+            kNo = kNoMatch[0].toUpperCase();
+          }
+          var item = { tip: config.type, kuyrukNo: kNo };
           for (var key in data) {
-            if (
+            if (key === "kuyrukNo") {
+              item[key] = kNo; // Use cleaned tail number
+            } else if (
               key === "faydaliSaat" &&
               Array.isArray(data[key][i]) &&
               data[key][i].length > 1
@@ -1834,6 +1916,18 @@ function getFleetDataFromServer() {
               }
             }
           }
+
+          // AT-802 için gövde uçuş saati zaten mapping üzerinden okundu
+          if (config.type === "AT-802" && (!item.govdeUcusSaati || item.govdeUcusSaati === "-" || item.govdeUcusSaati === "0")) {
+            var techSheet = getTechSheet(allSheets, kNo);
+            if (techSheet) {
+              var techGovdeSaat = techSheet.getRange("B11").getDisplayValue();
+              if (techGovdeSaat && techGovdeSaat !== "" && techGovdeSaat !== "-") {
+                item.govdeUcusSaati = techGovdeSaat;
+              }
+            }
+          }
+
           item.cagriKodu = getCallSignByTail(item.kuyrukNo);
           fleet.push(item);
         }

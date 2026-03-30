@@ -182,8 +182,8 @@ const App = () => {
         durumAyrintisi: 'D3:D16', 
         konum: 'E3:E16', 
         faydaliSaat: 'V3:AI16', 
-        aciklama: 'AL3:AL16',   
         govdeUcusSaati: 'F3:F16',
+        aciklama: 'AL3:AL16',   
         gelisTarihi: 'U24:V39',
         gelisKuyrukNo: 'T24:T39',
         bakimTakvimTarih: 'AJ3:AJ16',
@@ -382,7 +382,7 @@ const App = () => {
         const existing = existingIdx !== -1 ? updatedFleet[existingIdx] : null;
         
         if (existing && initialSyncDone.current) {
-          ['durum', 'konum', 'durumAyrintisi', 'faydaliSaat'].forEach(col => {
+          ['durum', 'konum', 'durumAyrintisi', 'faydaliSaat', 'govdeUcusSaati'].forEach(col => {
             const key = col as keyof Aircraft;
             const oldVal = String(existing[key] || '').trim();
             const newVal = String(incoming[key] || '').trim();
@@ -392,7 +392,8 @@ const App = () => {
                 'durum': 'DURUM',
                 'konum': 'KONUM',
                 'durumAyrintisi': 'DURUM AYRINTISI',
-                'faydaliSaat': 'FAYDALI SAAT'
+                'faydaliSaat': 'FAYDALI SAAT',
+                'govdeUcusSaati': 'GÖVDE UÇUŞ SAATİ'
               };
               const colLabel = labelMap[col] || col.toUpperCase();
               
@@ -451,6 +452,7 @@ const App = () => {
             method: 'POST',
             body: JSON.stringify({
               action: 'logSingleAircraftActivity',
+              sheetId: MAIL_LOG_SHEET_ID,
               data: {
                 date: formattedDate,
                 kuyrukNo: incoming.kuyrukNo,
@@ -850,6 +852,31 @@ const App = () => {
           console.error(`Sync error for ${config.aircraftType}:`, e);
         }
       }));
+
+      // 1-dakikalık senkronizasyon sırasında Envanter Log'u güncelle
+      if (fetchedFleet.length > 0) {
+        try {
+          await fetch(LOG_SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'logAllAircraftActivity',
+              sheetId: MAIL_LOG_SHEET_ID,
+              fleetData: fetchedFleet.map(a => ({
+                kuyrukNo: a.kuyrukNo,
+                tip: a.tip,
+                govdeUcusSaati: a.govdeUcusSaati,
+                faydaliSaat: a.faydaliSaat,
+                konum: a.konum,
+                durum: a.durum,
+                durumAyrintisi: a.durumAyrintisi,
+                aciklama: a.aciklama
+              }))
+            })
+          });
+        } catch (logError) {
+          console.error("Otomatik log güncelleme hatası:", logError);
+        }
+      }
 
       // Log saving removed from frontend to prevent duplicate logs on refresh.
       // Now handled by server-side trigger at midnight.
