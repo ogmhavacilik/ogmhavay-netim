@@ -234,46 +234,61 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     setIsSubmitting(true);
     setMessage(null);
 
-    let finalData: Record<string, any> = selectedAircraft.tip === 'AT-802' 
-      ? { ...formData, ...at802Data } 
-      : { ...formData };
+    let finalData: Record<string, any>;
     
-    // B-360 ve C-650 için boş verilerin gönderilmesini engelle
-    if (selectedAircraft.tip === 'B-360' || selectedAircraft.tip === 'C-650') {
+    if (selectedAircraft.tip === 'AT-802') {
+      // AT-802 için SADECE izin verilen alanları gönderiyoruz.
+      // Teknik veriler (acTT, landings vb.) değiştirilebilir çünkü bunlar uçak özel sayfasındadır.
+      // Günlük durum sayfasındaki formüllü alanlar (Gövde Saati, Faydalı Saat) gönderilmez.
+      finalData = {
+        acTT: at802Data.acTT,
+        landings: at802Data.landings,
+        starts: at802Data.starts,
+        flights: at802Data.flights,
+        frdsTest: at802Data.frdsTest,
+        motorCalisma: at802Data.motorCalisma,
+        konum: formData.konum,
+        durum: formData.durum,
+        durumAyrintisi: formData.durumAyrintisi,
+        aciklama: formData.aciklama,
+        intraDayStartTime: formData.intraDayStartTime,
+        intraDayEndTime: formData.intraDayEndTime,
+        islemTarihi: formData.islemTarihi
+      };
+      
+      // Boş alanları temizle
       Object.keys(finalData).forEach(key => {
-        if (key !== 'aciklama' && (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined)) {
+        if (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined) {
           delete finalData[key];
         }
       });
-    }
-
-    // AT-802 için teknik veriler boşsa veya güncellenmemesi gerekiyorsa gönderme
-    if (selectedAircraft.tip === 'AT-802') {
-      // GÜNLÜK DURUM sayfasındaki gövde uçuş saati verisini güncellemek yasak
-      delete finalData.govdeUcusSaati;
+    } else {
+      finalData = { ...formData };
       
-      const techFields = ['frdsTest', 'motorCalisma', 'acTT', 'landings', 'starts', 'flights'];
-      techFields.forEach(field => {
-        if (finalData[field] === '' || finalData[field] === null || finalData[field] === undefined) {
-          delete finalData[field];
+      // B-360 ve C-650 için boş verilerin gönderilmesini engelle
+      if (selectedAircraft.tip === 'B-360' || selectedAircraft.tip === 'C-650') {
+        Object.keys(finalData).forEach(key => {
+          if (key !== 'aciklama' && (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined)) {
+            delete finalData[key];
+          }
+        });
+      }
+
+      if (selectedAircraft.tip === 'Bell-429') {
+        if (finalData.govdeUcusSaati) {
+          finalData.govdeUcusSaati = finalData.govdeUcusSaati.replace(':', ',').replace('.', ',');
         }
-      });
-    }
-
-    if (selectedAircraft.tip === 'Bell-429') {
-      if (finalData.govdeUcusSaati) {
-        finalData.govdeUcusSaati = finalData.govdeUcusSaati.replace(':', ',').replace('.', ',');
+        if (finalData.bakim50H) {
+          finalData.bakim50H = finalData.bakim50H.replace(':', ',').replace('.', ',');
+        }
       }
-      if (finalData.bakim50H) {
-        finalData.bakim50H = finalData.bakim50H.replace(':', ',').replace('.', ',');
-      }
-    }
 
-    if (selectedAircraft.tip === 'T-70') {
-      delete finalData.bakim40H;
-      delete finalData.bakim120H;
-      delete finalData.bakim480H;
-      delete finalData.bakimTakvimTarih;
+      if (selectedAircraft.tip === 'T-70') {
+        delete finalData.bakim40H;
+        delete finalData.bakim120H;
+        delete finalData.bakim480H;
+        delete finalData.bakimTakvimTarih;
+      }
     }
 
     try {
