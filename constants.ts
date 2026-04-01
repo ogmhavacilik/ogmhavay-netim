@@ -6,7 +6,7 @@ export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxZj_LX
 export const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbybdAQGepMMb7Hne2aZwfMH9ZJpbnXJuG2qTSPKO1knYCinFPQKN-5iNwquXAiSLk2i4w/exec"; 
 export const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrbIvbXLDJBC2_s9PeevqjIiIIWkDZ6kd2AoYG-4qnsFHatVT8AG9hVFb-3M_e-QJ8Gg/exec";
 export const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjm3OUnrM_Ki6fyVG_PqpqEkNtoc18fgf3lEPtZRtC-T2-e_ecyneHduXjfygoLjr5/exec";
-export const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby4QRuYCvX205C7jUutFxE75JlkWQGK3zzm_ooq3cVFSUX3iWm2eClgQsQBFKneuoEwwg/exec";
+export const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxaQYgR4qsf0Va98oriVcWe6aDN8FRZuDECSF43djCv40_OV6igxEAGu57Vbha4OfF7IA/exec";
 export const MAIL_LOG_SHEET_ID = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
 
 export const getCallSignByTail = (tail: string): string => {

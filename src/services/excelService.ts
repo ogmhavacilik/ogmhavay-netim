@@ -95,6 +95,7 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
           <th>KUYRUK NUMARASI</th>
           <th>DURUM</th>
           <th>DURUM AYRINTISI</th>
+          <th>GÖVDE SAATİ</th>
           <th>KONUM</th>
           <th>FAYDALI SAAT</th>
           <th style="text-align: left;">AÇIKLAMA</th>
@@ -118,6 +119,7 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
         <td style="font-weight: bold; color: #111827;">${aircraft.kuyrukNo || ''} <span class="abbr-text">${abbr}</span></td>
         <td class="${durumClass}">${durumText}</td>
         <td style="font-weight: bold; color: #111827;">${alertText}</td>
+        <td style="mso-number-format:'\\@'; font-weight: bold; color: #FF6B00; font-size: 16px;">${aircraft.govdeUcusSaati || '-'}</td>
         <td style="font-weight: bold; color: #111827; text-transform: uppercase;">${aircraft.konum || ''}</td>
         <td style="mso-number-format:'\\@'; font-weight: bold; color: #1a73e8; font-size: 16px;">${faydaliSaat}</td>
         <td class="aciklama-cell">${aciklama}</td>

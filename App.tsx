@@ -63,6 +63,7 @@ const App = () => {
   const [hideKazaKirim, setHideKazaKirim] = useState(true);
 
   const [historicalFleet, setHistoricalFleet] = useState<Aircraft[] | null>(null);
+  const [envanterLog, setEnvanterLog] = useState<any[]>([]);
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [isGovdeSorguOpen, setIsGovdeSorguOpen] = useState(false);
   const [isFetchingActivities, setIsFetchingActivities] = useState(false);
@@ -506,6 +507,57 @@ const App = () => {
       const logData = data.faaliyetLog || data.dailyLogs || [];
       const intraDayData = data.intraDayLog || data.intraDayLogs || data.hourlyLogs || [];
       
+      setEnvanterLog(logData.map((logEntry: any) => {
+        const tarihStr = String(logEntry.tarih || logEntry.Tarih || '').trim();
+        const kuyrukNo = String(logEntry.kuyrukNo || logEntry['Kuyruk No'] || logEntry.tailNumber || '').trim();
+        let dayNum = -1, monthNum = -1, yearNum = -1;
+        
+        if (tarihStr.includes('T')) {
+          const d = new Date(tarihStr);
+          if (!isNaN(d.getTime())) {
+            dayNum = d.getUTCDate();
+            monthNum = d.getUTCMonth();
+            yearNum = d.getUTCFullYear();
+          }
+        } else if (tarihStr.includes('-')) {
+          const parts = tarihStr.split(/[- :]/);
+          if (parts.length >= 3) {
+            if (parts[0].length === 4) {
+              yearNum = parseInt(parts[0], 10);
+              monthNum = parseInt(parts[1], 10) - 1;
+              dayNum = parseInt(parts[2], 10);
+            } else {
+              dayNum = parseInt(parts[0], 10);
+              monthNum = parseInt(parts[1], 10) - 1;
+              yearNum = parseInt(parts[2], 10);
+            }
+          }
+        } else if (tarihStr.includes('/')) {
+          const parts = tarihStr.split('/');
+          if (parts.length === 3) {
+            dayNum = parseInt(parts[0], 10);
+            monthNum = parseInt(parts[1], 10) - 1;
+            yearNum = parseInt(parts[2], 10);
+          }
+        } else if (tarihStr.includes('.')) {
+          const parts = tarihStr.split('.');
+          if (parts.length === 3) {
+            dayNum = parseInt(parts[0], 10);
+            monthNum = parseInt(parts[1], 10) - 1;
+            yearNum = parseInt(parts[2], 10);
+          }
+        }
+
+        if (dayNum !== -1) {
+          return {
+            ...logEntry,
+            kuyrukNo: kuyrukNo,
+            tarih: `${yearNum}-${String(monthNum + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`
+          };
+        }
+        return logEntry;
+      }));
+
       console.log(`Processing ${logData.length} daily logs and ${intraDayData.length} intra-day logs`);
 
       setActivities(prevActivities => {
@@ -517,6 +569,8 @@ const App = () => {
 
         const now = new Date();
         const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+        const normalizedEnvanterLog: any[] = [];
 
         // Process Daily Logs
         logData.forEach((logEntry: any) => {
@@ -558,6 +612,12 @@ const App = () => {
             if (dayNum !== -1) {
               const dateStrKey = `${yearNum}-${String(monthNum + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
               
+              normalizedEnvanterLog.push({
+                ...logEntry,
+                kuyrukNo: kuyrukNo,
+                tarih: dateStrKey
+              });
+
               // Bugünün verisini logdan değil, canlı veriden alıyoruz (ancak logda varsa ve canlıda yoksa eklenebilir)
               let code: DailyStatusCode = 'F';
               if (analizKodu) {
@@ -1216,6 +1276,7 @@ const App = () => {
     return (
       <DataUpdateForm 
         fleet={fleet}
+        envanterLog={envanterLog}
         onBack={() => setCurrentView('landing')}
         onSaveIntraDay={handleSaveIntraDay}
         onSuccess={(type) => {
@@ -1404,6 +1465,7 @@ const App = () => {
                     <th className="border border-black px-3 py-3 text-center font-black w-44">KUYRUK NUMARASI</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">DURUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-36">DURUM AYRINTISI</th>
+                    <th className="border border-black px-3 py-3 text-center font-black w-24">GÖVDE SAATİ</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-28">KONUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">FAYDALI SAAT</th>
                     <th className="border border-black px-3 py-3 text-left font-black">AÇIKLAMA</th>
@@ -1438,6 +1500,7 @@ const App = () => {
                         </td>
                         <td className={`border border-black px-3 py-2.5 text-center font-black ${isFaal ? 'bg-[#e8f5e9] text-[#2e7d32]' : 'bg-[#ffebee] text-[#c62828]'}`}>{a.durum.toUpperCase()}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-gray-900 uppercase">{a.durumAyrintisi !== '-' ? a.durumAyrintisi : ''}</td>
+                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#FF6B00] text-base">{a.govdeUcusSaati || '-'}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900 uppercase">{a.konum}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">{formatToHHMM(a.faydaliSaat)}</td>
                         <td className="border border-black px-4 py-2 text-left text-[11px] leading-tight text-gray-600 italic whitespace-pre-wrap">{a.aciklama}</td>
@@ -1530,7 +1593,11 @@ const App = () => {
         </div>
       )}
 
-      <GovdeSorgulaModal isOpen={isGovdeSorguOpen} onClose={() => setIsGovdeSorguOpen(false)} />
+      <GovdeSorgulaModal 
+        isOpen={isGovdeSorguOpen} 
+        onClose={() => setIsGovdeSorguOpen(false)} 
+        fleet={fleet}
+      />
 
       {/* Intra-Day Activity Modal */}
       {showIntraDayModal && (

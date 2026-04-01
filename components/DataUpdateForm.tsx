@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Aircraft, Status, DailyStatusCode } from '../types';
-import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog } from '../services/sheetService';
+import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour } from '../services/sheetService';
 import { LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID } from '../constants';
 
 interface DataUpdateFormProps {
@@ -446,7 +446,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         );
         
         if (logEntry) {
-          const hours = logEntry.govdeUcusSaati ? String(logEntry.govdeUcusSaati).replace('.', ',') : '';
+          const hours = logEntry.govdeUcusSaati ? formatGovdeHour(logEntry.govdeUcusSaati, selectedAircraft.tip) : '';
           setFormData(prev => ({
             ...prev,
             govdeUcusSaati: hours || prev.govdeUcusSaati,
@@ -470,9 +470,10 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         }
       } else if (!isPastDate && selectedAircraft) {
         // Bugün ise mevcut uçak verilerini getir
+        const hours = selectedAircraft.govdeUcusSaati ? formatGovdeHour(selectedAircraft.govdeUcusSaati, selectedAircraft.tip) : '';
         setFormData(prev => ({
           ...prev,
-          govdeUcusSaati: selectedAircraft.govdeUcusSaati ? String(selectedAircraft.govdeUcusSaati).replace('.', ',') : '',
+          govdeUcusSaati: hours,
           bakim50H: selectedAircraft.bakim50H ? String(selectedAircraft.bakim50H).replace('.', ',') : '',
           bakimTakvim: formatForDateInput(selectedAircraft.bakimTakvim),
           bakim40H: selectedAircraft.bakim40H ? String(selectedAircraft.bakim40H).replace('.', ',') : '',
@@ -489,7 +490,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         }));
         if (selectedType === 'AT-802') {
           setAt802Data({
-            acTT: selectedAircraft.govdeUcusSaati ? String(selectedAircraft.govdeUcusSaati).replace('.', ',') : '',
+            acTT: hours,
             landings: selectedAircraft.landings || '',
             starts: '',
             flights: '',

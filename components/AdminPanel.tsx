@@ -398,7 +398,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                                   )}
                                </div>
                             </td>
-                            <td className="px-8 py-4 text-blue-400 font-black">{row.govdeUcusSaati || '-'}</td>
+                            <td className="px-8 py-4 text-orange-400 font-black">{row.govdeUcusSaati || '-'}</td>
                             <td className="px-8 py-4 text-emerald-400 font-black">
                               {(row.tip === 'B-360' || row.tip === 'C-650' || row.tip === 'Bell-429') 
                                 ? formatToHHMM(typeof row.faydaliSaat === 'number' ? row.faydaliSaat : parseSingleCellToHour(row.faydaliSaat, row.tip)) 

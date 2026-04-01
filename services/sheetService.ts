@@ -126,10 +126,58 @@ export const formatToHHMM = (totalHours: number | null, aircraftType?: string): 
 export const parseSingleCellToHour = (val: any, aircraftType: string): number | null => {
   if (val === undefined || val === null || val === "" || val === "0" || val === "00:00") return null;
 
-  let d: Date | null = null;
+  // 1. Handle ISO string from Sheets duration (e.g. 1900-01-05T13:53:04.000Z)
+  // We parse MANUALLY first to avoid timezone/historical offset issues (e.g. Istanbul LMT +1:57 in 1900)
   if (typeof val === 'string' && val.includes('T') && val.includes('Z')) {
-    d = new Date(val);
-  } else if (val instanceof Date || (val && typeof val.getTime === 'function')) {
+    const s = val.trim();
+    const match = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+    if (match) {
+      const y = parseInt(match[1]);
+      const m = parseInt(match[2]);
+      const d = parseInt(match[3]);
+      const hh = parseInt(match[4]);
+      const mm = parseInt(match[5]);
+      const ss = parseInt(match[6]);
+
+      // Sheets duration base is 1899-12-30.
+      const isLeap = (yr: number) => (yr % 4 === 0 && yr % 100 !== 0) || (yr % 400 === 0);
+      const daysInMonth = (month: number, year: number) => {
+        if (month === 2) return isLeap(year) ? 29 : 28;
+        if ([4, 6, 9, 11].includes(month)) return 30;
+        return 31;
+      };
+
+      let totalDays = 0;
+      if (y === 1899 && m === 12) {
+        totalDays = d - 30;
+      } else if (y >= 1900) {
+        totalDays = 1; // Dec 31 1899
+        for (let yr = 1900; yr < y; yr++) {
+          totalDays += isLeap(yr) ? 366 : 365;
+          // Replicate Excel/Sheets 1900 leap year bug (treating 1900 as leap)
+          if (yr === 1900) totalDays += 1;
+        }
+        for (let mon = 1; mon < m; mon++) {
+          totalDays += daysInMonth(mon, y);
+        }
+        totalDays += d;
+        // Replicate bug for months after Feb 1900
+        if (y === 1900 && m > 2) totalDays += 1;
+      }
+      
+      let totalHours = totalDays * 24 + hh + mm / 60 + ss / 3600;
+      
+      // 2-hour (1:57) fix for Istanbul LMT offset in 1900
+      if (aircraftType === 'AT-802' || aircraftType === 'T-70') {
+        totalHours += 1.95; // 1.95 hours = 1 hour 57 minutes
+      }
+      
+      return totalHours;
+    }
+  }
+
+  let d: Date | null = null;
+  if (val instanceof Date || (val && typeof val.getTime === 'function')) {
     d = new Date(val);
   } else if (typeof val === 'string' && /^\d{1,2}\.\d{1,2}\.\d{4}/.test(val)) {
     // Handle DD.MM.YYYY strings from getDisplayValues()
@@ -151,6 +199,12 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
       const base = new Date(Date.UTC(1899, 11, 30, 0, 0, 0));
       const diffMs = d.getTime() - base.getTime();
       let totalHours = diffMs / (1000 * 60 * 60);
+      
+      // 2-hour (1:57) fix for Istanbul LMT offset in 1900
+      if (aircraftType === 'AT-802' || aircraftType === 'T-70') {
+        totalHours += 1.95;
+      }
+      
       return totalHours > 0 ? totalHours : null;
     }
   }
@@ -167,12 +221,14 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
 
   if (typeof val === 'string') {
     const s = val.trim().replace(',', '.');
+    
     if (s.includes(':')) {
       const parts = s.split(':').map(Number);
       if (parts.length >= 2) {
         const h = parts[0] || 0;
         const m = parts[1] || 0;
-        let total = h + m / 60;
+        const s_sec = parts[2] || 0;
+        let total = h + m / 60 + s_sec / 3600;
         
         return total;
       }
@@ -180,8 +236,8 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
     const n = parseFloat(s);
     if (!isNaN(n)) {
       let total = n;
-      // Special case for Bell-429: decimal part is literal minutes
-      if (aircraftType === 'Bell-429' && s.includes('.')) {
+      // Special case for decimal types: decimal part is literal minutes (e.g. 429.20 = 429h 20m)
+      if ((aircraftType === 'Bell-429' || aircraftType === 'B-360' || aircraftType === 'C-650') && s.includes('.')) {
         const parts = s.split('.');
         const h = parseInt(parts[0]) || 0;
         const m = parseInt(parts[1]) || 0;
@@ -195,7 +251,7 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
   return null;
 };
 
-const formatGovdeHour = (val: any, aircraftType: string): string => {
+export const formatGovdeHour = (val: any, aircraftType: string): string => {
   const deepFlatten = (v: any): any => {
     if (Array.isArray(v)) return v.length > 0 ? deepFlatten(v[0]) : null;
     return v;

@@ -236,7 +236,7 @@ function doPost(e) {
           if (tarihVal instanceof Date) {
             tarihStr = Utilities.formatDate(
               tarihVal,
-              Session.getScriptTimeZone(),
+              ss.getSpreadsheetTimeZone(),
               "dd.MM.yyyy",
             );
           } else {
@@ -266,7 +266,7 @@ function doPost(e) {
           if (iTarihVal instanceof Date) {
             iTarihStr = Utilities.formatDate(
               iTarihVal,
-              Session.getScriptTimeZone(),
+              ss.getSpreadsheetTimeZone(),
               "yyyy-MM-dd",
             );
           } else {
@@ -289,23 +289,15 @@ function doPost(e) {
       var envanterResults = [];
       var envanterSheet = findSheet(ss, "Envanter Log");
       if (envanterSheet) {
-        var envData = envanterSheet.getDataRange().getValues();
+        var envData = envanterSheet.getDataRange().getDisplayValues();
         for (var k = 1; k < envData.length; k++) {
           var eRow = envData[k];
           if (!eRow[1] && !eRow[2]) continue;
 
-          var eTarihVal = eRow[1];
-          var eTarihStr = "";
-          if (eTarihVal instanceof Date) {
-            eTarihStr = Utilities.formatDate(
-              eTarihVal,
-              Session.getScriptTimeZone(),
-              "yyyy-MM-dd",
-            );
-          } else {
-            eTarihStr = String(eTarihVal).trim();
-          }
-
+          var eTarihStr = String(eRow[1]).trim();
+          // If it's in dd.MM.yyyy format, normalize it to yyyy-MM-dd for the frontend if needed, 
+          // but GovdeSorgulaModal has its own normalizeDate function that handles dd.MM.yyyy.
+          
           envanterResults.push({
             id: String(eRow[0]).trim(),
             tarih: eTarihStr,
@@ -667,7 +659,7 @@ function doPost(e) {
         if (rowDate instanceof Date) {
           rowDate = Utilities.formatDate(
             rowDate,
-            Session.getScriptTimeZone(),
+            ss.getSpreadsheetTimeZone(),
             "dd.MM.yyyy",
           );
         }
@@ -1179,6 +1171,7 @@ function sendReportEmail(recipient, customAttachments, ss) {
     !skipEnvanter &&
     (upperReports.includes("ENVANTER RAPORU") ||
       upperReports.includes("ENVANTER HAVA ARACI DURUM RAPORU") ||
+      upperReports.includes("ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU") ||
       upperReports.includes("ENVANTER RAPOR"))
   ) {
     try {
@@ -1973,15 +1966,16 @@ function generateEnvanterExcelBlob() {
     ".abbr-text { color: #d32f2f; font-weight: bold; margin-left: 4px; }" +
     ".aciklama-cell { text-align: left; font-style: italic; white-space: pre-wrap; }" +
     "</style></head><body><table>" +
-    '<tr><td colspan="7" class="date-text" style="border: none;">' +
+    '<tr><td colspan="8" class="date-text" style="border: none;">' +
     dateStr +
     "</td></tr>" +
-    '<tr><td colspan="7" class="title-row">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td></tr>' +
+    '<tr><td colspan="8" class="title-row">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td></tr>' +
     '<tr class="header-row">' +
     "<th>ÇAĞRI KODU</th>" +
     "<th>KUYRUK NUMARASI</th>" +
     "<th>DURUM</th>" +
     "<th>DURUM AYRINTISI</th>" +
+    "<th>GÖVDE SAATİ</th>" +
     "<th>KONUM</th>" +
     "<th>FAYDALİ SAAT</th>" +
     "<th>AÇIKLAMA</th></tr>";
@@ -2045,6 +2039,9 @@ function generateEnvanterExcelBlob() {
       "</td>" +
       '<td style="font-weight: bold; text-transform: uppercase;">' +
       alertText +
+      "</td>" +
+      '<td style="font-weight: bold; color: #FF6B00; mso-number-format:\'\\@\';">' +
+      (a.govdeUcusSaati || "-") +
       "</td>" +
       '<td style="font-weight: bold; text-transform: uppercase;">' +
       (a.konum || "") +
