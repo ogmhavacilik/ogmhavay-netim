@@ -1031,14 +1031,12 @@ const App = () => {
           const diffTime = nextDate.getTime() - today.getTime();
           const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
           
-          const targetDateStr = nextDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-          
           if (diffDays <= 2 && diffDays >= 0) {
-            alerts.push(`${label}: Haftalık çalışmaya son ${diffDays} gün kaldı! (Hedef: ${targetDateStr})`);
+            alerts.push(`${label}: Haftalık çalışmaya son ${diffDays} gün kaldı!`);
           } else if (diffDays < 0) {
             // If it's overdue, show how many days passed since the target date
             const overdueDays = Math.abs(diffDays);
-            alerts.push(`${label}: Haftalık çalışma tarihi geçti! (${overdueDays} gün gecikti - Hedef: ${targetDateStr})`);
+            alerts.push(`${label}: Haftalık çalışma tarihi geçti! (${overdueDays} gün gecikti)`);
           }
         };
 
