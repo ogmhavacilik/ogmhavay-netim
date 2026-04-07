@@ -87,22 +87,23 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
       <table>
         <tr>
           <td colspan="2" style="border: none;"></td>
-          <td colspan="3" class="title-row" style="border: none;">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td>
-          <td colspan="2" class="date-text" style="border: none;">${dateStr.split(' ')[0]}</td>
+          <td colspan="4" class="title-row" style="border: none;">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td>
+          <td colspan="3" class="date-text" style="border: none;">${dateStr.split(' ')[0]}</td>
         </tr>
         <tr class="header-row">
+          <th>SIRA NO</th>
           <th>ÇAĞRI KODU</th>
           <th>KUYRUK NUMARASI</th>
+          <th>GÖVDE SAATİ</th>
           <th>DURUM</th>
           <th>DURUM AYRINTISI</th>
-          <th>GÖVDE SAATİ</th>
           <th>KONUM</th>
           <th>FAYDALI SAAT</th>
           <th style="text-align: left;">AÇIKLAMA</th>
         </tr>
   `;
 
-  sortedFleet.forEach(aircraft => {
+  sortedFleet.forEach((aircraft, index) => {
     const aciklama = (aircraft.aciklama || '').replace(/\n/g, '<br>');
     const faydaliSaat = (aircraft.faydaliSaat !== null && aircraft.faydaliSaat !== undefined) ? formatToHHMM(aircraft.faydaliSaat) : '';
     const abbr = getAbbreviation(aircraft.kuyrukNo || '');
@@ -115,11 +116,12 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
     
     html += `
       <tr>
+        <td style="font-weight: bold; color: #111827;">${index + 1}</td>
         <td style="font-weight: bold; color: #111827;">${aircraft.cagriKodu || ''}</td>
         <td style="font-weight: bold; color: #111827;">${aircraft.kuyrukNo || ''} <span class="abbr-text">${abbr}</span></td>
+        <td style="mso-number-format:'\\@'; font-weight: bold; color: #FF6B00; font-size: 16px;">${aircraft.govdeUcusSaati || '-'}</td>
         <td class="${durumClass}">${durumText}</td>
         <td style="font-weight: bold; color: #111827;">${alertText}</td>
-        <td style="mso-number-format:'\\@'; font-weight: bold; color: #FF6B00; font-size: 16px;">${aircraft.govdeUcusSaati || '-'}</td>
         <td style="font-weight: bold; color: #111827; text-transform: uppercase;">${aircraft.konum || ''}</td>
         <td style="mso-number-format:'\\@'; font-weight: bold; color: #1a73e8; font-size: 16px;">${faydaliSaat}</td>
         <td class="aciklama-cell">${aciklama}</td>

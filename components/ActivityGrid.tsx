@@ -157,6 +157,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
         <table id="activity-table" className="w-full border-collapse border-[1.5px] border-black text-[10px] bg-white font-sans">
           <thead>
             <tr className="bg-white">
+              <th rowSpan={2} className="border border-black px-1 py-1 w-10 uppercase font-black text-[9px]">SIRA NO</th>
               <th rowSpan={2} className="border border-black px-1 py-1 w-[110px] uppercase font-black text-[9px]">KUYRUK NO</th>
               <th rowSpan={2} className="border border-black px-1 py-1 w-[100px] uppercase font-black text-[9px]">ÇAĞRI KODU</th>
               <th rowSpan={2} className="border border-black px-1 py-1 w-[120px] uppercase font-black text-[9px]">HAVA ARACI TİPİ</th>
@@ -195,24 +196,30 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
             )}
           </thead>
           <tbody>
-            {Object.keys(groupedActivities).map((groupName, gIdx) => {
-              const groupActs = groupedActivities[groupName];
-              let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupMissing = 0;
+            {(() => {
+              let globalIndex = 0;
+              return Object.keys(groupedActivities).map((groupName, gIdx) => {
+                const groupActs = groupedActivities[groupName];
+                let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupMissing = 0;
 
-              return (
-                <React.Fragment key={gIdx}>
-                  {groupActs.map((act, idx) => {
-                    const s = calculateRowStats(act);
-                    groupBakim += s.bakim;
-                    groupAriza += s.ariza;
-                    groupOlmadi += s.olmadi;
-                    groupTotalGF += s.totalGFaal;
-                    groupTotalF += s.totalFaal;
-                    groupMissing += s.missing;
+                return (
+                  <React.Fragment key={gIdx}>
+                    {groupActs.map((act, idx) => {
+                      globalIndex++;
+                      const s = calculateRowStats(act);
+                      groupBakim += s.bakim;
+                      groupAriza += s.ariza;
+                      groupOlmadi += s.olmadi;
+                      groupTotalGF += s.totalGFaal;
+                      groupTotalF += s.totalFaal;
+                      groupMissing += s.missing;
 
-                    return (
-                      <tr key={idx} className="h-7 hover:bg-gray-50">
-                        <td className="border border-black text-center font-bold px-1">
+                      return (
+                        <tr key={idx} className="h-7 hover:bg-gray-50">
+                          <td className="border border-black text-center font-black px-1 text-gray-900">
+                            {globalIndex}
+                          </td>
+                          <td className="border border-black text-center font-bold px-1">
                           {act.kuyrukNo}
                           <span className="text-red-600 ml-1">
                             {(() => {
@@ -290,7 +297,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                   {/* GRUP TOPLAMI SATIRI */}
                   {!isHourlyView && (
                     <tr className="h-6 bg-gray-100 font-black">
-                      <td colSpan={3 + totalDaysInMonth} className="border border-black text-right px-4 uppercase text-[8px]" style={{ backgroundColor: '#f3f4f6' }}>TOPLAM</td>
+                      <td colSpan={4 + totalDaysInMonth} className="border border-black text-right px-4 uppercase text-[8px]" style={{ backgroundColor: '#f3f4f6' }}>TOPLAM</td>
                       <td className="border border-black text-center bg-[#ffff00]" style={{ backgroundColor: '#ffff00', color: '#000000' }}>{groupBakim}</td>
                       <td className="border border-black text-center bg-[#ff0000] text-white" style={{ backgroundColor: '#ff0000', color: '#ffffff' }}>{groupAriza}</td>
                       <td className="border border-black text-center bg-[#7030a0] text-white" style={{ backgroundColor: '#7030a0', color: '#ffffff' }}>{groupOlmadi}</td>
@@ -303,8 +310,9 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                   )}
                 </React.Fragment>
               );
-            })}
-          </tbody>
+            });
+          })()}
+        </tbody>
         </table>
       </div>
 

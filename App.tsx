@@ -1006,21 +1006,39 @@ const App = () => {
       // AT-802 Test Tarihi Kontrolleri
       if (aircraft.tip === 'AT-802') {
         const checkTestDate = (dateStr: string | undefined, label: string) => {
-          if (!dateStr || dateStr === '-') return;
-          const lastDate = new Date(dateStr);
+          if (!dateStr || dateStr === '-' || dateStr === 'N/A') return;
+          
+          let lastDate: Date;
+          const parts = dateStr.split('.');
+          if (parts.length === 3) {
+            // Local date parsing: year, month (0-indexed), day
+            lastDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+          } else {
+            lastDate = new Date(dateStr);
+          }
+
           if (isNaN(lastDate.getTime())) return;
           
+          // Next test is exactly 7 days after the last test
           const nextDate = new Date(lastDate);
           nextDate.setDate(nextDate.getDate() + 7);
+          nextDate.setHours(0, 0, 0, 0);
           
           const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          // Calculate difference in days
           const diffTime = nextDate.getTime() - today.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+          
+          const targetDateStr = nextDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
           
           if (diffDays <= 2 && diffDays >= 0) {
-            alerts.push(`${label}: Haftalık çalışmaya son ${diffDays} gün kaldı!`);
+            alerts.push(`${label}: Haftalık çalışmaya son ${diffDays} gün kaldı! (Hedef: ${targetDateStr})`);
           } else if (diffDays < 0) {
-            alerts.push(`${label}: Haftalık çalışma tarihi geçti! (${Math.abs(diffDays)} gün gecikti)`);
+            // If it's overdue, show how many days passed since the target date
+            const overdueDays = Math.abs(diffDays);
+            alerts.push(`${label}: Haftalık çalışma tarihi geçti! (${overdueDays} gün gecikti - Hedef: ${targetDateStr})`);
           }
         };
 
@@ -1461,11 +1479,12 @@ const App = () => {
               <table id="inventory-table" className="w-full border-collapse border-[1.5px] border-black text-[12px]">
                 <thead>
                   <tr className="bg-[#d9d9d9]">
+                    <th className="border border-black px-2 py-3 text-center font-black w-12">SIRA NO</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-28">ÇAĞRI KODU</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-44">KUYRUK NUMARASI</th>
+                    <th className="border border-black px-3 py-3 text-center font-black w-24">GÖVDE SAATİ</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">DURUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-36">DURUM AYRINTISI</th>
-                    <th className="border border-black px-3 py-3 text-center font-black w-24">GÖVDE SAATİ</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-28">KONUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">FAYDALI SAAT</th>
                     <th className="border border-black px-3 py-3 text-left font-black">AÇIKLAMA</th>
@@ -1478,6 +1497,7 @@ const App = () => {
                     const isFaal = String(a.durum).toUpperCase().includes("FAAL") && !String(a.durum).toUpperCase().includes("GAYRİ") && !String(a.durum).toUpperCase().includes("GAYRI");
                     return (
                       <tr key={i} className={`hover:bg-gray-100 transition-colors cursor-pointer group ${hasOplAlert ? 'animate-intense-blink' : ''} ${historicalFleet !== null ? 'opacity-60 cursor-default' : 'active:scale-[0.99]'}`} onClick={() => historicalFleet === null && setSelectedAircraft(a)}>
+                        <td className="border border-black px-2 py-2.5 text-center font-black text-gray-900">{i + 1}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900">{a.cagriKodu}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900">
                           {a.kuyrukNo} 
@@ -1498,9 +1518,9 @@ const App = () => {
                             </span>
                           )}
                         </td>
+                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#FF6B00] text-base">{a.govdeUcusSaati || '-'}</td>
                         <td className={`border border-black px-3 py-2.5 text-center font-black ${isFaal ? 'bg-[#e8f5e9] text-[#2e7d32]' : 'bg-[#ffebee] text-[#c62828]'}`}>{a.durum.toUpperCase()}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-gray-900 uppercase">{a.durumAyrintisi !== '-' ? a.durumAyrintisi : ''}</td>
-                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#FF6B00] text-base">{a.govdeUcusSaati || '-'}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900 uppercase">{a.konum}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">{formatToHHMM(a.faydaliSaat)}</td>
                         <td className="border border-black px-4 py-2 text-left text-[11px] leading-tight text-gray-600 italic whitespace-pre-wrap">{a.aciklama}</td>

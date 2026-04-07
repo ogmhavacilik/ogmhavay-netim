@@ -1966,16 +1966,17 @@ function generateEnvanterExcelBlob() {
     ".abbr-text { color: #d32f2f; font-weight: bold; margin-left: 4px; }" +
     ".aciklama-cell { text-align: left; font-style: italic; white-space: pre-wrap; }" +
     "</style></head><body><table>" +
-    '<tr><td colspan="8" class="date-text" style="border: none;">' +
+    '<tr><td colspan="9" class="date-text" style="border: none;">' +
     dateStr +
     "</td></tr>" +
-    '<tr><td colspan="8" class="title-row">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td></tr>' +
+    '<tr><td colspan="9" class="title-row">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td></tr>' +
     '<tr class="header-row">' +
+    "<th>SIRA NO</th>" +
     "<th>ÇAĞRI KODU</th>" +
     "<th>KUYRUK NUMARASI</th>" +
+    "<th>GÖVDE SAATİ</th>" +
     "<th>DURUM</th>" +
     "<th>DURUM AYRINTISI</th>" +
-    "<th>GÖVDE SAATİ</th>" +
     "<th>KONUM</th>" +
     "<th>FAYDALİ SAAT</th>" +
     "<th>AÇIKLAMA</th></tr>";
@@ -1983,7 +1984,7 @@ function generateEnvanterExcelBlob() {
   var currentTip = "";
   var isGray = false;
 
-  fleet.forEach(function (a) {
+  fleet.forEach(function (a, index) {
     if (a.tip !== currentTip) {
       currentTip = a.tip || "";
       isGray = !isGray;
@@ -2025,6 +2026,9 @@ function generateEnvanterExcelBlob() {
     html +=
       "<tr>" +
       '<td style="' + bgClass + ' font-weight: bold;">' +
+      (index + 1) +
+      "</td>" +
+      '<td style="' + bgClass + ' font-weight: bold;">' +
       (a.cagriKodu || "") +
       "</td>" +
       '<td style="' + bgClass + ' font-weight: bold;">' +
@@ -2032,6 +2036,9 @@ function generateEnvanterExcelBlob() {
       ' <span class="abbr-text">' +
       abbr +
       "</span></td>" +
+      '<td style="font-weight: bold; color: #FF6B00; mso-number-format:\'\\@\';">' +
+      (a.govdeUcusSaati || "-") +
+      "</td>" +
       '<td class="' +
       durumClass +
       '">' +
@@ -2039,9 +2046,6 @@ function generateEnvanterExcelBlob() {
       "</td>" +
       '<td style="font-weight: bold; text-transform: uppercase;">' +
       alertText +
-      "</td>" +
-      '<td style="font-weight: bold; color: #FF6B00; mso-number-format:\'\\@\';">' +
-      (a.govdeUcusSaati || "-") +
       "</td>" +
       '<td style="font-weight: bold; text-transform: uppercase;">' +
       (a.konum || "") +
