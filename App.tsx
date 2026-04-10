@@ -268,10 +268,12 @@ const App = () => {
         <tr><td style="background-color: #FFFF00; color: #000000; border: 1px solid black;">BB</td><td colspan="4" style="border: 1px solid black;">BAKIM BEKLER</td></tr>
         <tr><td style="background-color: #FFFF00; color: #000000; border: 1px solid black;">TBU</td><td colspan="4" style="border: 1px solid black;">TEKNİK BÜLTEN UYGULAMASI</td></tr>
         <tr><td style="background-color: #FFFF00; color: #000000; border: 1px solid black;">KM</td><td colspan="4" style="border: 1px solid black;">KABUL MUAYENESİ</td></tr>
+        <tr><td style="background-color: #40E0D0; color: #000000; border: 1px solid black;">TB</td><td colspan="4" style="border: 1px solid black;">TECRÜBE BEKLER</td></tr>
         <tr><td style="background-color: #FF0000; color: #FFFFFF; border: 1px solid black;">A</td><td colspan="4" style="border: 1px solid black;">ARIZA</td></tr>
         <tr><td style="background-color: #FF0000; color: #FFFFFF; border: 1px solid black;">PB</td><td colspan="4" style="border: 1px solid black;">PARÇA BEKLER</td></tr>
         <tr><td style="background-color: #FF0000; color: #FFFFFF; border: 1px solid black;">KK</td><td colspan="4" style="border: 1px solid black;">KAZA KIRIM</td></tr>
         <tr><td style="background-color: #7030A0; color: #FFFFFF; border: 1px solid black;">X</td><td colspan="4" style="border: 1px solid black;">OLMADIĞI GÜNLER</td></tr>
+        <tr><td style="background-color: #FFFFFF; color: #f97316; font-weight: bold; font-size: 16px; border: 1px solid black;">*</td><td colspan="4" style="border: 1px solid black;">KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)</td></tr>
         <tr><td colspan="10" style="color: red; font-weight: bold;">** 3 güne kadar olan gayrı faal durumlar faaliyet oranına yansıtılmamıştır.</td></tr>
       `;
       const tbody = clonedTable.querySelector('tbody');
@@ -1683,6 +1685,7 @@ const App = () => {
                   <option value="BB" className="bg-emerald-950">BAKIM BEKLER</option>
                   <option value="TBU" className="bg-emerald-950">TEKNİK BÜLTEN UYGULAMASI</option>
                   <option value="KM" className="bg-emerald-950">KABUL MUAYENESİ</option>
+                  <option value="TB" className="bg-emerald-950">TECRÜBE BEKLER</option>
                   <option value="PB" className="bg-emerald-950">PARÇA BEKLER</option>
                   <option value="KK" className="bg-emerald-950">KAZA KIRIM</option>
                   <option value="X" className="bg-emerald-950">OLMADIĞI GÜNLER</option>
