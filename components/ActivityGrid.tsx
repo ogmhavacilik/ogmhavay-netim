@@ -77,6 +77,45 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
   const calculateRowStats = (activity: AircraftActivity) => {
     let bakim = 0, ariza = 0, olmadi = 0, faal = 0, missing = 0;
 
+    const getStreakLengthAt = (dateStrKey: string, baseDate: Date) => {
+      const s = activity.dailyStatuses[dateStrKey];
+      if (!s || s === 'F') return 0;
+
+      let length = 1;
+      
+      // Look backwards
+      let d = new Date(baseDate);
+      d.setDate(d.getDate() - 1);
+      for (let i = 0; i < 30; i++) {
+        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const prevS = activity.dailyStatuses[k];
+        if (prevS && prevS !== 'F') {
+          length++;
+          d.setDate(d.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+
+      // Look forwards
+      d = new Date(baseDate);
+      d.setDate(d.getDate() + 1);
+      for (let i = 0; i < 30; i++) {
+        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const nextS = activity.dailyStatuses[k];
+        if (nextS && nextS !== 'F') {
+          length++;
+          d.setDate(d.getDate() + 1);
+        } else {
+          break;
+        }
+      }
+
+      return length;
+    };
+
+    let effectiveFaal = 0;
+
     visibleDates.forEach(date => {
       const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       const s = activity.dailyStatuses[dateStrKey];
@@ -92,15 +131,25 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
       } else if (s === 'F') {
         faal++;
       }
+
+      // Calculate effective faal for percentage
+      if (s === 'F') {
+        effectiveFaal++;
+      } else if (s && s !== 'X') {
+        const streakLen = getStreakLengthAt(dateStrKey, date);
+        if (streakLen < 3) {
+          effectiveFaal++;
+        }
+      }
     });
 
     const totalGFaal = bakim + ariza + olmadi;
     const totalFaal = faal;
     
     const baseDays = totalDaysInMonth - olmadi - missing;
-    const percentage = baseDays > 0 ? ((totalFaal / baseDays) * 100).toFixed(0) : "0";
+    const percentage = baseDays > 0 ? ((effectiveFaal / baseDays) * 100).toFixed(0) : "0";
     
-    return { bakim, ariza, olmadi, totalGFaal, totalFaal, percentage, missing };
+    return { bakim, ariza, olmadi, totalGFaal, totalFaal, effectiveFaal, percentage, missing };
   };
 
   // TİP bazlı gruplandırma ve sıralama
@@ -200,7 +249,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
               let globalIndex = 0;
               return Object.keys(groupedActivities).map((groupName, gIdx) => {
                 const groupActs = groupedActivities[groupName];
-                let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupMissing = 0;
+                let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupEffectiveFaal = 0, groupMissing = 0;
 
                 return (
                   <React.Fragment key={gIdx}>
@@ -212,6 +261,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                       groupOlmadi += s.olmadi;
                       groupTotalGF += s.totalGFaal;
                       groupTotalF += s.totalFaal;
+                      groupEffectiveFaal += s.effectiveFaal;
                       groupMissing += s.missing;
 
                       return (
@@ -304,7 +354,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                       <td className="border border-black text-center bg-[#00b0f0] text-white" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>{groupTotalGF}</td>
                       <td className="border border-black text-center bg-[#ffc000]" style={{ backgroundColor: '#ffc000', color: '#000000' }}>{groupTotalF}</td>
                       <td className="border border-black text-center bg-gray-200" style={{ backgroundColor: '#e5e7eb' }}>
-                        {((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) > 0 ? ((groupTotalF) / (groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) * 100).toFixed(0) : "0")}%
+                        {((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) > 0 ? ((groupEffectiveFaal) / (groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) * 100).toFixed(0) : "0")}%
                       </td>
                     </tr>
                   )}
