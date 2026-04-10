@@ -195,7 +195,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
   };
 
   const handleCodeChange = (kuyrukNo: string, newCode: string) => {
-    const validCodes: DailyStatusCode[] = ['B', 'BB', 'KM', 'A', 'PB', 'KK', 'X', 'F'];
+    const validCodes: DailyStatusCode[] = ['B', 'BB', 'TBU', 'KM', 'A', 'PB', 'KK', 'X', 'F'];
     if (validCodes.includes(newCode as DailyStatusCode)) {
       setPreviewData(prev => prev.map(a => a.kuyrukNo === kuyrukNo ? { ...a, assignedCode: newCode } : a));
       if (onOverride) onOverride(kuyrukNo, newCode as DailyStatusCode);
@@ -413,7 +413,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                                    onChange={(e) => handleCodeChange(row.kuyrukNo, e.target.value)}
                                    onBlur={() => setEditingCode(null)}
                                  >
-                                   {['B', 'BB', 'KM', 'A', 'PB', 'KK', 'X', 'F'].map(c => (
+                                   {['B', 'BB', 'TBU', 'KM', 'A', 'PB', 'KK', 'X', 'F'].map(c => (
                                      <option key={c} value={c}>{c}</option>
                                    ))}
                                  </select>

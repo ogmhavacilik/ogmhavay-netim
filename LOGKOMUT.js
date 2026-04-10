@@ -1405,6 +1405,19 @@ function analyzeStatusGS(item) {
   )
     return "TB";
 
+  // TBU (TEKNİK BÜLTEN UYGULAMASI)
+  var isGayriFaal = toLowerTR(item.durum).indexOf("gayr") !== -1 || toLowerTR(item.durum).indexOf("gf") !== -1;
+  var hasYillikBakim = detailUpper.indexOf("YILLIK") !== -1 || desc.indexOf("yıllık") !== -1 || desc.indexOf("yillik") !== -1;
+  
+  if (!hasYillikBakim && (detailUpper === "TBU" || (isGayriFaal && (
+    detailUpper.indexOf("SL") !== -1 ||
+    desc.indexOf("sl ") !== -1 || desc.indexOf(" sl") !== -1 || desc === "sl" ||
+    desc.indexOf("gereği") !== -1 || desc.indexOf("geregi") !== -1 ||
+    desc.indexOf("uygulanan") !== -1 || desc.indexOf("teknik bülten") !== -1
+  )))) {
+    return "TBU";
+  }
+
   if (
     detail.indexOf("bakım bekler") !== -1 ||
     detail.indexOf("bakim bekler") !== -1 ||

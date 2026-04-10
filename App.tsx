@@ -266,6 +266,7 @@ const App = () => {
         <tr><td colspan="5" style="font-weight: bold;">KISALTMALAR</td></tr>
         <tr><td style="background-color: #FFFF00; color: #000000; border: 1px solid black;">B</td><td colspan="4" style="border: 1px solid black;">BAKIM</td></tr>
         <tr><td style="background-color: #FFFF00; color: #000000; border: 1px solid black;">BB</td><td colspan="4" style="border: 1px solid black;">BAKIM BEKLER</td></tr>
+        <tr><td style="background-color: #FFFF00; color: #000000; border: 1px solid black;">TBU</td><td colspan="4" style="border: 1px solid black;">TEKNİK BÜLTEN UYGULAMASI</td></tr>
         <tr><td style="background-color: #FFFF00; color: #000000; border: 1px solid black;">KM</td><td colspan="4" style="border: 1px solid black;">KABUL MUAYENESİ</td></tr>
         <tr><td style="background-color: #FF0000; color: #FFFFFF; border: 1px solid black;">A</td><td colspan="4" style="border: 1px solid black;">ARIZA</td></tr>
         <tr><td style="background-color: #FF0000; color: #FFFFFF; border: 1px solid black;">PB</td><td colspan="4" style="border: 1px solid black;">PARÇA BEKLER</td></tr>
@@ -730,11 +731,13 @@ const App = () => {
               hasGayriFaal = true;
               
               let code = statusRaw ? statusRaw.substring(0, 2) : 'B';
-              if (statusRaw.includes('BAKIM')) code = 'B';
+              const hasYillik = statusRaw.includes('YILLIK');
+              if (!hasYillik && (statusRaw.includes('TEKNİK BÜLTEN') || statusRaw.includes('TBU'))) code = 'TBU';
+              else if (statusRaw.includes('BAKIM') && statusRaw.includes('BEKLER')) code = 'BB';
+              else if (statusRaw.includes('BAKIM') || hasYillik) code = 'B';
               else if (statusRaw.includes('ARIZA')) code = 'A';
               else if (statusRaw.includes('PARÇA')) code = 'PB';
               else if (statusRaw.includes('KABUL')) code = 'KM';
-              else if (statusRaw.includes('BEKLER') && statusRaw.includes('BAKIM')) code = 'BB';
               else if (statusRaw.includes('KAZA')) code = 'KK';
               else if (statusRaw.includes('OLMADIĞI')) code = 'X';
               else if (statusRaw.includes('TECRÜBE')) code = 'TB';
@@ -1678,6 +1681,7 @@ const App = () => {
                   <option value="A" className="bg-emerald-950">ARIZA</option>
                   <option value="B" className="bg-emerald-950">BAKIM</option>
                   <option value="BB" className="bg-emerald-950">BAKIM BEKLER</option>
+                  <option value="TBU" className="bg-emerald-950">TEKNİK BÜLTEN UYGULAMASI</option>
                   <option value="KM" className="bg-emerald-950">KABUL MUAYENESİ</option>
                   <option value="PB" className="bg-emerald-950">PARÇA BEKLER</option>
                   <option value="KK" className="bg-emerald-950">KAZA KIRIM</option>

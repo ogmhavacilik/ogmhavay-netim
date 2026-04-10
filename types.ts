@@ -82,7 +82,7 @@ export interface Aircraft {
   bakim200H?: string;
 }
 
-export type DailyStatusCode = 'B' | 'BB' | 'KM' | 'A' | 'PB' | 'KK' | 'X' | 'F' | 'TB' | '';
+export type DailyStatusCode = 'B' | 'BB' | 'TBU' | 'KM' | 'A' | 'PB' | 'KK' | 'X' | 'F' | 'TB' | '';
 
 export interface LogEvent {
   hour: number;

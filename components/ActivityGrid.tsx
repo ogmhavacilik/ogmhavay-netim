@@ -52,7 +52,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
 
   const getStatusClass = (code: DailyStatusCode | string, isKarma?: boolean) => {
     switch (code) {
-      case 'B': case 'BB': case 'KM': return 'bg-[#FFFF00] text-black font-black border-black'; // SARI
+      case 'B': case 'BB': case 'TBU': case 'KM': return 'bg-[#FFFF00] text-black font-black border-black'; // SARI
       case 'A': case 'PB': case 'KK': return 'bg-[#FF0000] text-black font-black border-black'; // KIRMIZI
       case 'X': return 'bg-[#7030A0] text-black font-black border-black'; // MOR
       case 'TB': return 'bg-[#40E0D0] text-black font-black border-black'; // TURKUAZ
@@ -64,7 +64,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
 
   const getStatusStyle = (code: DailyStatusCode | string, isKarma?: boolean): React.CSSProperties => {
     switch (code) {
-      case 'B': case 'BB': case 'KM': return { backgroundColor: '#FFFF00', color: '#000000' };
+      case 'B': case 'BB': case 'TBU': case 'KM': return { backgroundColor: '#FFFF00', color: '#000000' };
       case 'A': case 'PB': case 'KK': return { backgroundColor: '#FF0000', color: '#000000' };
       case 'X': return { backgroundColor: '#7030A0', color: '#000000' };
       case 'TB': return { backgroundColor: '#40E0D0', color: '#000000' };
@@ -83,7 +83,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
       
       if (s === undefined || s === '') {
         missing++;
-      } else if (['B', 'BB', 'KM'].includes(s)) {
+      } else if (['B', 'BB', 'TBU', 'KM'].includes(s)) {
         bakim++;
       } else if (['A', 'PB', 'KK'].includes(s)) {
         ariza++;
@@ -321,6 +321,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
            <div className="flex flex-col space-y-1">
               <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">B: BAKIM</div>
               <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">BB: BAKIM BEKLER</div>
+              <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">TBU: TEKNİK BÜLTEN UYGULAMASI</div>
               <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">KM: KABUL MUAYENESİ</div>
            </div>
            <div className="flex flex-col space-y-1">

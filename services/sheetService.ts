@@ -29,6 +29,19 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   // TECRÜBE BEKLER (TB) - İSTİSNA: Durum ayrıntısında varsa kesinlikle TB
   if (detailUpper.includes('TECRÜBE BEKLER') || detailUpper.includes('TECRUBE BEKLER') || detailUpper === 'TB') return { code: 'TB', interpretation: 'TECRÜBE BEKLER' };
 
+  // TEKNİK BÜLTEN UYGULAMASI (TBU)
+  const isGayriFaalStatus = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('GF');
+  const hasYillikBakim = detailUpper.includes('YILLIK') || desc.includes('yıllık') || desc.includes('yillik');
+  
+  if (!hasYillikBakim && (detailUpper === 'TBU' || (isGayriFaalStatus && (
+    detailUpper.includes('SL') || 
+    desc.includes('sl ') || desc.includes(' sl') || desc === 'sl' ||
+    desc.includes('gereği') || desc.includes('geregi') || 
+    desc.includes('uygulanan') || desc.includes('teknik bülten')
+  )))) {
+    return { code: 'TBU', interpretation: 'TEKNİK BÜLTEN UYGULAMASI' };
+  }
+
   // BAKIM BEKLER (BB)
   if (detailUpper.includes('BAKIM BEKLER') || detailUpper === 'BB') return { code: 'BB', interpretation: 'BAKIM BEKLER' };
   
@@ -442,7 +455,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         kuyrukNo: kuyrukNo,
         cagriKodu: getCallSignByTail(kuyrukNo),
         durum: (analysis.code !== 'F') ? Status.GAYRI_FAAL : Status.FAAL,
-        durumTipi: (analysis.code === 'B' || analysis.code === 'BB' || analysis.code === 'KM') ? StatusType.BAKIM : 
+        durumTipi: (analysis.code === 'B' || analysis.code === 'BB' || analysis.code === 'TBU' || analysis.code === 'KM') ? StatusType.BAKIM : 
                    (analysis.code === 'A' || analysis.code === 'PB') ? StatusType.ARIZA : StatusType.NONE,
         durumAyrintisi: String(item.durumAyrintisi || '-'),
         konum: String(item.konum || 'ANKARA'),
