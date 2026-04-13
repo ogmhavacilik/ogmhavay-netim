@@ -839,7 +839,7 @@ function doPost(e) {
           data.konum,
           data.durum,
           data.durumAyrintisi,
-          data.aciklama || ""
+          data.aciklama ? "'" + String(data.aciklama) : ""
         ];
         
         if (idMap[logId]) {
@@ -895,7 +895,7 @@ function doPost(e) {
                 data.konum,
                 data.durum,
                 data.durumAyrintisi,
-                data.aciklama || "",
+                data.aciklama ? "'" + String(data.aciklama) : "",
               ],
             ]);
           // Açıklama sütununu (10. kolon) metin formatına zorla
@@ -915,7 +915,7 @@ function doPost(e) {
           data.konum,
           data.durum,
           data.durumAyrintisi,
-          data.aciklama || "",
+          data.aciklama ? "'" + String(data.aciklama) : "",
         ]);
         // Yeni eklenen satırın açıklama hücresini metin yap
         logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");
@@ -1654,16 +1654,25 @@ function sendDailyReports() {
       ""
     ).toUpperCase();
     var time = recipient["SAAT"] || recipient["Saat"];
-    var lastSent = recipient["SON GÖNDERİM"] || recipient["Son Gönderim"];
+    
+    // --- 1. KİLİT MEKANİZMASI ---
+    var lastSentValue = data[i][lastSentIdx] ? String(data[i][lastSentIdx]).trim() : "";
+    if (lastSentValue === todayStr) continue;
 
     if (type.includes("OTOMAT")) {
       var shouldSend = days.includes("HER") || days.includes(currentDay);
       if (shouldSend && time) {
         var tMin = timeToMinutes(time);
         var cMin = timeToMinutes(currentTime);
-        if (Math.abs(cMin - tMin) <= 15 && lastSent !== todayStr) {
+        var diff = cMin - tMin;
+        
+        // --- 2. ZAMAN KONTROLÜ ---
+        if (diff >= 0 && diff <= 10) {
           sendReportEmail(recipient, [], ss);
+          
+          // --- 3. DAMGALAMA ---
           mailSheet.getRange(i + 1, lastSentIdx + 1).setValue(todayStr);
+          SpreadsheetApp.flush();
         }
       }
     }
@@ -1764,7 +1773,7 @@ function performDailyMidnightLogging() {
       item.konum,
       item.durum,
       item.durumAyrintisi,
-      item.aciklama,
+      item.aciklama ? "'" + String(item.aciklama) : "",
     ]);
     // Açıklama sütununu (10. kolon) metin formatına zorla
     logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");

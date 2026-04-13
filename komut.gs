@@ -753,31 +753,56 @@ function sendDailyReports() {
   
   var data = mailSheet.getDataRange().getDisplayValues();
   var headers = data[0].map(function(h) { return String(h).trim(); });
+  
   var now = new Date();
+  // Bugünün tarihi: "13.04.2026" formatında
+  var todayStr = Utilities.formatDate(now, Session.getScriptTimeZone(), "dd.MM.yyyy");
   var currentDay = ["PAZAR", "PAZARTESİ", "SALI", "ÇARŞAMBA", "PERŞEMBE", "CUMA", "CUMARTESİ"][now.getDay()];
   var currentTime = Utilities.formatDate(now, Session.getScriptTimeZone(), "HH:mm");
   
+  // Sütunların yerini başlığa göre bulalım
+  var colLastSent = headers.indexOf("SON GÖNDERİM");
+
+  if (colLastSent === -1) {
+    // Eğer başlık bulunamazsa manuel olarak 8. sütunu (H) kullanması için güvenlik önlemi
+    colLastSent = 7; 
+  }
+
   for (var i = 1; i < data.length; i++) {
     var recipient = {};
     for (var j = 0; j < headers.length; j++) {
       recipient[headers[j]] = data[i][j];
     }
     
+    // --- 1. KİLİT MEKANİZMASI ---
+    // Bugün zaten gönderilmişse bu personeli doğrudan atla
+    var lastSentValue = data[i][colLastSent] ? String(data[i][colLastSent]).trim() : "";
+    if (lastSentValue === todayStr) continue;
+
     if (recipient["MAİL GÖNDERME TÜRÜ"] === "OTOMATİK") {
       var days = recipient["GÜN SEÇENEĞİ"].toUpperCase();
-      var time = recipient["SAAT"];
+      var targetTime = recipient["SAAT"];
       
-      var shouldSend = false;
-      if (days.includes("HER GÜN")) shouldSend = true;
-      else if (days.includes(currentDay)) shouldSend = true;
+      var isRightDay = false;
+      if (days.includes("HER GÜN")) isRightDay = true;
+      else if (days.includes(currentDay)) isRightDay = true;
       
-      if (shouldSend && time) {
-        var diff = Math.abs(timeToMinutes(currentTime) - timeToMinutes(time));
-        if (diff > 15) shouldSend = false;
-      }
-      
-      if (shouldSend) {
-        sendReportEmail(recipient);
+      if (isRightDay && targetTime) {
+        var diff = timeToMinutes(currentTime) - timeToMinutes(targetTime);
+        
+        // --- 2. ZAMAN KONTROLÜ ---
+        // diff >= 0: Saat tam geldiyse veya geçtiyse (Erken atmayı önler)
+        // diff <= 10: Belirlenen saatin üzerinden en fazla 10 dk geçtiyse (Tetikleyici kaçırmasın diye)
+        if (diff >= 0 && diff <= 10) { 
+          sendReportEmail(recipient);
+          
+          // --- 3. DAMGALAMA ---
+          // Mail başarıyla gittikten sonra hücreye bugünün tarihini yazıyoruz
+          mailSheet.getRange(i + 1, colLastSent + 1).setValue(todayStr);
+          
+          // Sayfayı anlık olarak zorla güncelle (Flush), mükerrerliği %100 engeller
+          SpreadsheetApp.flush();
+        }
       }
     }
   }
@@ -1088,13 +1113,13 @@ function saveLogsToSheets(ss, fleetData) {
       envLogSheet.getRange(row, 4, 1, 7).setValues([[
         aircraft.tip || "", aircraft.govdeUcusSaati || "", 
         aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
-        aircraft.durumAyrintisi || "", String(aircraft.aciklama || "")
+        aircraft.durumAyrintisi || "", aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
       ]]);
     } else {
       envLogSheet.appendRow([
         envKey, tarihStr, kNo, aircraft.tip || "", aircraft.govdeUcusSaati || "", 
         aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
-        aircraft.durumAyrintisi || "", String(aircraft.aciklama || "")
+        aircraft.durumAyrintisi || "", aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
       ]);
       // Update map so we don't append again in the same batch
       envIdMap[envKey] = envLogSheet.getLastRow();
