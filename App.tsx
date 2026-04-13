@@ -89,6 +89,8 @@ const App = () => {
     try {
       const response = await fetch(LOG_SCRIPT_URL, {
         method: 'POST',
+        redirect: 'follow',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({
           action: 'saveIntraDayActivity',
           sheetId: MAIL_LOG_SHEET_ID,
@@ -336,6 +338,8 @@ const App = () => {
         console.log(`Sending updateLogEntry for ${kuyrukNo} with code ${newCode} on ${displayDateStr}`);
         const res = await fetch(LOG_SCRIPT_URL, {
           method: 'POST',
+          redirect: 'follow',
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({
             action: 'updateLogEntry',
             sheetId: MAIL_LOG_SHEET_ID,
@@ -454,6 +458,8 @@ const App = () => {
         if (shouldLog && LOG_SCRIPT_URL) {
           fetch(LOG_SCRIPT_URL, {
             method: 'POST',
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({
               action: 'logSingleAircraftActivity',
               sheetId: MAIL_LOG_SHEET_ID,
@@ -923,6 +929,8 @@ const App = () => {
         try {
           await fetch(LOG_SCRIPT_URL, {
             method: 'POST',
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({
               action: 'logAllAircraftActivity',
               sheetId: MAIL_LOG_SHEET_ID,
@@ -1085,6 +1093,8 @@ const App = () => {
       try {
         const res = await fetch(LOG_SCRIPT_URL, {
           method: 'POST',
+          redirect: 'follow',
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({
             action: 'getAircraftData',
             sheetId: MAIL_LOG_SHEET_ID,
@@ -1266,7 +1276,9 @@ const App = () => {
   const syncLogs = async () => {
     setIsSyncing(true);
     try {
-      const response = await fetch(`${AT802_SCRIPT_URL}?action=sync`);
+      const response = await fetch(`${AT802_SCRIPT_URL}?action=sync`, {
+        redirect: 'follow'
+      });
       const result = await response.json();
       if (result.success) {
         alert('Log senkronizasyonu başarıyla tamamlandı.');

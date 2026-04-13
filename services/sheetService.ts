@@ -361,6 +361,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
     const response = await fetch(cleanUrl, {
       method: 'POST',
       redirect: 'follow',
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({
         sheetId: config.sheetId,
         sheetName: config.sheetName || '',
@@ -692,6 +693,8 @@ export const updateAircraftData = async (
   try {
     const response = await fetch(cleanUrl, {
       method: 'POST',
+      redirect: 'follow',
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({
         action: 'updateAircraftData',
         sheetId,
@@ -727,6 +730,8 @@ export const updatePastEnvanterLog = async (
   try {
     const response = await fetch(cleanUrl, {
       method: 'POST',
+      redirect: 'follow',
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({
         action: 'updatePastEnvanterLog',
         sheetId,

@@ -61,6 +61,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
     try {
       const res = await fetch(LOG_SCRIPT_URL, {
         method: 'POST',
+        redirect: 'follow',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
           action: 'getFaaliyetLog',

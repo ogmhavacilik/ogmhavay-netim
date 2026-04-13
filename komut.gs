@@ -798,7 +798,7 @@ function sendDailyReports() {
           
           // --- 3. DAMGALAMA ---
           // Mail başarıyla gittikten sonra hücreye bugünün tarihini yazıyoruz
-          mailSheet.getRange(i + 1, colLastSent + 1).setValue(todayStr);
+          mailSheet.getRange(i + 1, colLastSent + 1).setValue("'" + todayStr);
           
           // Sayfayı anlık olarak zorla güncelle (Flush), mükerrerliği %100 engeller
           SpreadsheetApp.flush();

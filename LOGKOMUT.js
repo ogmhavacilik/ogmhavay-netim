@@ -1671,7 +1671,7 @@ function sendDailyReports() {
           sendReportEmail(recipient, [], ss);
           
           // --- 3. DAMGALAMA ---
-          mailSheet.getRange(i + 1, lastSentIdx + 1).setValue(todayStr);
+          mailSheet.getRange(i + 1, lastSentIdx + 1).setValue("'" + todayStr);
           SpreadsheetApp.flush();
         }
       }
