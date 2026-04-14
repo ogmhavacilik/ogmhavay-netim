@@ -2,11 +2,11 @@
 import { PlatformType, Status, StatusType, Aircraft, AircraftActivity } from './types';
 
 export const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzAM6TW5q6t67ju-h0EEci55gTQOVj3l_ULsG1hnbinOtX49Ci8NK0n3CTEvAlrkF3P/exec";
-export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhzzLrkhBpMZUPjs7E4xfvuLBgKI2sAhxHLf5K2CZ6PYOg7iJbATZVP58MCpyhhKN21A/exec";
+export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwfjSchB5myQ1e4nWfYaTye0Bme4S3xixUvaVSKCaM9iGzNGPKppiidwQGaV7P3dIiSWw/exec";
 export const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbybdAQGepMMb7Hne2aZwfMH9ZJpbnXJuG2qTSPKO1knYCinFPQKN-5iNwquXAiSLk2i4w/exec"; 
 export const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrbIvbXLDJBC2_s9PeevqjIiIIWkDZ6kd2AoYG-4qnsFHatVT8AG9hVFb-3M_e-QJ8Gg/exec";
 export const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjm3OUnrM_Ki6fyVG_PqpqEkNtoc18fgf3lEPtZRtC-T2-e_ecyneHduXjfygoLjr5/exec";
-export const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxYQGJOMQ030c3oxkum9zo5UcHlLzPikildZ1CXyV9-vDJHkWLZP4EdvmwE6fFy2KwsXQ/exec";
+export const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzOBQtoPEsVIt_SPjv_JhnLwLHaaNjblCpYLPAJ4YB4J7_6X2NSYbDaKRfoCpkQ9LGoIg/exec";
 export const MAIL_LOG_SHEET_ID = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
 
 export const getCallSignByTail = (tail: string): string => {

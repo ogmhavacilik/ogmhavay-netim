@@ -33,7 +33,7 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   const isGayriFaalStatus = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('GF');
   const hasYillikBakim = detailUpper.includes('YILLIK') || desc.includes('yıllık') || desc.includes('yillik');
   
-  if (!hasYillikBakim && (detailUpper === 'TBU' || (isGayriFaalStatus && (
+  if (!hasYillikBakim && (detailUpper.includes('TBU') || (isGayriFaalStatus && (
     detailUpper.includes('SL') || 
     desc.includes('sl ') || desc.includes(' sl') || desc === 'sl' ||
     desc.includes('gereği') || desc.includes('geregi') || 
@@ -91,6 +91,11 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
     if (detail.includes('test uçuşu') || detail.includes('test/tecrübe') || fullText.includes('bekliyor') || fullText.includes('bekler') || fullText.includes('sıra')) {
       return { code: 'TB', interpretation: 'TECRÜBE BEKLER' };
     }
+  }
+
+  // TEKNİK BÜLTEN UYGULAMASI -> TBU
+  if (fullText.includes('tbu') || fullText.includes('teknik bülten') || fullText.includes('teknik bulten')) {
+    return { code: 'TBU', interpretation: 'TEKNİK BÜLTEN UYGULAMASI' };
   }
 
   // BAKIM BEKLER -> BB

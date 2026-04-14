@@ -1001,6 +1001,19 @@ function analyzeStatusGS(item) {
   // TECRÜBE BEKLER (TB)
   if (detailUpper.indexOf('TECRÜBE BEKLER') !== -1 || detailUpper.indexOf('TECRUBE BEKLER') !== -1 || detailUpper === 'TB') return 'TB';
   
+  // TEKNİK BÜLTEN UYGULAMASI (TBU)
+  var isGayriFaalStatus = durumStr.indexOf('GAYRİ') !== -1 || durumStr.indexOf('GAYRI') !== -1 || durumStr.indexOf('GF') !== -1;
+  var hasYillikBakim = detailUpper.indexOf('YILLIK') !== -1 || desc.indexOf('yıllık') !== -1 || desc.indexOf('yillik') !== -1;
+  
+  if (!hasYillikBakim && (detailUpper.indexOf('TBU') !== -1 || (isGayriFaalStatus && (
+    detailUpper.indexOf('SL') !== -1 || 
+    desc.indexOf('sl ') !== -1 || desc.indexOf(' sl') !== -1 || desc === 'sl' ||
+    desc.indexOf('gereği') !== -1 || desc.indexOf('geregi') !== -1 || 
+    desc.indexOf('uygulanan') !== -1 || desc.indexOf('teknik bülten') !== -1
+  )))) {
+    return 'TBU';
+  }
+  
   // KAZA KIRIM (KK)
   if (detailUpper.indexOf('KAZA KIRIM') !== -1 || detailUpper === 'KK') return 'KK';
   
@@ -1036,6 +1049,11 @@ function analyzeStatusGS(item) {
     if (detail.indexOf('test uçuşu') !== -1 || detail.indexOf('test/tecrübe') !== -1 || fullText.indexOf('bekliyor') !== -1 || fullText.indexOf('bekler') !== -1 || fullText.indexOf('sıra') !== -1) {
       return 'TB';
     }
+  }
+
+  // TEKNİK BÜLTEN UYGULAMASI -> TBU
+  if (fullText.indexOf('tbu') !== -1 || fullText.indexOf('teknik bülten') !== -1 || fullText.indexOf('teknik bulten') !== -1) {
+    return 'TBU';
   }
 
   // BAKIM BEKLER -> BB

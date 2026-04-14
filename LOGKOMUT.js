@@ -1409,7 +1409,7 @@ function analyzeStatusGS(item) {
   var isGayriFaal = toLowerTR(item.durum).indexOf("gayr") !== -1 || toLowerTR(item.durum).indexOf("gf") !== -1;
   var hasYillikBakim = detailUpper.indexOf("YILLIK") !== -1 || desc.indexOf("yıllık") !== -1 || desc.indexOf("yillik") !== -1;
   
-  if (!hasYillikBakim && (detailUpper === "TBU" || (isGayriFaal && (
+  if (!hasYillikBakim && (detailUpper.indexOf("TBU") !== -1 || (isGayriFaal && (
     detailUpper.indexOf("SL") !== -1 ||
     desc.indexOf("sl ") !== -1 || desc.indexOf(" sl") !== -1 || desc === "sl" ||
     desc.indexOf("gereği") !== -1 || desc.indexOf("geregi") !== -1 ||
@@ -1484,6 +1484,15 @@ function analyzeStatusGS(item) {
     ) {
       return "TB";
     }
+  }
+
+  // TEKNİK BÜLTEN UYGULAMASI -> TBU
+  if (
+    fullText.indexOf("tbu") !== -1 ||
+    fullText.indexOf("teknik bülten") !== -1 ||
+    fullText.indexOf("teknik bulten") !== -1
+  ) {
+    return "TBU";
   }
 
   // BAKIM BEKLER -> BB
