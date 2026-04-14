@@ -1384,12 +1384,9 @@ function analyzeStatusGS(item) {
     detail.indexOf("kabul mua") !== -1
   )
     return "KM";
-  if (
-    detail.indexOf("kaza") !== -1 ||
-    detail.indexOf("kırım") !== -1 ||
-    detail.indexOf("kirim") !== -1
-  )
+  if (detailUpper.indexOf("KAZA KIRIM") !== -1 || detailUpper === "KK") {
     return "KK";
+  }
   if (
     detail.indexOf("parça bekler") !== -1 ||
     detail.indexOf("parca bekler") !== -1 ||
@@ -1450,13 +1447,7 @@ function analyzeStatusGS(item) {
   }
 
   // KAZA KIRIM -> KK
-  if (
-    fullText.indexOf("kaza") !== -1 ||
-    fullText.indexOf("kırım") !== -1 ||
-    fullText.indexOf("kirim") !== -1 ||
-    fullText.indexOf("hasar") !== -1
-  )
-    return "KK";
+  // (Zaten yukarıda Durum Ayrıntısı için kontrol edildi, fallback olarak genel aramaya dahil etmiyoruz)
 
   // PARÇA BEKLER -> PB (Öncelikli)
   if (

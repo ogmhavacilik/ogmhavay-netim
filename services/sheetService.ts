@@ -76,11 +76,6 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
     return { code: 'KM', interpretation: 'KABUL MUAYENESİ' };
   }
 
-  // KAZA KIRIM -> KK
-  if (fullText.includes('kaza') || fullText.includes('kırım') || fullText.includes('kirim') || fullText.includes('hasar')) {
-    return { code: 'KK', interpretation: 'KAZA KIRIM' };
-  }
-
   // PARÇA BEKLER -> PB
   if (fullText.includes('parça') && (fullText.includes('bekle') || fullText.includes('sipariş') || fullText.includes('siparis'))) {
     return { code: 'PB', interpretation: 'PARÇA BEKLER' };

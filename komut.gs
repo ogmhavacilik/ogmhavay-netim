@@ -1038,9 +1038,6 @@ function analyzeStatusGS(item) {
   // KABUL MUAYENESİ -> KM
   if (fullText.indexOf('kabul muayene') !== -1 || fullText.indexOf('kabul mua') !== -1) return 'KM';
 
-  // KAZA KIRIM -> KK
-  if (fullText.indexOf('kaza') !== -1 || fullText.indexOf('kırım') !== -1 || fullText.indexOf('kirim') !== -1 || fullText.indexOf('hasar') !== -1) return 'KK';
-
   // PARÇA BEKLER -> PB
   if (fullText.indexOf('parça') !== -1 && (fullText.indexOf('bekle') !== -1 || fullText.indexOf('sipariş') !== -1 || fullText.indexOf('siparis') !== -1)) return 'PB';
 
