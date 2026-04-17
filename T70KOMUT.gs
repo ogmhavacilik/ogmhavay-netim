@@ -34,15 +34,17 @@ function doPost(e) {
       var values = range.getValues();
       var rowIndex = -1;
       
+      var searchKuyruk = String(kuyrukNo).trim().toUpperCase();
       for (var i = 0; i < values.length; i++) {
-        if (values[i][0] == kuyrukNo) {
+        var rowVal = String(values[i][0]).trim().toUpperCase();
+        if (rowVal == searchKuyruk) {
           rowIndex = i + 4; // 4. satırdan başladığı için
           break;
         }
       }
       
       if (rowIndex === -1) {
-        return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Kuyruk No bulunamadı: " + kuyrukNo }))
+        return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Kuyruk No bulunamadı: " + searchKuyruk }))
           .setMimeType(ContentService.MimeType.JSON);
       }
       
@@ -88,8 +90,44 @@ function doPost(e) {
       }
 
       if (updates.govdeUcusSaati !== undefined) setTimeValue(5, updates.govdeUcusSaati);
-      if (updates.bakimTakvimTarih !== undefined) sheet.getRange(rowIndex, 11).setValue(updates.bakimTakvimTarih);
-      if (updates.faydaliSaat !== undefined) setTimeValue(14, updates.faydaliSaat);
+      if (updates.bakim40H !== undefined) setTimeValue(8, updates.bakim40H);
+      if (updates.bakim120H !== undefined) setTimeValue(9, updates.bakim120H);
+      if (updates.bakim480H !== undefined) setTimeValue(10, updates.bakim480H);
+      
+      if (updates.bakimTakvimTarih !== undefined) {
+        var dateVal = updates.bakimTakvimTarih;
+        var cell = sheet.getRange(rowIndex, 11);
+        if (dateVal && dateVal !== "" && dateVal !== "-") {
+          var parts = String(dateVal).split(/[-./]/);
+          if (parts.length === 3) {
+            var day, month, year;
+            if (parts[0].length === 4) { // YYYY-MM-DD
+              year = parseInt(parts[0], 10);
+              month = parseInt(parts[1], 10) - 1;
+              day = parseInt(parts[2], 10);
+            } else { // DD-MM-YY or DD-MM-YYYY
+              day = parseInt(parts[0], 10);
+              month = parseInt(parts[1], 10) - 1;
+              var yStr = parts[2];
+              year = parseInt(yStr, 10);
+              if (yStr.length === 2) year += 2000;
+            }
+            
+            var d = new Date(year, month, day);
+            if (!isNaN(d.getTime())) {
+              cell.setValue(d);
+              cell.setNumberFormat("dd-MM-yy");
+            } else {
+              cell.setValue(dateVal);
+            }
+          } else {
+            cell.setValue(dateVal);
+          }
+        } else {
+          cell.setValue("");
+        }
+      }
+      
       if (updates.konum !== undefined) sheet.getRange(rowIndex, 16).setValue(updates.konum);
       if (updates.durum !== undefined) sheet.getRange(rowIndex, 17).setValue(updates.durum);
       if (updates.durumAyrintisi !== undefined) sheet.getRange(rowIndex, 18).setValue(updates.durumAyrintisi);

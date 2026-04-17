@@ -649,39 +649,64 @@ function doPost(e) {
       var newHours = params.newHours;
 
       var logSheet = findSheet(ss, "Envanter Log");
-      if (!logSheet) return jsonError("Envanter Log sayfası bulunamadı.");
+      if (!logSheet) {
+        logSheet = ss.insertSheet("Envanter Log");
+        logSheet.appendRow(["ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Açıklama"]);
+      }
 
       var data = logSheet.getDataRange().getValues();
-      var found = false;
+      var foundRowIndex = -1;
+      var tip = params.tip || "";
+      
       for (var i = 1; i < data.length; i++) {
-        // data[i][1] is Tarih, data[i][2] is Kuyruk No
         var rowDate = data[i][1];
         if (rowDate instanceof Date) {
-          rowDate = Utilities.formatDate(
-            rowDate,
-            ss.getSpreadsheetTimeZone(),
-            "dd.MM.yyyy",
-          );
+          rowDate = Utilities.formatDate(rowDate, ss.getSpreadsheetTimeZone(), "dd.MM.yyyy");
         }
-        if (
-          rowDate === date &&
-          String(data[i][2]).trim().toUpperCase() ===
-            String(kuyrukNo).trim().toUpperCase()
-        ) {
-          logSheet.getRange(i + 1, 5).setValue(newHours); // 5. sütun: Gövde Uçuş Saati
-          found = true;
-          // break; // Birden fazla kayıt varsa hepsini güncellesin mi? Genelde bir tane olur.
+        var rowKuyruk = String(data[i][2]).trim().toUpperCase();
+        var targetKuyruk = String(kuyrukNo).trim().toUpperCase();
+
+        // Match tail number to find tip if not provided
+        if (rowKuyruk === targetKuyruk && !tip) {
+          tip = data[i][3];
+        }
+
+        if (rowDate === date && rowKuyruk === targetKuyruk) {
+          foundRowIndex = i + 1;
         }
       }
-      if (found) return jsonSuccess("Geçmiş gün verisi güncellendi.");
-      else
-        return jsonError(
-          "Belirtilen tarih (" +
-            date +
-            ") ve kuyruk numarası (" +
-            kuyrukNo +
-            ") için kayıt bulunamadı.",
-        );
+
+      // If tip still not found, try to find it in the data one last time
+      if (!tip) {
+        for (var j = 1; j < data.length; j++) {
+           if (String(data[j][2]).trim().toUpperCase() === String(kuyrukNo).trim().toUpperCase()) {
+              tip = data[j][3];
+              break;
+           }
+        }
+      }
+
+      if (foundRowIndex > 0) {
+        setLogTimeValue(logSheet, foundRowIndex, 5, newHours, tip);
+        return jsonSuccess("Geçmiş gün verisi güncellendi (" + date + " - " + kuyrukNo + ")");
+      } else {
+        var id = date + "_" + kuyrukNo;
+        
+        logSheet.appendRow([
+          id,
+          date,
+          kuyrukNo,
+          tip,
+          "", // Temporary place for hours
+          0,
+          "",
+          "FAAL",
+          "-",
+          "GERİYE DÖNÜK GİRİŞ"
+        ]);
+        setLogTimeValue(logSheet, logSheet.getLastRow(), 5, newHours, tip);
+        return jsonSuccess("Yeni geriye dönük log kaydı oluşturuldu (" + date + " - " + kuyrukNo + ")");
+      }
     }
 
     if (action === "updateAircraftData") {
@@ -710,7 +735,7 @@ function doPost(e) {
         var techSheet = ss.getSheetByName(techSheetName);
         if (techSheet) {
           if (updates.acTT !== undefined)
-            techSheet.getRange("B11").setValue(updates.acTT);
+            setLogTimeValue(techSheet, 11, 2, updates.acTT, params.aircraftType);
           if (updates.landings !== undefined)
             techSheet.getRange("E11").setValue(updates.landings);
           if (updates.starts !== undefined)
@@ -767,7 +792,14 @@ function doPost(e) {
                   return;
                 }
                 
-                sheet.getRange(colLetter + rowIndex).setValue(valToSet);
+                // Saat bazlı alanları setLogTimeValue ile güvenli şekilde güncelle
+                var hourKeys = ["govdeUcusSaati", "acTT", "motor1UcusSaati", "motor2UcusSaati", "bakim200H", "bakim50H"];
+                if (hourKeys.indexOf(key) !== -1 && valToSet) {
+                   setLogTimeValue(sheet, rowIndex, sheet.getRange(colLetter + rowIndex).getColumn(), valToSet, params.aircraftType);
+                } else {
+                   sheet.getRange(colLetter + rowIndex).setValue(valToSet);
+                }
+                
                 Logger.log(
                   "Updated " +
                     key +
@@ -829,26 +861,37 @@ function doPost(e) {
       fleetData.forEach(function(data) {
         var kuyrukNo = data.kuyrukNo;
         var logId = dateStr + "_" + kuyrukNo;
-        var rowData = [
-          logId,
-          dateStr,
-          kuyrukNo,
-          data.tip,
-          data.govdeUcusSaati || 0,
-          data.faydaliSaat || 0,
-          data.konum,
-          data.durum,
-          data.durumAyrintisi,
-          data.aciklama ? "'" + String(data.aciklama) : ""
-        ];
         
-        if (idMap[logId]) {
-          logSheet.getRange(idMap[logId], 1, 1, 10).setValues([rowData]);
-          logSheet.getRange(idMap[logId], 10).setNumberFormat("@");
+        var targetRow = idMap[logId];
+        if (!targetRow) {
+          logSheet.appendRow([
+            logId, 
+            dateStr, 
+            kuyrukNo, 
+            data.tip, 
+            "", // Gövde Uçuş Saati (Placeholder)
+            data.faydaliSaat || 0,
+            data.konum,
+            data.durum,
+            data.durumAyrintisi,
+            data.aciklama ? "'" + String(data.aciklama) : ""
+          ]);
+          targetRow = logSheet.getLastRow();
         } else {
-          logSheet.appendRow(rowData);
-          logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");
+          logSheet.getRange(targetRow, 1, 1, 4).setValues([[logId, dateStr, kuyrukNo, data.tip]]);
+          logSheet.getRange(targetRow, 6, 1, 5).setValues([[
+            data.faydaliSaat || 0,
+            data.konum,
+            data.durum,
+            data.durumAyrintisi,
+            data.aciklama ? "'" + String(data.aciklama) : ""
+          ]]);
         }
+
+        // Gövde saatini tipine göre doğru formatta yaz
+        setLogTimeValue(logSheet, targetRow, 5, data.govdeUcusSaati, data.tip);
+        // Açıklama alanını metin formatında tut
+        logSheet.getRange(targetRow, 10).setNumberFormat("@");
       });
       
       return jsonSuccess("Filo logları başarıyla güncellendi.");
@@ -886,11 +929,11 @@ function doPost(e) {
       var foundLog = false;
       for (var i = 1; i < logData.length; i++) {
         if (String(logData[i][0]).trim() === id) {
+          setLogTimeValue(logSheet, i + 1, 5, data.govdeUcusSaati, data.tip);
           logSheet
-            .getRange(i + 1, 5, 1, 6)
+            .getRange(i + 1, 6, 1, 5)
             .setValues([
               [
-                data.govdeUcusSaati || 0,
                 data.faydaliSaat || 0,
                 data.konum,
                 data.durum,
@@ -910,13 +953,14 @@ function doPost(e) {
           dateStr,
           kuyrukNo,
           data.tip,
-          data.govdeUcusSaati || 0,
+          "", // Gövde Uçuş Saati (set below)
           data.faydaliSaat || 0,
           data.konum,
           data.durum,
           data.durumAyrintisi,
           data.aciklama ? "'" + String(data.aciklama) : "",
         ]);
+        setLogTimeValue(logSheet, logSheet.getLastRow(), 5, data.govdeUcusSaati, data.tip);
         // Yeni eklenen satırın açıklama hücresini metin yap
         logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");
       }
@@ -1838,7 +1882,7 @@ function getFleetDataFromServer() {
       id: "10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw",
       mapping: {
         kuyrukNo: "A4:A6",
-        faydaliSaat: "N4:N6",
+        faydaliSaat: "L4:O6", // Includes 40H, 120H, 480H remainders (L, N, O columns)
         konum: "P4:P6",
         durum: "Q4:Q6",
         durumAyrintisi: "R4:R6",
@@ -1913,16 +1957,31 @@ function getFleetDataFromServer() {
               Array.isArray(data[key][i]) &&
               data[key][i].length > 1
             ) {
-              // AT-802 range handling
-              var validHours = data[key][i]
+              // Special handling for T-70 and AT-802 cross-cell remainders
+              var cellsToProcess = data[key][i];
+              
+              // T-70 uses columns L (0), N (2), O (3). M (1) is skipped.
+              if (config.type === "T-70") {
+                cellsToProcess = [cellsToProcess[0], cellsToProcess[2], cellsToProcess[3]];
+              }
+
+              var zeroFound = false;
+              var validHours = cellsToProcess
                 .map(function (cell) {
-                  return parseSingleCellToHour(cell, config.type);
+                  var h = parseSingleCellToHour(cell, config.type);
+                  if (h === 0) zeroFound = true;
+                  return h;
                 })
                 .filter(function (h) {
                   return h !== null;
                 });
-              item[key] =
-                validHours.length > 0 ? Math.min.apply(null, validHours) : 0;
+              
+              if (config.type === "T-70" && zeroFound) {
+                item[key] = 0; // If any maintenance is 0:00, the available flight hours are 0
+              } else {
+                item[key] =
+                  validHours.length > 0 ? Math.min.apply(null, validHours) : 0;
+              }
             } else {
               var val = data[key][i];
               item[key] = val.length === 1 ? val[0] : val;
@@ -2039,7 +2098,8 @@ function generateEnvanterExcelBlob() {
       !String(a.durum).toUpperCase().includes("GAYRİ") &&
       !String(a.durum).toUpperCase().includes("GAYRI");
     var durumClass = isFaal ? "faal" : "gayrifaal";
-    var faydali = a.tip === "T-70" ? (a.bakimKalanSaat || "-") : formatToHHMM(a.faydaliSaat);
+    var faydaliVal = a.faydaliSaat;
+    var faydali = (faydaliVal === 0 || faydaliVal === "0" || faydaliVal === "0:00" || faydaliVal === "00:00") ? "-" : formatToHHMM(faydaliVal);
     var aciklama = (a.aciklama || "").replace(/\n/g, "<br>");
 
     var durumText = a.durum || "";
@@ -2115,4 +2175,77 @@ function getMailRecipientsGS(ss) {
 
 function doGet() {
   return ContentService.createTextOutput("OGM Servis Aktif.");
+}
+
+function setLogTimeValue(sheet, row, col, value, tip) {
+  var range = sheet.getRange(row, col);
+  if (value === null || value === undefined || value === "") {
+    range.setValue("");
+    return;
+  }
+  var valStr = String(value).trim();
+  var tipUpper = (tip || "").toUpperCase();
+  
+  // B-360, C-650, BELL-429 için ondalık saat desteği
+  var isDecimalType = tipUpper.indexOf("B-360") !== -1 || 
+                      tipUpper.indexOf("C-650") !== -1 || 
+                      tipUpper.indexOf("C-3650") !== -1 || 
+                      tipUpper.indexOf("BELL-429") !== -1;
+
+  if (isDecimalType) {
+    var n = parseFloat(valStr.replace(',', '.'));
+    if (!isNaN(n)) {
+      range.setValue(n);
+      range.setNumberFormat("#,##0.0");
+      return;
+    }
+  }
+
+  if (/^\d+$/.test(valStr)) {
+    valStr = valStr + ':00';
+  } else if (/^\d+[.,]\d+$/.test(valStr)) {
+    valStr = valStr.replace(/[.,]/, ':');
+    if (!valStr.includes(':') || valStr.split(':')[1].length === 1) {
+       // If it was 1732.5 -> 1732:5, we might want 1732:30 or similar? 
+       // But usually in this sheet, 1732,5 means 1732 hours 30 mins if decimal, 
+       // OR it's just a decimal number.
+       // The original setLogTimeValue tries to convert HH:MM to decimal for Excel.
+    }
+  }
+
+  // If it's pure decimal now (e.g. "1732:5" or "1732:30")
+  if (/^\d+[:]\d+$/.test(valStr)) {
+    var parts = valStr.split(':');
+    var hours = parseInt(parts[0], 10);
+    var mins = parseInt(parts[1], 10);
+    // If mins is single digit like "5", we should treat it as 5 mins or 50 mins? 
+    // In many aviation logs, .5 is 30 mins. 
+    // But if they typed 1732:5, usually they mean 1732:05 or 1732:50.
+    // Let's stick to standard parsing.
+    if (parts[1].length === 1 && parseInt(parts[1]) < 6) {
+       // If it came from a decimal like 1732.5, it should be 1732.5 * 24 or similar?
+       // Actually, the easiest is to just let setValue handle the number if it's a number.
+    }
+  }
+
+  if (/^\d+:\d{2}(:\d{2})?$/.test(valStr) || (/^\d+:\d{1}$/.test(valStr))) {
+    var parts = valStr.split(':');
+    var hours = parseInt(parts[0], 10);
+    var mins = parseInt(parts[1], 10);
+    if (parts[1].length === 1) mins = mins * 10; // "1732:5" -> 1732:50 (common for decimal input)
+    
+    var secs = parts.length > 2 ? parseInt(parts[2], 10) : 0;
+    var decimalValue = (hours + (mins / 60) + (secs / 3600)) / 24;
+    range.setValue(decimalValue);
+    range.setNumberFormat("[h]:mm");
+  } else {
+    // If it's a pure number or something else, handle it.
+    var n = parseFloat(String(value).replace(',', '.'));
+    if (!isNaN(n)) {
+      range.setValue(n / 24);
+      range.setNumberFormat("[h]:mm");
+    } else {
+      range.setValue(value);
+    }
+  }
 }

@@ -58,6 +58,71 @@ const formatForDateInput = (val: string | undefined | null) => {
   return cleanVal;
 };
 
+const formatDateForSheet = (val: string | undefined | null) => {
+  if (!val || !val.includes('-')) return val || '';
+  const parts = val.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  }
+  return val;
+};
+
+const formatT70DateForSheet = (val: string | undefined | null) => {
+  if (!val) return '';
+  const s = val.trim();
+  // Convert any format (. or / or -) to -
+  const clean = s.replace(/[\.\/]/g, '-');
+  const parts = clean.split('-');
+  
+  if (parts.length === 3) {
+    let day, month, year;
+    
+    if (parts[0].length === 4) { // YYYY-MM-DD
+      year = parts[0];
+      month = parts[1];
+      day = parts[2];
+    } else { // DD-MM-YY or DD-MM-YYYY
+      day = parts[0];
+      month = parts[1];
+      year = parts[2];
+    }
+    
+    const dayStr = day.padStart(2, '0');
+    const monthStr = month.padStart(2, '0');
+    const shortYear = year.length === 4 ? year.slice(-2) : year.padStart(2, '0');
+    return `${dayStr}-${monthStr}-${shortYear}`;
+  }
+  return clean;
+};
+
+const formatT70DateForDisplay = (val: string | undefined | null) => {
+  if (!val || val === '-') return '';
+  const s = val.trim();
+  
+  // If it's already in GG-AA-YY
+  if (/^\d{2}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // If it's DD.MM.YYYY
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) {
+    const parts = s.split('.');
+    return `${parts[0]}-${parts[1]}-${parts[2].slice(-2)}`;
+  }
+
+  // If it's YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const parts = s.split('-');
+    return `${parts[2]}-${parts[1]}-${parts[0].slice(-2)}`;
+  }
+
+  // If it's DD/MM/YYYY
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+    const parts = s.split('/');
+    return `${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[2].slice(-2)}`;
+  }
+  
+  return s;
+};
+
 const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onBack, onSuccess, onSaveIntraDay }) => {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [password, setPassword] = useState('');
@@ -179,7 +244,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         bakim480H: aircraft.bakim480H && aircraft.bakim480H !== '-' ? aircraft.bakim480H : '',
         bakim200H: aircraft.bakim200H && aircraft.bakim200H !== '-' ? aircraft.bakim200H : '',
         landings: aircraft.landings && aircraft.landings !== '-' ? aircraft.landings : '',
-        bakimTakvimTarih: formatForDateInput(aircraft.bakimTakvimTarih),
+        bakimTakvimTarih: selectedType === 'T-70' ? formatT70DateForDisplay(aircraft.bakimTakvimTarih) : formatForDateInput(aircraft.bakimTakvimTarih),
         faydaliSaat: aircraft.faydaliSaat !== null ? aircraft.faydaliSaat.toString() : '',
         konum: aircraft.konum && aircraft.konum !== '-' ? aircraft.konum : '',
         durum: aircraft.durum || '',
@@ -231,15 +296,15 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     e.preventDefault();
     if (!selectedAircraft) return;
 
+    const today = new Date().toISOString().split('T')[0];
+    const isPastDate = formData.islemTarihi < today;
+
     setIsSubmitting(true);
     setMessage(null);
 
     let finalData: Record<string, any>;
     
     if (selectedAircraft.tip === 'AT-802') {
-      // AT-802 için SADECE izin verilen alanları gönderiyoruz.
-      // Teknik veriler (acTT, landings vb.) değiştirilebilir çünkü bunlar uçak özel sayfasındadır.
-      // Günlük durum sayfasındaki formüllü alanlar (Gövde Saati, Faydalı Saat) gönderilmez.
       finalData = {
         acTT: at802Data.acTT,
         landings: at802Data.landings,
@@ -255,48 +320,72 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         intraDayEndTime: formData.intraDayEndTime,
         islemTarihi: formData.islemTarihi
       };
-      
-      // Boş alanları temizle
-      Object.keys(finalData).forEach(key => {
-        if (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined) {
-          delete finalData[key];
-        }
-      });
-    } else {
-      finalData = { ...formData };
-      
-      // B-360 ve C-650 için boş verilerin gönderilmesini engelle
-      if (selectedAircraft.tip === 'B-360' || selectedAircraft.tip === 'C-650') {
+
+      if (isPastDate) {
+        // Geçmiş tarihli seçildiğinde tüm hava araçlarında gövde saati sadece değiştirebilirler
+        finalData = { acTT: at802Data.acTT, islemTarihi: formData.islemTarihi };
+      } else {
+        // Boş alanları temizle (Sadece güncel tarih için)
         Object.keys(finalData).forEach(key => {
-          if (key !== 'aciklama' && (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined)) {
+          if (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined) {
             delete finalData[key];
           }
         });
       }
-
-      if (selectedAircraft.tip === 'Bell-429') {
-        if (finalData.govdeUcusSaati) {
+    } else {
+      if (isPastDate) {
+        // Geçmiş tarihli seçildiğinde tüm hava araçlarında gövde saati sadece değiştirebilirler
+        finalData = { govdeUcusSaati: formData.govdeUcusSaati, islemTarihi: formData.islemTarihi };
+        
+        const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
+        if (decimalTypes.includes(selectedAircraft.tip) && finalData.govdeUcusSaati) {
           finalData.govdeUcusSaati = finalData.govdeUcusSaati.replace(':', ',').replace('.', ',');
         }
-        if (finalData.bakim50H) {
-          finalData.bakim50H = finalData.bakim50H.replace(':', ',').replace('.', ',');
+      } else {
+        finalData = { ...formData };
+        
+        // Tarih Formatlama (DD.MM.YYYY veya T-70 için GG-AA-YY)
+        if (finalData.bakimTakvimTarih) {
+          if (selectedAircraft.tip === 'T-70') {
+            finalData.bakimTakvimTarih = formatT70DateForSheet(finalData.bakimTakvimTarih);
+          } else {
+            finalData.bakimTakvimTarih = formatDateForSheet(finalData.bakimTakvimTarih);
+          }
         }
-      }
+        if (finalData.bakimTakvim) {
+          if (selectedAircraft.tip === 'T-70') {
+            finalData.bakimTakvim = formatT70DateForSheet(finalData.bakimTakvim);
+          } else {
+            finalData.bakimTakvim = formatDateForSheet(finalData.bakimTakvim);
+          }
+        }
 
-      if (selectedAircraft.tip === 'T-70') {
-        delete finalData.bakim40H;
-        delete finalData.bakim120H;
-        delete finalData.bakim480H;
-        delete finalData.bakimTakvimTarih;
+        // B-360 ve C-650 için boş verilerin gönderilmesini engelle
+        const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
+        if (decimalTypes.includes(selectedAircraft.tip)) {
+          if (selectedAircraft.tip !== 'Bell-429') { // Already handled or shared logic
+            Object.keys(finalData).forEach(key => {
+              if (key !== 'aciklama' && (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined)) {
+                delete finalData[key];
+              }
+            });
+          }
+          
+          if (finalData.govdeUcusSaati) {
+            finalData.govdeUcusSaati = finalData.govdeUcusSaati.replace(':', ',').replace('.', ',');
+          }
+          
+          // Bell-429 specific other decimal fields
+          if (selectedAircraft.tip === 'Bell-429' && finalData.bakim50H) {
+            finalData.bakim50H = finalData.bakim50H.replace(':', ',').replace('.', ',');
+          }
+        }
       }
     }
 
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const isPastDate = formData.islemTarihi < today;
-
-      // 1. GÜN İÇİ FAALİYET KAYDI (Hem güncel hem geçmiş tarih için geçerli)
-      if (onSaveIntraDay && (formData.intraDayStartTime || formData.intraDayEndTime)) {
+      // 1. GÜN İÇİ FAALİYET KAYDI (Sadece güncel tarih için geçerli)
+      if (!isPastDate && onSaveIntraDay && (formData.intraDayStartTime || formData.intraDayEndTime)) {
         // If changing to FAAL, the time logged is for the PREVIOUS status (GAYRI_FAAL)
         const statusToAnalyze = formData.durum === Status.FAAL ? {
           durum: selectedAircraft.durum,
@@ -327,50 +416,13 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         }
       }
 
-      if (isPastDate) {
-        // 2. GEÇMİŞ TARİHLİ GÜNCELLEME: Sadece Gövde Uçuş Saati güncellenir (Envanter Log)
-        const pastHours = finalData.govdeUcusSaati || finalData.acTT;
-        if (pastHours) {
-          const dateParts = formData.islemTarihi.split('-');
-          const formattedDate = `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}`;
-          
-          const result = await updatePastEnvanterLog(
-            LOG_SCRIPT_URL,
-            MAIL_LOG_SHEET_ID,
-            selectedAircraft.kuyrukNo,
-            formattedDate,
-            pastHours
-          );
-
-          if (result.success) {
-            setMessage({ type: 'success', text: 'Geçmiş tarihli Gövde Uçuş Saati başarıyla güncellendi.' });
-            setTimeout(() => {
-              onSuccess(selectedAircraft.tip);
-            }, 1500);
-          } else {
-            setMessage({ type: 'error', text: result.message || 'Geçmiş gün güncellemesi başarısız.' });
-          }
-        } else {
-          // Eğer saat girilmemişse ama gün içi faaliyet kaydedilmişse başarılı sayılabilir
-          if (formData.intraDayStartTime || formData.intraDayEndTime) {
-            setMessage({ type: 'success', text: 'Gün içi faaliyet başarıyla kaydedildi.' });
-            setTimeout(() => {
-              onSuccess(selectedAircraft.tip);
-            }, 1500);
-          } else {
-            setMessage({ type: 'error', text: 'Geçmiş tarihli güncelleme için Gövde Uçuş Saati girmelisiniz.' });
-          }
-        }
-        return; // Geçmiş tarih ise burada bitir
-      }
-
-      // 3. GÜNCEL TARİH (BUGÜN): Mevcut düzen devam eder
-      
-      // Format date to dd.MM.yyyy
+      // Date formatting for Google Sheets Apps Script (dd.MM.yyyy)
       const dateParts = formData.islemTarihi.split('-');
       const formattedDate = `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}`;
 
-      const result = await updateAircraftData(
+      // 2. ANA DOSYA GÜNCELLEME (HER ZAMAN)
+      // Kullanıcı isteği: İşlem tarihi ne olursa olsun ilgili hava aracının dosyasında güncelleme yapılır.
+      const mainUpdateResult = await updateAircraftData(
         selectedAircraft.appsScriptUrl || '',
         selectedAircraft.sheetId || '',
         selectedAircraft.kuyrukNo,
@@ -380,8 +432,49 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         selectedAircraft.tip
       );
 
-      if (result.success) {
-        // Envanter Log ve Faaliyet Log'a aynı anda gönder
+      if (!mainUpdateResult.success) {
+        setMessage({ type: 'error', text: mainUpdateResult.message || 'Hava aracı dosyası güncellenirken hata oluştu.' });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // 3. LOG GÜNCELLEME (TARİHE GÖRE DEĞİŞİR)
+      if (isPastDate) {
+        // GEÇMİŞ TARİH: Envanter Log'da ilgili tarih bulunur ve sadece Gövde Saati değişir.
+        const pastHours = finalData.govdeUcusSaati || finalData.acTT;
+        if (pastHours) {
+          const pastLogResult = await updatePastEnvanterLog(
+            LOG_SCRIPT_URL,
+            MAIL_LOG_SHEET_ID,
+            selectedAircraft.kuyrukNo,
+            formattedDate,
+            pastHours,
+            selectedAircraft.tip
+          );
+
+          if (pastLogResult.success) {
+            // YENİ: Ayrıca BUGÜNÜN kaydını da güncelle (User request)
+            const today = new Date();
+            const formattedToday = `${today.getDate().toString().padStart(2, '0')}.${(today.getMonth() + 1).toString().padStart(2, '0')}.${today.getFullYear()}`;
+            
+            await updatePastEnvanterLog(
+              LOG_SCRIPT_URL,
+              MAIL_LOG_SHEET_ID,
+              selectedAircraft.kuyrukNo,
+              formattedToday,
+              pastHours,
+              selectedAircraft.tip
+            );
+
+            setMessage({ type: 'success', text: 'Hava aracı dosyası, geçmiş envanter logu ve güncel log başarıyla güncellendi.' });
+          } else {
+            setMessage({ type: 'warning', text: 'Hava aracı dosyası güncellendi ancak geçmiş log güncellenemedi: ' + pastLogResult.message });
+          }
+        } else {
+          setMessage({ type: 'success', text: 'Hava aracı dosyası güncellendi (Log için saat girilmedi).' });
+        }
+      } else {
+        // GÜNCEL TARİH (BUGÜN): Mevcut merkezi loglama tetiklenir
         try {
           const statusToAnalyze = {
             durum: formData.durum,
@@ -400,7 +493,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                 date: formattedDate,
                 kuyrukNo: selectedAircraft.kuyrukNo,
                 tip: selectedAircraft.tip,
-                govdeUcusSaati: finalData.acTT || selectedAircraft.govdeUcusSaati || 0,
+                govdeUcusSaati: finalData.govdeUcusSaati || finalData.acTT || selectedAircraft.govdeUcusSaati || 0,
                 faydaliSaat: finalData.faydaliSaat || selectedAircraft.faydaliSaat || 0,
                 konum: formData.konum,
                 durum: formData.durum,
@@ -410,17 +503,17 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
               }
             })
           });
+          setMessage({ type: 'success', text: 'Veriler ve merkezi log başarıyla güncellendi.' });
         } catch (logError) {
           console.error("Merkezi log güncellenirken hata oluştu:", logError);
+          setMessage({ type: 'warning', text: 'Hava aracı dosyası güncellendi ancak merkezi log yapılamadı.' });
         }
-
-        setMessage({ type: 'success', text: 'Veriler başarıyla güncellendi.' });
-        setTimeout(() => {
-          onSuccess(selectedAircraft.tip);
-        }, 1500);
-      } else {
-        setMessage({ type: 'error', text: result.message || 'Güncelleme sırasında bir hata oluştu.' });
       }
+
+      setTimeout(() => {
+        onSuccess(selectedAircraft.tip);
+      }, 1500);
+
     } catch (error) {
       setMessage({ type: 'error', text: 'Bağlantı hatası oluştu.' });
     } finally {
@@ -432,20 +525,41 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
   const isT70 = selectedAircraft?.tip === 'T-70';
   const isB360OrC650 = selectedAircraft?.tip === 'B-360' || selectedAircraft?.tip === 'C-650';
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayObj = new Date();
+  const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`;
   const isPastDate = formData.islemTarihi !== todayStr && formData.islemTarihi < todayStr;
   const disabledClass = isPastDate ? " opacity-50 cursor-not-allowed" : "";
 
   useEffect(() => {
     if (selectedKuyruk) {
-      if (isPastDate && envanterLog) {
-        const dateParts = formData.islemTarihi.split('-');
-        const formattedDate = `${dateParts[0]}-${dateParts[1]}-${dateParts[2]}`; // yyyy-MM-dd
+      if (isPastDate) {
+        if (!envanterLog || envanterLog.length === 0) return;
         
-        const logEntry = envanterLog.find(log => 
-          log.kuyrukNo === selectedKuyruk && 
-          log.tarih === formattedDate
-        );
+        // Use the same normalization logic as App.tsx to ensure match
+        const searchDate = formData.islemTarihi; // yyyy-MM-dd
+        const searchKuyruk = selectedKuyruk.trim().toUpperCase();
+        
+        // Öncelikle seçili tarihteki kaydı bul
+        let logEntry = envanterLog.find(log => {
+          const logKuyruk = String(log.kuyrukNo || "").trim().toUpperCase();
+          const logTarih = String(log.tarih || "").trim();
+          return logKuyruk === searchKuyruk && logTarih === searchDate;
+        });
+
+        // Eğer o tarihte kayıt yoksa, O TARİHTEN ÖNCEKİ en güncel kaydı bul
+        if (!logEntry) {
+          const pastLogs = envanterLog
+            .filter(log => {
+               const logKuyruk = String(log.kuyrukNo || "").trim().toUpperCase();
+               const logTarih = String(log.tarih || "").trim();
+               return logKuyruk === searchKuyruk && logTarih < searchDate;
+            })
+            .sort((a, b) => String(b.tarih).localeCompare(String(a.tarih)));
+          
+          if (pastLogs.length > 0) {
+            logEntry = pastLogs[0];
+          }
+        }
         
         if (logEntry) {
           const hours = logEntry.govdeUcusSaati ? formatGovdeHour(logEntry.govdeUcusSaati, selectedAircraft.tip) : '';
@@ -462,11 +576,12 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
             setAt802Data(prev => ({
               ...prev,
               acTT: hours || prev.acTT,
-              landings: logEntry.landings ? String(logEntry.landings).replace('.', ',') : prev.landings,
-              starts: logEntry.engineStarts ? String(logEntry.engineStarts).replace('.', ',') : prev.starts,
-              flights: logEntry.engineFlights ? String(logEntry.engineFlights).replace('.', ',') : prev.flights,
-              frdsTest: formatForDateInput(logEntry.frdsTestDate),
-              motorCalisma: formatForDateInput(logEntry.motorRunDate),
+              // Keep today's values for these if not in log (Envanter Log doesn't have them)
+              landings: prev.landings,
+              starts: prev.starts,
+              flights: prev.flights,
+              frdsTest: prev.frdsTest,
+              motorCalisma: prev.motorCalisma,
             }));
           }
         }
@@ -481,7 +596,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           bakim40H: selectedAircraft.bakim40H ? String(selectedAircraft.bakim40H).replace('.', ',') : '',
           bakim120H: selectedAircraft.bakim120H ? String(selectedAircraft.bakim120H).replace('.', ',') : '',
           bakim480H: selectedAircraft.bakim480H ? String(selectedAircraft.bakim480H).replace('.', ',') : '',
-          bakimTakvimTarih: formatForDateInput(selectedAircraft.bakimTakvimTarih),
+          bakimTakvimTarih: selectedAircraft.tip === 'T-70' ? formatT70DateForDisplay(selectedAircraft.bakimTakvimTarih) : formatForDateInput(selectedAircraft.bakimTakvimTarih),
           faydaliSaat: selectedAircraft.faydaliSaat ? String(selectedAircraft.faydaliSaat).replace('.', ',') : '',
           bakim200H: selectedAircraft.bakim200H ? String(selectedAircraft.bakim200H).replace('.', ',') : '',
           landings: selectedAircraft.landings || '',
@@ -590,22 +705,22 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GÖVDE UÇUŞ SAATİ</label>
                         <input type="text" placeholder="YENİ (00:00)" value={formData.govdeUcusSaati} onChange={(e) => handleInputChange('govdeUcusSaati', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
-                      <div className="space-y-2">
+                      <div className={`space-y-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">SAAT ESASLI BAKIM (50H)</label>
                         <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim50H} onChange={(e) => handleInputChange('bakim50H', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                       </div>
-                      <div className="space-y-2 md:col-span-2">
+                      <div className={`space-y-2 md:col-span-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">TAKVİM ESASLI BAKIM (TARİH)</label>
                         <input disabled={isPastDate} type="date" value={formData.bakimTakvim} onChange={(e) => handleInputChange('bakimTakvim', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                       </div>
                     </div>
                     <div className="h-px bg-white/10 w-full"></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                      <div className="space-y-2">
+                      <div className={`space-y-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">HELİKOPTER GÖREV YERİ</label>
                         <input disabled={isPastDate} type="text" placeholder="YENİ KONUM" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                       </div>
-                      <div className="space-y-2">
+                      <div className={`space-y-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">HELİKOPTER DURUMU</label>
                         <select disabled={isPastDate} value={formData.durum} onChange={(e) => { 
                           const val = e.target.value;
@@ -671,19 +786,35 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                   </form>
                 ) : isT70 ? (
                   <form onSubmit={handleSubmit} className="space-y-8 md:space-y-10">
-                    <div className="grid grid-cols-1 gap-6 md:gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                       <div className="space-y-2">
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GÖVDE UÇUŞ SAATİ</label>
                         <input type="text" placeholder="YENİ (00:00)" value={formData.govdeUcusSaati} onChange={(e) => handleInputChange('govdeUcusSaati', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
+                      <div className={`space-y-2${disabledClass}`}>
+                        <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">SAAT ESASLI BAKIM (40 SAAT)</label>
+                        <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim40H} onChange={(e) => handleInputChange('bakim40H', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
+                      </div>
+                      <div className={`space-y-2${disabledClass}`}>
+                        <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">SAAT ESASLI BAKIM (120 SAAT)</label>
+                        <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim120H} onChange={(e) => handleInputChange('bakim120H', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
+                      </div>
+                      <div className={`space-y-2${disabledClass}`}>
+                        <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">SAAT ESASLI BAKIM (480 SAAT)</label>
+                        <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim480H} onChange={(e) => handleInputChange('bakim480H', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
+                      </div>
+                      <div className={`space-y-2${disabledClass}`}>
+                        <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">TAKVİM ESASLI BAKIM ZAMANI (TARİH)</label>
+                        <input disabled={isPastDate} type="text" placeholder="GG-AA-YY" value={formData.bakimTakvimTarih} onChange={(e) => handleInputChange('bakimTakvimTarih', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
+                      </div>
                     </div>
                     <div className="h-px bg-white/10 w-full"></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                      <div className="space-y-2">
+                      <div className={`space-y-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">KONUM</label>
                         <input disabled={isPastDate} type="text" placeholder="YENİ KONUM" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                       </div>
-                      <div className="space-y-2">
+                      <div className={`space-y-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUMU</label>
                         <select disabled={isPastDate} value={formData.durum} onChange={(e) => { 
                           const val = e.target.value;
@@ -754,26 +885,26 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GÖVDE UÇUŞ SAATİ</label>
                         <input type="text" placeholder="YENİ (00:00)" value={formData.govdeUcusSaati} onChange={(e) => handleInputChange('govdeUcusSaati', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                       </div>
-                      <div className="space-y-2">
+                      <div className={`space-y-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">LANDING</label>
                         <input disabled={isPastDate} type="text" placeholder="YENİ DEĞER" value={formData.landings} onChange={(e) => handleInputChange('landings', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                       </div>
-                      <div className="space-y-2">
+                      <div className={`space-y-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">SAAT ESASLI BAKIM ZAMANI (200 SAAT)</label>
                         <input disabled={isPastDate} type="text" placeholder="YENİ SAAT" value={formData.bakim200H} onChange={(e) => handleInputChange('bakim200H', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                       </div>
-                      <div className="space-y-2">
+                      <div className={`space-y-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">TAKVİM ESASLI BAKIM TARİHİ</label>
                         <input disabled={isPastDate} type="date" value={formData.bakimTakvimTarih} onChange={(e) => handleInputChange('bakimTakvimTarih', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                       </div>
                     </div>
                     <div className="h-px bg-white/10 w-full"></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                      <div className="space-y-2">
+                      <div className={`space-y-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">KONUM</label>
                         <input disabled={isPastDate} type="text" placeholder="YENİ KONUM" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                       </div>
-                      <div className="space-y-2">
+                      <div className={`space-y-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUMU</label>
                         <select disabled={isPastDate} value={formData.durum} onChange={(e) => { 
                           const val = e.target.value;
@@ -853,24 +984,24 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">AC TT</label>
-                                  <input type="text" value={at802Data.acTT} onChange={e => setAt802Data({...at802Data, acTT: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                  <input type="text" placeholder="Gövde Saati" value={at802Data.acTT} onChange={e => setAt802Data({...at802Data, acTT: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                 </div>
-                                <div className="space-y-2">
+                                <div className={`space-y-2${disabledClass}`}>
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">LANDINGS</label>
-                                  <input type="text" value={at802Data.landings} onChange={e => setAt802Data({...at802Data, landings: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                  <input disabled={isPastDate} type="text" value={at802Data.landings} onChange={e => setAt802Data({...at802Data, landings: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                 </div>
-                                <div className="space-y-2">
+                                <div className={`space-y-2${disabledClass}`}>
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">ENGINE STARTS</label>
-                                  <input type="text" value={at802Data.starts} onChange={e => setAt802Data({...at802Data, starts: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                  <input disabled={isPastDate} type="text" value={at802Data.starts} onChange={e => setAt802Data({...at802Data, starts: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                 </div>
-                                <div className="space-y-2">
+                                <div className={`space-y-2${disabledClass}`}>
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">ENGINE FLIGHTS</label>
-                                  <input type="text" value={at802Data.flights} onChange={e => setAt802Data({...at802Data, flights: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                  <input disabled={isPastDate} type="text" value={at802Data.flights} onChange={e => setAt802Data({...at802Data, flights: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                 </div>
                               </div>
                             </div>
 
-                            <div className="space-y-6 bg-white/5 p-6 rounded-2xl border border-white/10">
+                            <div className={`space-y-6 bg-white/5 p-6 rounded-2xl border border-white/10${disabledClass}`}>
                               <h4 className="text-white font-black tracking-widest border-b border-white/10 pb-2">TEST VE ÇALIŞMALAR</h4>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
@@ -885,7 +1016,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                                     </div>
                                   )}
                                 </div>
-                                <div className="space-y-2">
+                                <div className={`space-y-2${disabledClass}`}>
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">MOTOR ÇALIŞMASI YAPILDIĞI TARİH</label>
                                   <input disabled={isPastDate} type="date" value={at802Data.motorCalisma} onChange={e => setAt802Data({...at802Data, motorCalisma: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                   {at802Data.motorCalisma && (
@@ -910,11 +1041,11 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                       <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                         <h3 className="text-xl font-black text-emerald-500 uppercase tracking-widest mb-6">ADIM 2: GÜNLÜK DURUM</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                          <div className="space-y-4">
+                          <div className={`space-y-4${disabledClass}`}>
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">HELİKOPTER GÖREV YERİ / KONUM</label>
-                            <input disabled={isPastDate} type="text" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                            <input disabled={isPastDate} type="text" value={formData.konum} onChange={(e) => handleInputChange('konum', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                           </div>
-                          <div className="space-y-4">
+                          <div className={`space-y-4${disabledClass}`}>
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">DURUMU</label>
                             <select disabled={isPastDate} value={formData.durum} onChange={(e) => { 
                               const val = e.target.value;
@@ -931,20 +1062,20 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                                   handleInputChange('intraDayStartTime', timeStr);
                                 }
                               }
-                            }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
+                            }} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`}>
                               <option value={Status.FAAL}>{Status.FAAL}</option>
                               <option value={Status.GAYRI_FAAL}>{Status.GAYRI_FAAL}</option>
                             </select>
                           </div>
                           {formData.durum === Status.GAYRI_FAAL && (
                             <>
-                              <div className="space-y-4 md:col-span-2">
+                              <div className={`space-y-4 md:col-span-2${disabledClass}`}>
                                 <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">GAYRI FAAL BAŞLANGIÇ SAATİ</label>
-                                <input type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                <input disabled={isPastDate} type="time" value={formData.intraDayStartTime} onChange={(e) => handleInputChange('intraDayStartTime', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                               </div>
-                              <div className="space-y-4 md:col-span-2">
+                              <div className={`space-y-4 md:col-span-2${disabledClass}`}>
                                 <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">G.FAAL SEBEBİ / DURUM AYRINTISI</label>
-                                <input disabled={isPastDate} type="text" list="status-details" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                <input disabled={isPastDate} type="text" list="status-details" placeholder="YENİ AYRINTI" value={formData.durumAyrintisi} onChange={(e) => handleInputChange('durumAyrintisi', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                                 <datalist id="status-details">
                                   <option value="BAKIM">BAKIM</option>
                                   <option value="BAKIM BEKLER">BAKIM BEKLER</option>
@@ -961,10 +1092,10 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                           {formData.durum === Status.FAAL && selectedAircraft.durum === Status.GAYRI_FAAL && (
                             <div className="space-y-4 md:col-span-2">
                               <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FAAL OLDUĞU SAAT</label>
-                              <input type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                              <input disabled={isPastDate} type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                             </div>
                           )}
-                          <div className="space-y-4 md:col-span-2">
+                          <div className={`space-y-4 md:col-span-2${disabledClass}`}>
                             <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">AÇIKLAMA</label>
                             <textarea disabled={isPastDate} rows={4} value={formData.aciklama} onChange={(e) => handleInputChange('aciklama', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-2xl px-4 md:px-6 py-4 font-bold focus:border-emerald-500 outline-none transition-all resize-none${disabledClass}`}></textarea>
                           </div>

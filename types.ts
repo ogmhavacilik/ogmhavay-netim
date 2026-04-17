@@ -75,6 +75,9 @@ export interface Aircraft {
   bakim40H?: string;
   bakim120H?: string;
   bakim480H?: string;
+  bakim40HKalan?: string;
+  bakim120HKalan?: string;
+  bakim480HKalan?: string;
   bakimTakvimTarih?: string;
   bakimKalanSaat?: string;
 
@@ -141,6 +144,9 @@ export interface SheetMapping {
   bakim40H?: string;
   bakim120H?: string;
   bakim480H?: string;
+  bakim40HKalan?: string;
+  bakim120HKalan?: string;
+  bakim480HKalan?: string;
   bakimKalanSaat?: string;
 
   // B-360 & C-650 mappings

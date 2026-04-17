@@ -284,15 +284,10 @@ export const formatGovdeHour = (val: any, aircraftType: string): string => {
     return s;
   }
 
-  if (aircraftType === 'B-360' || aircraftType === 'Bell-429') {
+  if (aircraftType === 'B-360' || aircraftType === 'Bell-429' || aircraftType === 'C-650') {
+    // Ondalık saat olan türlerde virgül/nokta dönüşümü yapıp olduğu gibi gösteriyoruz
     if (s.includes(':')) return s.replace(':', ',');
     return s.replace('.', ',');
-  }
-
-  // For C-650, truncate if it's a number
-  if (aircraftType === 'C-650') {
-    const n = parseFloat(s.replace(',', '.'));
-    if (!isNaN(n)) return Math.floor(n).toString();
   }
 
   const parsed = parseSingleCellToHour(raw, aircraftType);
@@ -428,13 +423,19 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
       if (config.aircraftType === 'T-70') {
         const h40 = parseSingleCellToHour(item.bakim40H, 'T-70');
         const h120 = parseSingleCellToHour(item.bakim120H, 'T-70');
+        const h480 = parseSingleCellToHour(item.bakim480H, 'T-70');
+        const k40 = parseSingleCellToHour(item.bakim40HKalan, 'T-70');
+        const k120 = parseSingleCellToHour(item.bakim120HKalan, 'T-70');
+        const k480 = parseSingleCellToHour(item.bakim480HKalan, 'T-70');
         
-        const validHours = [h40, h120].filter((h): h is number => h !== null);
-        finalMinHour = validHours.length > 0 ? Math.min(...validHours) : null;
+        // finalMinHour should only consider remaining hours (Kalan Saat)
+        const validKalanHours = [k40, k120, k480].filter((h): h is number => h !== null);
+        finalMinHour = validKalanHours.length > 0 ? Math.min(...validKalanHours) : null;
         
         maintenanceHours = [
-          { bakimTuru: 'Bakıma Kalan Saat (40 Saat)', kalanSaat: h40 ?? 0 },
-          { bakimTuru: 'Bakıma Kalan Saat (120 Saat)', kalanSaat: h120 ?? 0 }
+          { bakimTuru: 'Bakıma Kalan Saat (40 Saat)', kalanSaat: k40 ?? 0 },
+          { bakimTuru: 'Bakıma Kalan Saat (120 Saat)', kalanSaat: k120 ?? 0 },
+          { bakimTuru: 'Bakıma Kalan Saat (480 Saat)', kalanSaat: k480 ?? 0 }
         ];
       } else {
         const faydaliRawCells = Array.isArray(item.faydaliSaat) ? item.faydaliSaat.flat(Infinity) : [item.faydaliSaat];
@@ -575,8 +576,39 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         aircraft.bakim40H = formatValueToString(item.bakim40H);
         aircraft.bakim120H = formatValueToString(item.bakim120H);
         aircraft.bakim480H = formatValueToString(item.bakim480H);
-        aircraft.bakimTakvimTarih = formatValueToString(item.bakimTakvimTarih);
-        aircraft.bakimKalanSaat = formatValueToString(item.bakimKalanSaat);
+        aircraft.bakimTakvimTarih = formatDateIfISO(item.bakimTakvimTarih);
+        
+        // T-70 bakıma kalan saatlerin en küçüğünü hesapla
+        const k40 = formatGovdeHour(item.bakim40HKalan, 'T-70');
+        const k120 = formatGovdeHour(item.bakim120HKalan, 'T-70');
+        const k480 = formatGovdeHour(item.bakim480HKalan, 'T-70');
+        
+        const parseToMins = (val: string) => {
+          if (!val || val === '-' || val === 'N/A') return null;
+          const parts = val.split(':').map(Number);
+          if (parts.length < 2) return null;
+          return parts[0] * 60 + parts[1];
+        };
+        
+        const m40 = parseToMins(k40);
+        const m120 = parseToMins(k120);
+        const m480 = parseToMins(k480);
+        
+        const validMins = [m40, m120, m480].filter((v): v is number => v !== null);
+        
+        if (validMins.some(m => m === 0)) {
+          aircraft.bakimKalanSaat = "0:00";
+          aircraft.faydaliSaat = 0;
+        } else if (validMins.length > 0) {
+          const minMins = Math.min(...validMins);
+          const hh = Math.floor(minMins / 60);
+          const mm = minMins % 60;
+          aircraft.bakimKalanSaat = `${hh}:${mm.toString().padStart(2, '0')}`;
+          aircraft.faydaliSaat = minMins / 60;
+        } else {
+          aircraft.bakimKalanSaat = formatValueToString(item.bakimKalanSaat);
+          aircraft.faydaliSaat = aircraft.bakimKalanSaat && aircraft.bakimKalanSaat !== '-' ? (parseToMins(aircraft.bakimKalanSaat) || 0) / 60 : null;
+        }
       } else if (config.aircraftType === 'B-360' || config.aircraftType === 'C-650') {
         aircraft.govdeSN = formatValueToString(item.govdeSN);
         aircraft.motor1SN = formatValueToString(item.motor1SN);
@@ -723,7 +755,8 @@ export const updatePastEnvanterLog = async (
   sheetId: string,
   kuyrukNo: string,
   date: string,
-  newHours: string
+  newHours: string,
+  tip?: string
 ): Promise<{ success: boolean; message: string }> => {
   const cleanUrl = url?.trim();
   if (!cleanUrl || !cleanUrl.includes('script.google.com/macros/')) return { success: false, message: 'Geçersiz URL formatı.' };
@@ -737,7 +770,8 @@ export const updatePastEnvanterLog = async (
         sheetId,
         kuyrukNo,
         date,
-        newHours
+        newHours,
+        tip
       })
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
