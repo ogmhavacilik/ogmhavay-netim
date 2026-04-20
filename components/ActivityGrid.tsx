@@ -278,9 +278,13 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
           <tbody>
             {(() => {
               let globalIndex = 0;
-              return Object.keys(groupedActivities).map((groupName, gIdx) => {
+              let grandBakim = 0, grandAriza = 0, grandOlmadi = 0, grandTotalGF = 0, grandTotalF = 0, grandEffectiveFaal = 0, grandMissing = 0;
+              let grandTotalActs = 0;
+
+              const content = Object.keys(groupedActivities).map((groupName, gIdx) => {
                 const groupActs = groupedActivities[groupName];
                 let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupEffectiveFaal = 0, groupMissing = 0;
+                grandTotalActs += groupActs.length;
 
                 return (
                   <React.Fragment key={gIdx}>
@@ -294,6 +298,15 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                       groupTotalF += s.totalFaal;
                       groupEffectiveFaal += s.effectiveFaal;
                       groupMissing += s.missing;
+
+                      // Accumulate for grand totals
+                      grandBakim += s.bakim;
+                      grandAriza += s.ariza;
+                      grandOlmadi += s.olmadi;
+                      grandTotalGF += s.totalGFaal;
+                      grandTotalF += s.totalFaal;
+                      grandEffectiveFaal += s.effectiveFaal;
+                      grandMissing += s.missing;
 
                       return (
                         <tr key={idx} className="h-7 hover:bg-gray-50">
@@ -397,6 +410,28 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                 </React.Fragment>
               );
             });
+
+            // GENEL TOPLAM SATIRI
+            if (!isHourlyView && activities.length > 0) {
+              const grandPercentage = (grandTotalActs * daysElapsed - grandOlmadi - grandMissing) > 0 
+                ? ((grandEffectiveFaal) / (grandTotalActs * daysElapsed - grandOlmadi - grandMissing) * 100).toFixed(1) 
+                : "0";
+
+              content.push(
+                <tr key="grand-total" className="h-8 bg-gray-900 font-black border-t-2 border-black">
+                  <td colSpan={4 + totalDaysInRange} className="border border-black text-right px-4 uppercase text-[10px] bg-gray-900 text-white">GENEL TOPLAM (FİLO)</td>
+                  <td className="border border-black text-center bg-[#ffff00] text-black">{grandBakim}</td>
+                  <td className="border border-black text-center bg-[#ff0000] text-white">{grandAriza}</td>
+                  <td className="border border-black text-center bg-[#7030a0] text-white">{grandOlmadi}</td>
+                  <td className="border border-black text-center bg-[#00b0f0] text-white">{grandTotalGF}</td>
+                  <td className="border border-black text-center bg-[#ffc000] text-black">{grandTotalF}</td>
+                  <td className="border border-black text-center font-black bg-white text-black">{grandTotalActs * daysElapsed}</td>
+                  <td className="border border-black text-center bg-emerald-700 text-white text-[11px]">%{grandPercentage}</td>
+                </tr>
+              );
+            }
+
+            return content;
           })()}
         </tbody>
         </table>

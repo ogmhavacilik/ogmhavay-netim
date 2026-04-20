@@ -1427,7 +1427,15 @@ const App = () => {
         </button>
       </div>
 
-      <div className="mb-14"><Dashboard fleet={filteredFleet} /></div>
+      <div className="mb-14">
+        <Dashboard 
+          fleet={filteredFleet} 
+          activities={filteredActivities}
+          startDate={new Date(filterStartDate)}
+          endDate={new Date(filterEndDate)}
+          currentTime={new Date()}
+        />
+      </div>
 
       {showActivity ? (
         <div className="mb-24 animate-in fade-in duration-1000">

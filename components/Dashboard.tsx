@@ -1,25 +1,32 @@
 
 import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Aircraft, Status } from '../types';
+import { Aircraft, Status, AircraftActivity } from '../types';
 
 interface DashboardProps {
   fleet: Aircraft[];
+  activities: AircraftActivity[];
+  startDate: Date;
+  endDate: Date;
+  currentTime: Date;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ fleet }) => {
+const Dashboard: React.FC<DashboardProps> = ({ fleet, activities, startDate, endDate, currentTime }) => {
   const total = fleet.length;
-  
+
   const faalList = fleet.filter(a => a.durum === Status.FAAL);
-  const parcaBeklerList = fleet.filter(a => a.durum !== Status.FAAL && a.durumAyrintisi && a.durumAyrintisi.toUpperCase().includes('PARÇA BEKLER'));
-  const gayriFaalList = fleet.filter(a => 
-    a.durum !== Status.FAAL && 
-    !(a.durumAyrintisi && a.durumAyrintisi.toUpperCase().includes('PARÇA BEKLER'))
-  );
+  const bakimList = fleet.filter(a => !faalList.includes(a) && a.durumAyrintisi && (
+    a.durumAyrintisi.toUpperCase().includes('BAKIM') || 
+    a.durumAyrintisi.toUpperCase().includes('KABUL') || 
+    a.durumAyrintisi.toUpperCase().includes('TEKNİK BÜLTEN')
+  ));
+  const parcaBeklerList = fleet.filter(a => !faalList.includes(a) && !bakimList.includes(a) && a.durumAyrintisi && a.durumAyrintisi.toUpperCase().includes('PARÇA BEKLER'));
+  const arizaList = fleet.filter(a => !faalList.includes(a) && !bakimList.includes(a) && !parcaBeklerList.includes(a));
 
   const chartData = [
     { name: 'Faal', value: faalList.length, color: '#10b981', aircrafts: faalList },
-    { name: 'Gayrı Faal', value: gayriFaalList.length, color: '#ef4444', aircrafts: gayriFaalList },
+    { name: 'Bakım', value: bakimList.length, color: '#eab308', aircrafts: bakimList },
+    { name: 'Arıza', value: arizaList.length, color: '#ef4444', aircrafts: arizaList },
   ];
 
   if (parcaBeklerList.length > 0) {
@@ -30,7 +37,7 @@ const Dashboard: React.FC<DashboardProps> = ({ fleet }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white p-4 rounded-xl shadow-2xl border border-gray-100 max-h-64 overflow-y-auto">
+        <div className="bg-white p-4 rounded-xl shadow-2xl border border-gray-100 max-h-64 overflow-y-auto min-w-[150px]">
           <p className="text-sm font-black text-gray-800 mb-2 border-b pb-1 uppercase tracking-tighter">
             {data.name}: {data.value} Adet
           </p>
@@ -69,12 +76,12 @@ const Dashboard: React.FC<DashboardProps> = ({ fleet }) => {
         <div className="text-5xl font-black text-gray-800 mt-1">{total} <span className="text-xl font-bold text-gray-400">Ünite</span></div>
       </div>
       <div className="bg-white/95 backdrop-blur p-6 rounded-2xl shadow-xl border-b-4 border-green-500">
-        <span className="text-green-600 text-xs font-black uppercase tracking-widest">Göreve Hazır (Faal)</span>
+        <span className="text-green-600 text-xs font-black uppercase tracking-widest">Göreve Hazır (Faal Adedi)</span>
         <div className="text-5xl font-black text-green-700 mt-1">{faalList.length}</div>
       </div>
       <div className="bg-white/95 backdrop-blur p-6 rounded-2xl shadow-xl border-b-4 border-red-500">
-        <span className="text-red-600 text-xs font-black uppercase tracking-widest">Gayrı Faal Durum</span>
-        <div className="text-5xl font-black text-red-700 mt-1">{gayriFaalList.length + parcaBeklerList.length}</div>
+        <span className="text-red-600 text-xs font-black uppercase tracking-widest">Gayrı Faal Adedi</span>
+        <div className="text-5xl font-black text-red-700 mt-1">{total - faalList.length}</div>
       </div>
       <div className="bg-white/95 backdrop-blur p-4 rounded-2xl shadow-xl h-48 border-b-4 border-blue-500 flex items-center justify-center">
         <ResponsiveContainer width="100%" height="100%">
