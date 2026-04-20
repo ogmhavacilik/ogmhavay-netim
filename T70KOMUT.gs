@@ -113,10 +113,10 @@ function doPost(e) {
               if (yStr.length === 2) year += 2000;
             }
             
-            var d = new Date(year, month, day);
+            var d = new Date(year, month, day, 12, 0, 0);
             if (!isNaN(d.getTime())) {
               cell.setValue(d);
-              cell.setNumberFormat("dd-MM-yy");
+              cell.setNumberFormat("dd.MM.yyyy");
             } else {
               cell.setValue(dateVal);
             }

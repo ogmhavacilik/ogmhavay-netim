@@ -305,40 +305,69 @@ const formatValueToString = (val: any): string => {
 
 const formatDateIfISO = (val: any): string => {
   if (!val) return '-';
+  
+  if (val instanceof Date) {
+    const d = val;
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}.${month}.${year}`;
+    }
+  }
+
   const s = formatValueToString(val);
   if (s === '-' || s === '') return '-';
   
   // If it's already in DD.MM.YYYY format, return it
   if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) return s;
   
-  // If it's in YYYY-MM-DD format, convert to DD.MM.YYYY
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    const parts = s.split('-');
-    return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  // Handle YYYY-MM-DD (optionally with time)
+  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[3]}.${isoMatch[2]}.${isoMatch[1]}`;
   }
 
-  // Handle MM/DD/YYYY or M/D/YYYY -> DD.MM.YYYY
-  // User specifically requested to convert Month/Day/Year to Day.Month.Year
-  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
-    const parts = s.split('/');
-    const month = parts[0].padStart(2, '0');
-    const day = parts[1].padStart(2, '0');
-    const year = parts[2];
-    
-    // If month > 12, it's likely already in DD/MM/YYYY format
-    if (parseInt(month) > 12) {
-      return `${month}.${day}.${year}`;
+  // Handle DD.MM.YYYY HH:mm:ss
+  const dotMatch = s.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+  if (dotMatch) {
+    return `${dotMatch[1]}.${dotMatch[2]}.${dotMatch[3]}`;
+  }
+
+  // Handle MM/DD/YYYY or DD/MM/YYYY
+  if (s.includes('/')) {
+    const parts = s.split(' ')[0].split('/');
+    if (parts.length === 3) {
+      let day, month, year;
+      if (parts[2].length === 4) { // month/day/year
+        month = parts[0].padStart(2, '0');
+        day = parts[1].padStart(2, '0');
+        year = parts[2];
+      } else { // day/month/year?
+        day = parts[0].padStart(2, '0');
+        month = parts[1].padStart(2, '0');
+        year = parts[2];
+      }
+
+      if (parseInt(month) > 12) { // swap if it looks like dd/mm
+        const tmp = month;
+        month = day;
+        day = tmp;
+      }
+      return `${day}.${month}.${year}`;
     }
-    
-    return `${day}.${month}.${year}`;
   }
 
-  if (typeof s === 'string' && s.includes('T') && s.includes('Z')) {
+  if (s.includes('T') && s.includes('Z')) {
     const d = new Date(s);
     if (!isNaN(d.getTime())) {
-      return d.toLocaleDateString('tr-TR');
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}.${month}.${year}`;
     }
   }
+
   return s;
 };
 

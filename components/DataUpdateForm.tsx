@@ -89,8 +89,8 @@ const formatT70DateForSheet = (val: string | undefined | null) => {
     
     const dayStr = day.padStart(2, '0');
     const monthStr = month.padStart(2, '0');
-    const shortYear = year.length === 4 ? year.slice(-2) : year.padStart(2, '0');
-    return `${dayStr}-${monthStr}-${shortYear}`;
+    const fullYear = year.length === 2 ? `20${year}` : year;
+    return `${dayStr}.${monthStr}.${fullYear}`;
   }
   return clean;
 };
@@ -99,19 +99,20 @@ const formatT70DateForDisplay = (val: string | undefined | null) => {
   if (!val || val === '-') return '';
   const s = val.trim();
   
-  // If it's already in GG-AA-YY
-  if (/^\d{2}-\d{2}-\d{2}$/.test(s)) return s;
+  // If it's already in DD.MM.YYYY
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) return s;
 
-  // If it's DD.MM.YYYY
-  if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) {
-    const parts = s.split('.');
-    return `${parts[0]}-${parts[1]}-${parts[2].slice(-2)}`;
+  // If it's DD-MM-YY or DD-MM-YYYY
+  if (/^\d{2}-\d{2}-\d{2,4}$/.test(s)) {
+    const parts = s.split('-');
+    const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+    return `${parts[0]}.${parts[1]}.${year}`;
   }
 
   // If it's YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     const parts = s.split('-');
-    return `${parts[2]}-${parts[1]}-${parts[0].slice(-2)}`;
+    return `${parts[2]}.${parts[1]}.${parts[0]}`;
   }
 
   // If it's DD/MM/YYYY
@@ -805,7 +806,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                       </div>
                       <div className={`space-y-2${disabledClass}`}>
                         <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">TAKVİM ESASLI BAKIM ZAMANI (TARİH)</label>
-                        <input disabled={isPastDate} type="text" placeholder="GG-AA-YY" value={formData.bakimTakvimTarih} onChange={(e) => handleInputChange('bakimTakvimTarih', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
+                        <input disabled={isPastDate} type="text" placeholder="GG.AA.YYYY" value={formData.bakimTakvimTarih} onChange={(e) => handleInputChange('bakimTakvimTarih', e.target.value)} className={`w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all${disabledClass}`} />
                       </div>
                     </div>
                     <div className="h-px bg-white/10 w-full"></div>

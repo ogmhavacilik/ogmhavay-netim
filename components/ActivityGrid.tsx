@@ -48,7 +48,28 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
   const hours = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
 
   const visibleDates = getDaysInRange(startDate, endDate);
-  const totalDaysInMonth = visibleDates.length;
+  const totalDaysInRange = visibleDates.length;
+
+  const todayIndex = useMemo(() => {
+    const todayStr = currentTime.toDateString();
+    return visibleDates.findIndex(d => d.toDateString() === todayStr);
+  }, [visibleDates, currentTime]);
+
+  const daysElapsed = useMemo(() => {
+    const today = new Date(currentTime);
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(0, 0, 0, 0);
+
+    if (today < start) return 0;
+    const effectiveEnd = today < end ? today : end;
+    
+    const diffTime = Math.abs(effectiveEnd.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    return diffDays;
+  }, [startDate, endDate, currentTime]);
 
   const getStatusClass = (code: DailyStatusCode | string, isKarma?: boolean) => {
     switch (code) {
@@ -116,29 +137,32 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
 
     let effectiveFaal = 0;
 
-    visibleDates.forEach(date => {
+    visibleDates.forEach((date, idx) => {
+      const isPastOrToday = todayIndex === -1 ? (date <= currentTime) : (idx <= todayIndex);
       const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       const s = activity.dailyStatuses[dateStrKey];
       
-      if (s === undefined || s === '') {
-        missing++;
-      } else if (['B', 'BB', 'TBU', 'KM'].includes(s)) {
-        bakim++;
-      } else if (['A', 'PB', 'KK'].includes(s)) {
-        ariza++;
-      } else if (s === 'X') {
-        olmadi++;
-      } else if (s === 'F') {
-        faal++;
-      }
+      if (isPastOrToday) {
+        if (s === undefined || s === '') {
+          missing++;
+        } else if (['B', 'BB', 'TBU', 'KM'].includes(s)) {
+          bakim++;
+        } else if (['A', 'PB', 'KK'].includes(s)) {
+          ariza++;
+        } else if (s === 'X') {
+          olmadi++;
+        } else if (s === 'F') {
+          faal++;
+        }
 
-      // Calculate effective faal for percentage
-      if (s === 'F') {
-        effectiveFaal++;
-      } else if (s && s !== 'X') {
-        const streakLen = getStreakLengthAt(dateStrKey, date);
-        if (streakLen < 3) {
+        // Calculate effective faal for percentage
+        if (s === 'F') {
           effectiveFaal++;
+        } else if (s && s !== 'X') {
+          const streakLen = getStreakLengthAt(dateStrKey, date);
+          if (streakLen < 3) {
+            effectiveFaal++;
+          }
         }
       }
     });
@@ -146,7 +170,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     const totalGFaal = bakim + ariza + olmadi;
     const totalFaal = faal;
     
-    const baseDays = totalDaysInMonth - olmadi - missing;
+    const baseDays = daysElapsed - olmadi - missing;
     const percentage = baseDays > 0 ? ((effectiveFaal / baseDays) * 100).toFixed(0) : "0";
     
     return { bakim, ariza, olmadi, totalGFaal, totalFaal, effectiveFaal, percentage, missing };
@@ -219,19 +243,26 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                   </th>
                 ))
               ) : (
-                visibleDates.map((date, idx) => (
-                  <th key={idx} rowSpan={2} className="border border-black w-8 text-center font-bold min-w-[32px] text-[8px] bg-white h-16">
-                    <div className="[writing-mode:vertical-lr] rotate-180 whitespace-nowrap mx-auto">
-                      {date.getDate()}.{String(date.getMonth() + 1).padStart(2, '0')}.{date.getFullYear()}
-                    </div>
-                  </th>
-                ))
+                visibleDates.map((date, idx) => {
+                  const isTodayColumn = idx === todayIndex;
+                  return (
+                    <th key={idx} rowSpan={2} className={`border border-black w-8 text-center font-bold min-w-[32px] text-[8px] bg-white h-16 relative ${isTodayColumn ? 'bg-red-50' : ''}`}>
+                      <div className="[writing-mode:vertical-lr] rotate-180 whitespace-nowrap mx-auto">
+                        {date.getDate()}.{String(date.getMonth() + 1).padStart(2, '0')}.{date.getFullYear()}
+                      </div>
+                      {isTodayColumn && (
+                        <div className="absolute inset-y-0 right-[-2px] w-0 border-r-[3.5px] border-dashed border-red-600 z-[100] pointer-events-none" />
+                      )}
+                    </th>
+                  );
+                })
               )}
               {!isHourlyView && (
                 <>
                   <th colSpan={3} className="border border-black bg-[#00b0f0] text-white py-0.5 text-[8px] font-black uppercase tracking-tighter" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>TOPLAM G.FAAL</th>
                   <th rowSpan={2} className="border border-black bg-[#00b0f0] text-white px-0.5 w-12 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>TOPLAM<br/>G.FAAL</th>
                   <th rowSpan={2} className="border border-black bg-[#ffc000] text-black px-0.5 w-12 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#ffc000', color: '#000000' }}>TOPLAM<br/>FAAL</th>
+                  <th rowSpan={2} className="border border-black bg-gray-50 text-black px-0.5 w-12 text-[7px] font-black uppercase leading-tight" style={{ backgroundColor: '#f8fafc', color: '#000000' }}>TOPLAM GÜN SAYISI</th>
                   <th rowSpan={2} className="border border-black bg-gray-100 text-black px-0.5 w-16 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#f3f4f6', color: '#000000' }}>FAALİYET % **</th>
                 </>
               )}
@@ -313,7 +344,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                             return (
                               <td 
                                 key={dIdx} 
-                                className={`border border-black text-center text-[10px] relative ${getStatusClass(status, isCompletedToday)} cursor-pointer hover:opacity-80`} 
+                                className={`border border-black text-center text-[10px] relative ${getStatusClass(status, isCompletedToday)} cursor-pointer hover:opacity-80 ${dIdx === todayIndex ? 'bg-red-50/10' : ''}`} 
                                 style={getStatusStyle(status, isCompletedToday)}
                                 onClick={() => {
                                   if (isCompletedToday) {
@@ -321,6 +352,9 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                                   }
                                 }}
                               >
+                                {dIdx === todayIndex && (
+                                   <div className="absolute inset-y-0 right-[-2px] w-0 border-r-[3.5px] border-dashed border-red-600 z-[50] pointer-events-none" />
+                                )}
                                 <div className="flex items-center justify-center min-h-[24px]">
                                   {status !== 'F' && status}
                                   {isCompletedToday && (
@@ -338,6 +372,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                             <td className="border border-black text-center font-bold bg-[#e2efda]" style={{ backgroundColor: '#e2efda' }}>{s.olmadi || '0'}</td>
                             <td className="border border-black text-center font-bold bg-[#ddebf7]" style={{ backgroundColor: '#ddebf7' }}>{s.totalGFaal}</td>
                             <td className="border border-black text-center font-bold bg-[#fff2cc]" style={{ backgroundColor: '#fff2cc' }}>{s.totalFaal}</td>
+                            <td className="border border-black text-center font-bold bg-white" style={{ backgroundColor: '#ffffff' }}>{daysElapsed}</td>
                             <td className="border border-black text-center font-bold bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>{s.percentage}%</td>
                           </>
                         )}
@@ -347,14 +382,15 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                   {/* GRUP TOPLAMI SATIRI */}
                   {!isHourlyView && (
                     <tr className="h-6 bg-gray-100 font-black">
-                      <td colSpan={4 + totalDaysInMonth} className="border border-black text-right px-4 uppercase text-[8px]" style={{ backgroundColor: '#f3f4f6' }}>TOPLAM</td>
+                      <td colSpan={4 + totalDaysInRange} className="border border-black text-right px-4 uppercase text-[8px]" style={{ backgroundColor: '#f3f4f6' }}>TOPLAM</td>
                       <td className="border border-black text-center bg-[#ffff00]" style={{ backgroundColor: '#ffff00', color: '#000000' }}>{groupBakim}</td>
                       <td className="border border-black text-center bg-[#ff0000] text-white" style={{ backgroundColor: '#ff0000', color: '#ffffff' }}>{groupAriza}</td>
                       <td className="border border-black text-center bg-[#7030a0] text-white" style={{ backgroundColor: '#7030a0', color: '#ffffff' }}>{groupOlmadi}</td>
                       <td className="border border-black text-center bg-[#00b0f0] text-white" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>{groupTotalGF}</td>
                       <td className="border border-black text-center bg-[#ffc000]" style={{ backgroundColor: '#ffc000', color: '#000000' }}>{groupTotalF}</td>
+                      <td className="border border-black text-center font-black bg-gray-50">{groupActs.length * daysElapsed}</td>
                       <td className="border border-black text-center bg-gray-200" style={{ backgroundColor: '#e5e7eb' }}>
-                        {((groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) > 0 ? ((groupEffectiveFaal) / (groupActs.length * totalDaysInMonth - groupOlmadi - groupMissing) * 100).toFixed(0) : "0")}%
+                        {((groupActs.length * daysElapsed - groupOlmadi - groupMissing) > 0 ? ((groupEffectiveFaal) / (groupActs.length * daysElapsed - groupOlmadi - groupMissing) * 100).toFixed(0) : "0")}%
                       </td>
                     </tr>
                   )}

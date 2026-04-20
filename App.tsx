@@ -57,9 +57,23 @@ const App = () => {
   
   const [filterType, setFilterType] = useState('Tümü');
   const [filterTail, setFilterTail] = useState('');
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
-  const [filterStartDate, setFilterStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
-  const [filterEndDate, setFilterEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
+  
+  const [filterDate, setFilterDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+
+  const [filterStartDate, setFilterStartDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+
+  const [filterEndDate, setFilterEndDate] = useState(() => {
+    const d = new Date();
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+  });
+
   const [hideKazaKirim, setHideKazaKirim] = useState(true);
 
   const [historicalFleet, setHistoricalFleet] = useState<Aircraft[] | null>(null);
