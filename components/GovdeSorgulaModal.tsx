@@ -149,7 +149,13 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
               resultMap[kNo].baslangicSaat = h;
               resultMap[kNo].baslangicRaw = String(row.govdeUcusSaati || '').trim();
               if (resultMap[kNo].isDecimal) {
-                resultMap[kNo].baslangicDecimal = String(row.govdeUcusSaati || '').trim().replace('.', ',');
+                // Remove thousands separator dot if it exists, use comma as decimal for display
+                const raw = String(row.govdeUcusSaati || '').trim();
+                if (raw.includes('.') && raw.includes(',')) {
+                  resultMap[kNo].baslangicDecimal = raw.replace(/\./g, '');
+                } else {
+                  resultMap[kNo].baslangicDecimal = raw.replace('.', ',');
+                }
               }
             }
           }
@@ -165,7 +171,13 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
               resultMap[kNo].bitisSaat = h;
               resultMap[kNo].bitisRaw = String(row.govdeUcusSaati || '').trim();
               if (resultMap[kNo].isDecimal) {
-                resultMap[kNo].bitisDecimal = String(row.govdeUcusSaati || '').trim().replace('.', ',');
+                // Remove thousands separator dot if it exists, use comma as decimal for display
+                const raw = String(row.govdeUcusSaati || '').trim();
+                if (raw.includes('.') && raw.includes(',')) {
+                  resultMap[kNo].bitisDecimal = raw.replace(/\./g, '');
+                } else {
+                  resultMap[kNo].bitisDecimal = raw.replace('.', ',');
+                }
               }
             }
           }

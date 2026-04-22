@@ -999,7 +999,15 @@ const App = () => {
 
       const parseHour = (val: any): number | null => {
         if (val === null || val === undefined || String(val).trim() === "" || String(val).toUpperCase() === "N/A") return null;
-        const s = String(val).trim().replace(',', '.');
+        let s = String(val).trim();
+        
+        // Handle Turkish format: dots for thousands, comma for decimal (e.g. 1.736,6)
+        if (s.includes('.') && s.includes(',')) {
+          s = s.replace(/\./g, '').replace(',', '.');
+        } else if (s.includes(',')) {
+          s = s.replace(',', '.');
+        }
+
         if (s.includes(':')) {
           const parts = s.split(':').map(Number);
           if (parts.length >= 2) return (parts[0] || 0) + (parts[1] || 0) / 60;
@@ -1149,24 +1157,38 @@ const App = () => {
                  rowDate.getFullYear() === targetYear;
         });
 
-        const parseHour = (val: any): number | null => {
+        const parseHour = (val: any, aircraftType?: string): number | null => {
           if (val === null || val === undefined || String(val).trim() === "" || String(val).toUpperCase() === "N/A") return null;
+          
           if (typeof val === 'string' && val.includes('T') && val.includes('Z')) {
             const d = new Date(val);
             const epoch = new Date(Date.UTC(1899, 11, 30));
             return (d.getTime() - epoch.getTime()) / (1000 * 60 * 60);
           }
-          const s = String(val).trim().replace(',', '.');
+          
+          let s = String(val).trim();
+          
+          // Handle Turkish format: dots for thousands, comma for decimal (e.g. 1.736,6)
+          if (s.includes('.') && s.includes(',')) {
+            s = s.replace(/\./g, '').replace(',', '.');
+          } else if (s.includes(',')) {
+            s = s.replace(',', '.');
+          }
+          
           if (s.includes(':')) {
             const parts = s.split(':').map(Number);
             if (parts.length >= 2) return (parts[0] || 0) + (parts[1] || 0) / 60;
           }
+          
           const n = parseFloat(s);
-          return isNaN(n) ? null : n;
+          if (isNaN(n)) return null;
+
+          return n;
         };
 
         const historyFleet: Aircraft[] = filtered.map((row: any) => {
-          const govdeSaat = parseHour(row.govdeUcusSaati);
+          const rowTip = row.tip || '';
+          const govdeSaat = parseHour(row.govdeUcusSaati, rowTip);
           let h = govdeSaat !== null ? Math.floor(govdeSaat) : 0;
           let m = govdeSaat !== null ? Math.round((govdeSaat - h) * 60) : 0;
           if (m === 60) {
@@ -1178,11 +1200,11 @@ const App = () => {
           return {
             kuyrukNo: row.kuyrukNo || '',
             cagriKodu: getCallSignByTail(row.kuyrukNo || ''),
-            tip: row.tip || '',
+            tip: rowTip,
             durum: row.durum || '',
             durumAyrintisi: row.durumAyrintisi || '',
             konum: row.konum || '',
-            faydaliSaat: parseHour(row.faydaliSaat) || 0,
+            faydaliSaat: parseHour(row.faydaliSaat, rowTip) || 0,
             aciklama: row.aciklama || '',
             govdeUcusSaati: govdeStr,
             assignedCode: row.analizKodu as DailyStatusCode || 'F',

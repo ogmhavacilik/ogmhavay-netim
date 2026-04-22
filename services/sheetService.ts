@@ -233,7 +233,16 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
   }
 
   if (typeof val === 'string') {
-    const s = val.trim().replace(',', '.');
+    let s = val.trim();
+    
+    // Check for Turkish format: dots for thousands, comma for decimal (e.g. 1.736,6)
+    if (s.includes('.') && s.includes(',')) {
+      // If comma exists, dots are almost certainly thousands separators
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else if (s.includes(',')) {
+      // Only comma exists: treat as decimal
+      s = s.replace(',', '.');
+    }
     
     if (s.includes(':')) {
       const parts = s.split(':').map(Number);
@@ -246,18 +255,10 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
         return total;
       }
     }
+
     const n = parseFloat(s);
     if (!isNaN(n)) {
-      let total = n;
-      // Special case for decimal types: decimal part is literal minutes (e.g. 429.20 = 429h 20m)
-      if ((aircraftType === 'Bell-429' || aircraftType === 'B-360' || aircraftType === 'C-650') && s.includes('.')) {
-        const parts = s.split('.');
-        const h = parseInt(parts[0]) || 0;
-        const m = parseInt(parts[1]) || 0;
-        total = h + m / 60;
-      }
-      
-      return total;
+      return n;
     }
   }
 
@@ -282,12 +283,6 @@ export const formatGovdeHour = (val: any, aircraftType: string): string => {
       return formatToHHMM(parsed, aircraftType);
     }
     return s;
-  }
-
-  if (aircraftType === 'B-360' || aircraftType === 'Bell-429' || aircraftType === 'C-650') {
-    // Ondalık saat olan türlerde virgül/nokta dönüşümü yapıp olduğu gibi gösteriyoruz
-    if (s.includes(':')) return s.replace(':', ',');
-    return s.replace('.', ',');
   }
 
   const parsed = parseSingleCellToHour(raw, aircraftType);
