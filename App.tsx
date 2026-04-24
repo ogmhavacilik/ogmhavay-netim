@@ -1189,13 +1189,21 @@ const App = () => {
         const historyFleet: Aircraft[] = filtered.map((row: any) => {
           const rowTip = row.tip || '';
           const govdeSaat = parseHour(row.govdeUcusSaati, rowTip);
-          let h = govdeSaat !== null ? Math.floor(govdeSaat) : 0;
-          let m = govdeSaat !== null ? Math.round((govdeSaat - h) * 60) : 0;
-          if (m === 60) {
-            h += 1;
-            m = 0;
+          
+          let govdeStr = '-';
+          if (govdeSaat !== null) {
+            if (rowTip === 'Bell-429' || rowTip === 'B-360' || rowTip === 'C-650') {
+              govdeStr = govdeSaat.toFixed(1).replace('.', ',');
+            } else {
+              let h = Math.floor(govdeSaat);
+              let m = Math.round((govdeSaat - h) * 60);
+              if (m === 60) {
+                h += 1;
+                m = 0;
+              }
+              govdeStr = `${h}:${m.toString().padStart(2, '0')}`;
+            }
           }
-          const govdeStr = govdeSaat !== null ? `${h}:${m.toString().padStart(2, '0')}` : '-';
 
           return {
             kuyrukNo: row.kuyrukNo || '',

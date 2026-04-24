@@ -124,6 +124,11 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
 export const formatToHHMM = (totalHours: number | null, aircraftType?: string): string => {
   if (totalHours === null) return '-';
   
+  if (aircraftType === 'Bell-429' || aircraftType === 'B-360' || aircraftType === 'C-650') {
+    // For these types, return as decimal (e.g. 1736,6)
+    return totalHours.toFixed(1).replace('.', ',');
+  }
+
   const hours = Math.floor(Math.abs(totalHours));
   const minutes = Math.round((Math.abs(totalHours) - hours) * 60);
   const sign = totalHours < 0 ? '-' : '';

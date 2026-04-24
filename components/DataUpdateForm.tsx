@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Aircraft, Status, DailyStatusCode } from '../types';
-import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour } from '../services/sheetService';
+import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour, parseSingleCellToHour } from '../services/sheetService';
 import { LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID } from '../constants';
 
 interface DataUpdateFormProps {
@@ -300,6 +300,61 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     const today = new Date().toISOString().split('T')[0];
     const isPastDate = formData.islemTarihi < today;
 
+    // Validation: New hours cannot be less than previous hours OR more than subsequent hours
+    const govdeInput = selectedAircraft.tip === 'AT-802' ? at802Data.acTT : formData.govdeUcusSaati;
+    const inputHours = parseSingleCellToHour(govdeInput, selectedAircraft.tip);
+    
+    if (inputHours !== null) {
+      const searchDate = formData.islemTarihi;
+      const searchKuyruk = selectedAircraft.kuyrukNo.trim().toUpperCase();
+      
+      // Previous logs check
+      const prevLog = envanterLog
+        ?.filter(log => {
+          const lK = String(log.kuyrukNo || "").trim().toUpperCase();
+          const lT = String(log.tarih || "").trim();
+          return lK === searchKuyruk && lT < searchDate;
+        })
+        .sort((a, b) => b.tarih.localeCompare(a.tarih))[0];
+
+      if (prevLog) {
+        const prevHoursValue = parseSingleCellToHour(prevLog.govdeUcusSaati, selectedAircraft.tip);
+        if (prevHoursValue !== null && inputHours < (prevHoursValue - 0.001)) { // Allow tiny floating point diff
+          const prevFormatted = formatGovdeHour(prevLog.govdeUcusSaati, selectedAircraft.tip);
+          const inputFormatted = formatGovdeHour(govdeInput, selectedAircraft.tip);
+          setMessage({ 
+            type: 'error', 
+            text: `Hata: Girilen saat (${inputFormatted}), önceki kayıttaki saatten (${prevFormatted}) az olamaz!` 
+          });
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // Next logs check (Future data cannot be less)
+      const nextLog = envanterLog
+        ?.filter(log => {
+          const lK = String(log.kuyrukNo || "").trim().toUpperCase();
+          const lT = String(log.tarih || "").trim();
+          return lK === searchKuyruk && lT > searchDate;
+        })
+        .sort((a, b) => a.tarih.localeCompare(b.tarih))[0];
+
+      if (nextLog) {
+        const nextHoursValue = parseSingleCellToHour(nextLog.govdeUcusSaati, selectedAircraft.tip);
+        if (nextHoursValue !== null && inputHours > (nextHoursValue + 0.001)) {
+          const nextFormatted = formatGovdeHour(nextLog.govdeUcusSaati, selectedAircraft.tip);
+          const inputFormatted = formatGovdeHour(govdeInput, selectedAircraft.tip);
+          setMessage({ 
+            type: 'error', 
+            text: `Hata: Girilen saat (${inputFormatted}), sonraki kayıttaki saatten (${nextFormatted}) fazla olamaz!` 
+          });
+          setIsSubmitting(false);
+          return;
+        }
+      }
+    }
+
     setIsSubmitting(true);
     setMessage(null);
 
@@ -340,7 +395,10 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         
         const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
         if (decimalTypes.includes(selectedAircraft.tip) && finalData.govdeUcusSaati) {
-          finalData.govdeUcusSaati = finalData.govdeUcusSaati.replace(':', ',').replace('.', ',');
+          const parsedHours = parseSingleCellToHour(finalData.govdeUcusSaati, selectedAircraft.tip);
+          if (parsedHours !== null) {
+            finalData.govdeUcusSaati = parsedHours.toFixed(1).replace('.', ',');
+          }
         }
       } else {
         finalData = { ...formData };
@@ -373,12 +431,30 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           }
           
           if (finalData.govdeUcusSaati) {
-            finalData.govdeUcusSaati = finalData.govdeUcusSaati.replace(':', ',').replace('.', ',');
+            const parsedHours = parseSingleCellToHour(finalData.govdeUcusSaati, selectedAircraft.tip);
+            if (parsedHours !== null) {
+              finalData.govdeUcusSaati = parsedHours.toFixed(1).replace('.', ',');
+            }
+          }
+          
+          if (finalData.faydaliSaat) {
+            const parsedFaydali = parseSingleCellToHour(finalData.faydaliSaat, selectedAircraft.tip);
+            if (parsedFaydali !== null) {
+              finalData.faydaliSaat = parsedFaydali.toFixed(1).replace('.', ',');
+            }
           }
           
           // Bell-429 specific other decimal fields
-          if (selectedAircraft.tip === 'Bell-429' && finalData.bakim50H) {
-            finalData.bakim50H = finalData.bakim50H.replace(':', ',').replace('.', ',');
+          if (selectedAircraft.tip === 'Bell-429') {
+            const maintenanceFields = ['bakim50H', 'bakim100H', 'bakim200H', 'bakim400H', 'bakim800H'];
+            maintenanceFields.forEach(field => {
+              if (finalData[field]) {
+                const parsed = parseSingleCellToHour(finalData[field], selectedAircraft.tip);
+                if (parsed !== null) {
+                  finalData[field] = parsed.toFixed(1).replace('.', ',');
+                }
+              }
+            });
           }
         }
       }
@@ -477,13 +553,27 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       } else {
         // GÜNCEL TARİH (BUGÜN): Mevcut merkezi loglama tetiklenir
         try {
+          // Log flight hours with decimal support for specific types
+          const getFormattedHourForLog = (val: any) => {
+            if (!val) return null;
+            const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
+            if (decimalTypes.includes(selectedAircraft.tip)) {
+              const parsed = parseSingleCellToHour(val, selectedAircraft.tip);
+              return parsed !== null ? parsed.toFixed(1).replace('.', ',') : val;
+            }
+            return val;
+          };
+
           const statusToAnalyze = {
             durum: formData.durum,
             durumAyrintisi: formData.durumAyrintisi,
             aciklama: formData.aciklama
           };
           const analysis = analyzeStatus(statusToAnalyze);
-          
+
+          const logGovdeSaat = getFormattedHourForLog(finalData.govdeUcusSaati || finalData.acTT || selectedAircraft.govdeUcusSaati || 0);
+          const logFaydaliSaat = getFormattedHourForLog(finalData.faydaliSaat || selectedAircraft.faydaliSaat || 0);
+
           await fetch(LOG_SCRIPT_URL, {
             method: 'POST',
             redirect: 'follow',
@@ -494,8 +584,8 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                 date: formattedDate,
                 kuyrukNo: selectedAircraft.kuyrukNo,
                 tip: selectedAircraft.tip,
-                govdeUcusSaati: finalData.govdeUcusSaati || finalData.acTT || selectedAircraft.govdeUcusSaati || 0,
-                faydaliSaat: finalData.faydaliSaat || selectedAircraft.faydaliSaat || 0,
+                govdeUcusSaati: logGovdeSaat,
+                faydaliSaat: logFaydaliSaat,
                 konum: formData.konum,
                 durum: formData.durum,
                 durumAyrintisi: formData.durumAyrintisi,
