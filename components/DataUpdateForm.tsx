@@ -172,6 +172,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     setIsAuth(false);
     setSelectedKuyruk('');
     setSelectedAircraft(null);
+    initializationRef.current = '';
   };
 
   const handleAuth = (e: React.FormEvent) => {
@@ -621,9 +622,19 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
   const isPastDate = formData.islemTarihi !== todayStr && formData.islemTarihi < todayStr;
   const disabledClass = isPastDate ? " opacity-50 cursor-not-allowed" : "";
 
+  const initializationRef = React.useRef<string>('');
+
   useEffect(() => {
-    if (selectedKuyruk) {
-      if (isPastDate) {
+    if (!selectedKuyruk) return;
+    
+    // Create a unique key for the current selection: Kuyruk No + Selected Date
+    const currentInitKey = `${selectedKuyruk}_${formData.islemTarihi}`;
+    
+    // If we already initialized for this specific aircraft and date, do NOT reset the form
+    // This prevents background fleet refreshes from overwriting what the user is typing.
+    if (initializationRef.current === currentInitKey) return;
+    
+    if (isPastDate) {
         if (!envanterLog || envanterLog.length === 0) return;
         
         // Use the same normalization logic as App.tsx to ensure match
@@ -663,6 +674,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
             durumAyrintisi: logEntry.durumAyrintisi || prev.durumAyrintisi,
             aciklama: logEntry.aciklama || prev.aciklama
           }));
+          initializationRef.current = currentInitKey;
           if (selectedType === 'AT-802') {
             setAt802Data(prev => ({
               ...prev,
@@ -696,6 +708,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           durumAyrintisi: selectedAircraft.durumAyrintisi || '',
           aciklama: selectedAircraft.aciklama || ''
         }));
+        initializationRef.current = currentInitKey;
         if (selectedType === 'AT-802') {
           setAt802Data({
             acTT: hours,
@@ -708,7 +721,6 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           });
         }
       }
-    }
   }, [formData.islemTarihi, selectedKuyruk, envanterLog, isPastDate, selectedType, selectedAircraft]);
 
   return (
@@ -766,7 +778,10 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                   <input 
                     type="date" 
                     value={formData.islemTarihi}
-                    onChange={(e) => handleInputChange('islemTarihi', e.target.value)}
+                    onChange={(e) => {
+                      handleInputChange('islemTarihi', e.target.value);
+                      initializationRef.current = '';
+                    }}
                     className="w-full bg-black/40 border-2 border-white/10 rounded-2xl px-4 md:px-6 py-4 text-white font-bold focus:border-emerald-500 outline-none transition-all"
                   />
                 </div>
@@ -775,11 +790,14 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                     <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">{selectedType} HAVA ARACI SEÇİMİ</label>
                     <button onClick={() => { setIsAuth(false); setSelectedType(null); setSelectedKuyruk(''); }} className="text-xs font-black text-white/40 hover:text-white uppercase tracking-widest">TİP DEĞİŞTİR</button>
                   </div>
-                  <select 
-                    value={selectedKuyruk}
-                    onChange={(e) => setSelectedKuyruk(e.target.value)}
-                    className="w-full bg-black/40 border-2 border-white/10 rounded-2xl px-4 md:px-6 py-4 text-white font-bold focus:border-emerald-500 outline-none transition-all appearance-none"
-                  >
+                    <select 
+                      value={selectedKuyruk}
+                      onChange={(e) => {
+                        setSelectedKuyruk(e.target.value);
+                        initializationRef.current = '';
+                      }}
+                      className="w-full bg-black/40 border-2 border-white/10 rounded-2xl px-4 md:px-6 py-4 text-white font-bold focus:border-emerald-500 outline-none transition-all appearance-none"
+                    >
                     <option value="">Kuyruk Numarası Seçiniz...</option>
                     {filteredFleet.map(a => (
                       <option key={a.kuyrukNo} value={a.kuyrukNo}>{a.kuyrukNo} ({a.cagriKodu})</option>

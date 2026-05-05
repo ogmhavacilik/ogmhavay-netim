@@ -20,6 +20,9 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   const durumStr = getVal(['durum', 'Durum', 'DURUM', 'N', 'n', 'B', 'b', 'durum']).toLocaleUpperCase('tr-TR').trim();
   const detailUpper = detail.toLocaleUpperCase('tr-TR');
   
+  // 0. KRİTİK ÖNCELİK: Arıza veya Overspeed durumu varsa TBU vb. yerine ARIZA olarak işaretle
+  const detailHasMalfunction = detailUpper.includes('ARIZASI') || detailUpper.includes('ARIZA') || detailUpper.includes('OVERSPEED');
+
   // 1. KESİN ÖNCELİK: DURUM AYRINTISI (BİREBİR EŞLEŞME VEYA NET ANAHTAR KELİME)
   // Kullanıcı "Eğer durum ayrıntısı varsa birebir onu baz al" dedi.
   
@@ -33,7 +36,7 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   const isGayriFaalStatus = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('GF');
   const hasYillikBakim = detailUpper.includes('YILLIK') || desc.includes('yıllık') || desc.includes('yillik');
   
-  if (!hasYillikBakim && (detailUpper.includes('TBU') || (isGayriFaalStatus && (
+  if (!detailHasMalfunction && !hasYillikBakim && (detailUpper.includes('TBU') || (isGayriFaalStatus && (
     detailUpper.includes('SL') || 
     desc.includes('sl ') || desc.includes(' sl') || desc === 'sl' ||
     desc.includes('gereği') || desc.includes('geregi') || 
