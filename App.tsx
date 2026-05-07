@@ -1281,7 +1281,7 @@ const App = () => {
   }, [fleet, historicalFleet, searchTerm, filterType, filterTail, hideKazaKirim]);
 
   const filteredActivities = useMemo(() => {
-    return activities.filter(a => {
+    const filtered = activities.filter(a => {
       const matchesType = filterType === 'Tümü' || a.tip === filterType;
       const matchesTail = filterTail === '' || a.kuyrukNo.toLowerCase().includes(filterTail.toLowerCase());
       
@@ -1298,7 +1298,48 @@ const App = () => {
 
       return matchesType && matchesTail && matchesKazaKirim;
     });
-  }, [activities, filterType, filterTail, hideKazaKirim]);
+
+    // Enhance activities with 'X' for days before KM or Arrival Date
+    return filtered.map(act => {
+      const aircraft = fleet.find(f => f.kuyrukNo === act.kuyrukNo);
+      const dailyStatuses = { ...act.dailyStatuses };
+      
+      // Find the earliest KM date
+      const kmDates = Object.entries(dailyStatuses)
+        .filter(([_, status]) => status === 'KM')
+        .map(([date, _]) => date)
+        .sort();
+      
+      let firstOperationalDate: string | null = kmDates.length > 0 ? kmDates[0] : null;
+      
+      // Also consider Gelis Tarihi (Arrival Date) if available
+      if (aircraft?.gelisTarihi && aircraft.gelisTarihi !== '-' && aircraft.gelisTarihi !== '') {
+        const parts = String(aircraft.gelisTarihi).split('.');
+        if (parts.length === 3) {
+          const isoGelis = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          if (!firstOperationalDate || isoGelis < firstOperationalDate) {
+            firstOperationalDate = isoGelis;
+          }
+        }
+      }
+      
+      if (firstOperationalDate) {
+        // Find visible range and fill 'X' for anything before firstOperationalDate
+        const start = new Date(filterStartDate);
+        const end = new Date(filterEndDate);
+        let curr = new Date(start);
+        while (curr <= end) {
+          const dateStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
+          if (dateStr < firstOperationalDate && (!dailyStatuses[dateStr] || dailyStatuses[dateStr] === '')) {
+            dailyStatuses[dateStr] = 'X';
+          }
+          curr.setDate(curr.getDate() + 1);
+        }
+      }
+      
+      return { ...act, dailyStatuses };
+    });
+  }, [activities, filterType, filterTail, hideKazaKirim, fleet, filterStartDate, filterEndDate]);
 
   const toggleNote = (kuyrukNo: string) => {
     setExpandedNotes(prev => ({ ...prev, [kuyrukNo]: !prev[kuyrukNo] }));
