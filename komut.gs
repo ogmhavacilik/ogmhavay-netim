@@ -356,8 +356,8 @@ function doPost(e) {
       if (params.aircraftType === 'AT-802') {
         try {
           lookupData = {
-            keys: sheet.getRange("T24:T35").getDisplayValues(),
-            vals: sheet.getRange("U24:V35").getDisplayValues()
+            keys: sheet.getRange("T24:T41").getDisplayValues(),
+            vals: sheet.getRange("U24:V41").getDisplayValues()
           };
         } catch (e) {}
       }
@@ -381,12 +381,14 @@ function doPost(e) {
             var techSheet = ss.getSheetByName(techSheetName);
             if (techSheet) {
               try {
-                item.govdeSN = techSheet.getRange("H10").getDisplayValue();
-                item.motor1SN = techSheet.getRange("H14").getDisplayValue();
-                item.uretimYili = techSheet.getRange("F7:H7").getDisplayValue();
+                item.acTT = techSheet.getRange("B11").getDisplayValue();
+                item.landings = techSheet.getRange("E11").getDisplayValue();
+                item.engineStarts = techSheet.getRange("F15").getDisplayValue();
+                item.engineFlights = techSheet.getRange("H15").getDisplayValue();
                 
                 var frdsCell = "M10";
-                var motorCell = "J16";
+                var motorCell = "J16:P16";
+                
                 if (kNo === "OR-2023") { frdsCell = "L9"; motorCell = "J15:P15"; }
                 else if (kNo === "OR-2024") { frdsCell = "M7"; motorCell = "K13:Q13"; }
                 else if (kNo === "OR-2025") { frdsCell = "L8"; motorCell = "J14:P14"; }
@@ -422,6 +424,62 @@ function doPost(e) {
       return jsonSuccess(inventoryResults);
     }
 
+    // 🟡 SENKRONİZASYON AKSİYONU
+    if (action === "sync") {
+      return jsonSuccess({ message: "Senkronizasyon kanalı aktif." });
+    }
+
+    // 🟡 PDF EXPORT AKSİYONU (GÜNLÜK DURUM RAPORU)
+    if (action === "exportAT802PDF") {
+      try {
+        var sheet = findSheet(ss, "GÜNLÜK DURUM");
+        if (!sheet) return jsonError("GÜNLÜK DURUM sayfası bulunamadı.");
+        
+        var gid = sheet.getSheetId();
+        var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=pdf&gid=" + gid + "&range=A1:AL18&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false";
+        
+        var token = ScriptApp.getOAuthToken();
+        var response = UrlFetchApp.fetch(url, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        
+        var blob = response.getBlob();
+        var base64 = Utilities.base64Encode(blob.getBytes());
+        return jsonSuccess({
+          filename: "AT802_Gunluk_Durum_" + Utilities.formatDate(new Date(), "GMT+3", "yyyy-MM-dd") + ".pdf",
+          base64: base64
+        });
+      } catch (e) {
+        return jsonError("PDF oluşturma hatası: " + e.toString());
+      }
+    }
+
+    // 🟡 PDF EXPORT AKSİYONU (AT-802 ÇIKTI)
+    if (action === "exportAT802CiktiPDF") {
+      try {
+        var sheet = findSheet(ss, "ÇIKTI");
+        if (!sheet) return jsonError("ÇIKTI sayfası bulunamadı.");
+        
+        var gid = sheet.getSheetId();
+        // A1:AM18 range - Landscape, Fit to Page, Centered
+        var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=pdf&gid=" + gid + "&range=A1:AM18&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false&horizontal_alignment=CENTER&vertical_alignment=CENTER";
+        
+        var token = ScriptApp.getOAuthToken();
+        var response = UrlFetchApp.fetch(url, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        
+        var blob = response.getBlob();
+        var base64 = Utilities.base64Encode(blob.getBytes());
+        return jsonSuccess({
+          filename: "AT802_100_Saat_Takip_" + Utilities.formatDate(new Date(), "GMT+3", "yyyy-MM-dd") + ".pdf",
+          base64: base64
+        });
+      } catch (e) {
+        return jsonError("PDF oluşturma hatası: " + e.toString());
+      }
+    }
+
     // 🟡 ÖZEL VERİ ÇEKME AKSİYONU (AT-802 Step 1 için)
     if (action === "getAircraftSpecificData") {
       var kNo = String(params.kuyrukNo).trim();
@@ -441,13 +499,15 @@ function doPost(e) {
         data.flights = techSheet.getRange("H15").getDisplayValue();
         
         var frdsCell = "M10";
-        var motorCell = "J16";
+        var motorCell = "J16:P16";
         
         if (kNo === "OR-2023") { frdsCell = "L9"; motorCell = "J15:P15"; }
         else if (kNo === "OR-2024") { frdsCell = "M7"; motorCell = "K13:Q13"; }
         else if (kNo === "OR-2025") { frdsCell = "L8"; motorCell = "J14:P14"; }
         else if (kNo === "OR-2026") { frdsCell = "L8"; motorCell = "J14:P14"; }
         else if (kNo === "OR-2027") { frdsCell = "N12"; motorCell = "K19:Q19"; }
+        else if (kNo === "OR-2030") { frdsCell = "N11"; motorCell = "K17:Q17"; }
+        else if (kNo === "OR-2031") { frdsCell = "N11"; motorCell = "K17:Q17"; }
         else if (kNo === "OR-2028") { frdsCell = "M8"; motorCell = "J14:P14"; }
         else if (kNo === "OR-2037") { frdsCell = "M12"; motorCell = "J18:P18"; }
         
@@ -488,7 +548,7 @@ function doPost(e) {
         if (!sheet) return jsonError("GÜNLÜK DURUM sayfası bulunamadı.");
         
         var gid = sheet.getSheetId();
-        var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=pdf&gid=" + gid + "&range=A1:AL16&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false";
+        var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=pdf&gid=" + gid + "&range=A1:AL25&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false";
         
         var token = ScriptApp.getOAuthToken();
         var response = UrlFetchApp.fetch(url, {

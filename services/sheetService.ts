@@ -23,6 +23,10 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   // 0. KRİTİK ÖNCELİK: Arıza veya Overspeed durumu varsa TBU vb. yerine ARIZA olarak işaretle
   const detailHasMalfunction = detailUpper.includes('ARIZASI') || detailUpper.includes('ARIZA') || detailUpper.includes('OVERSPEED');
 
+  if (detailHasMalfunction) {
+    return { code: 'A', interpretation: 'ARIZA' };
+  }
+
   // 1. KESİN ÖNCELİK: DURUM AYRINTISI (BİREBİR EŞLEŞME VEYA NET ANAHTAR KELİME)
   // Kullanıcı "Eğer durum ayrıntısı varsa birebir onu baz al" dedi.
   
@@ -127,11 +131,7 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
 export const formatToHHMM = (totalHours: number | null, aircraftType?: string): string => {
   if (totalHours === null) return '-';
   
-  if (aircraftType === 'Bell-429' || aircraftType === 'B-360' || aircraftType === 'C-650') {
-    // For these types, return as decimal (e.g. 1736,6)
-    return totalHours.toFixed(1).replace('.', ',');
-  }
-
+  // Standard conversion for all types now, as per user's latest request to convert decimals (e.g. 1692.5) to HH:mm format (1692:30)
   const hours = Math.floor(Math.abs(totalHours));
   const minutes = Math.round((Math.abs(totalHours) - hours) * 60);
   const sign = totalHours < 0 ? '-' : '';

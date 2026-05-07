@@ -105,3 +105,32 @@ export const exportAT802DailyStatusToPDF = async (scriptUrl: string, sheetId: st
     return { success: false, message: error.message || 'Sunucu bağlantı hatası.' };
   }
 };
+
+export const exportAT802CiktiPDF = async (scriptUrl: string, sheetId: string) => {
+  try {
+    const response = await fetch(scriptUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: 'exportAT802CiktiPDF',
+        sheetId: sheetId
+      })
+    });
+    
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    const result = await response.json();
+    if (result.success && result.data && result.data.base64) {
+      const link = document.createElement('a');
+      link.href = `data:application/pdf;base64,${result.data.base64}`;
+      link.download = result.data.filename || 'AT802_100_Saat_Takip.pdf';
+      link.click();
+      return { success: true, message: 'PDF başarıyla indirildi.' };
+    }
+    return { success: false, message: result.error || 'PDF oluşturulamadı.' };
+  } catch (error: any) {
+    console.error("exportAT802CiktiPDF error:", error);
+    return { success: false, message: error.message || 'Sunucu bağlantı hatası.' };
+  }
+};

@@ -291,7 +291,26 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
   }, [selectedKuyruk, fleet]);
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const newState = { ...prev, [field]: value };
+      // Local storage persistence
+      if (selectedKuyruk) {
+        const storageKey = `draft_${selectedKuyruk}_${newState.islemTarihi}`;
+        localStorage.setItem(storageKey, JSON.stringify({ formData: newState, at802Data }));
+      }
+      return newState;
+    });
+  };
+
+  const handleAt802InputChange = (field: string, value: string) => {
+    setAt802Data(prev => {
+      const newState = { ...prev, [field]: value };
+      if (selectedKuyruk) {
+        const storageKey = `draft_${selectedKuyruk}_${formData.islemTarihi}`;
+        localStorage.setItem(storageKey, JSON.stringify({ formData, at802Data: newState }));
+      }
+      return newState;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -603,6 +622,8 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       }
 
       setTimeout(() => {
+        // Clear draft on success
+        localStorage.removeItem(`draft_${selectedAircraft.kuyrukNo}_${formData.islemTarihi}`);
         onSuccess(selectedAircraft.tip);
       }, 1500);
 
@@ -633,6 +654,21 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     // If we already initialized for this specific aircraft and date, do NOT reset the form
     // This prevents background fleet refreshes from overwriting what the user is typing.
     if (initializationRef.current === currentInitKey) return;
+    
+    // Check local storage for drafts first
+    const storageKey = `draft_${selectedKuyruk}_${formData.islemTarihi}`;
+    const savedDraft = localStorage.getItem(storageKey);
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        setFormData(parsed.formData);
+        if (parsed.at802Data) setAt802Data(parsed.at802Data);
+        initializationRef.current = currentInitKey;
+        return;
+      } catch (e) {
+        console.error("Draft load error:", e);
+      }
+    }
     
     if (isPastDate) {
         if (!envanterLog || envanterLog.length === 0) return;

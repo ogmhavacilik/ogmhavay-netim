@@ -2,11 +2,11 @@
 import { PlatformType, Status, StatusType, Aircraft, AircraftActivity } from './types';
 
 export const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzAM6TW5q6t67ju-h0EEci55gTQOVj3l_ULsG1hnbinOtX49Ci8NK0n3CTEvAlrkF3P/exec";
-export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwXbT_vlWtMC-7w7dHHxVeqkoYey6TSooCOghrFJhKMRjlA9JY0nakOeoWuvn2TCfSTSQ/exec";
+export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuj1xSbiAmiqINqmfS6tIKbTrK_QYtC8hppFNYqF9CHb5VB1ea1vF0Lb1VEJoDxxT9bQ/exec";
 export const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwvC8peKrqCpy1g13HQPzy4L9w3vC_ZG9IvVt8UBmyVE5wdJU5y8TJDKfzC1C6VIOCfEQ/exec"; 
 export const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrbIvbXLDJBC2_s9PeevqjIiIIWkDZ6kd2AoYG-4qnsFHatVT8AG9hVFb-3M_e-QJ8Gg/exec";
 export const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjm3OUnrM_Ki6fyVG_PqpqEkNtoc18fgf3lEPtZRtC-T2-e_ecyneHduXjfygoLjr5/exec";
-export const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyMByHeNp_36PvZAC1T8ZvmRgMzfACkF3UUTYlrPNGkOP1q9up8op6PDH3r34RZg-bWLg/exec";
+export const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzcKPf8v67_rqUwllhFmjhBk0tX_YxwjSabvJwWmMmuEd1NMXWxUEE26CZj3cJUvLkmMA/exec";
 export const MAIL_LOG_SHEET_ID = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
 
 export const getCallSignByTail = (tail: string): string => {
@@ -33,6 +33,8 @@ export const getCallSignByTail = (tail: string): string => {
     'OR-2036': 'ORMAN-36',
     'OR-2037': 'ORMAN-37',
     'OR-2038': 'ORMAN-38',
+    'OR-2039': 'ORMAN-39',
+    'OR-2040': 'ORMAN-40',
     'OR-1018': 'ORMAN-18',
     'OR-1019': 'ORMAN-19',
     'OR-1020': 'ORMAN-20',
@@ -458,6 +460,46 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     motor: 'PT6A-67F',
     uretimYili: 2021,
     base: 'Etimesgut',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-39',
+    kuyrukNo: 'OR-2039',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: '-' as any,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: '-',
+    faydaliSaat: 0,
+    durumBaslangic: '-',
+    aciklama: 'Yeni Hizmete Girecek',
+    guncellemeTarihi: '-',
+    seriNo: '-',
+    motor: 'PT6A-67F',
+    uretimYili: 2024,
+    base: '-',
+    maintenanceHours: [],
+    photos: []
+  },
+  {
+    cagriKodu: 'ORMAN-40',
+    kuyrukNo: 'OR-2040',
+    tip: 'AT-802',
+    platformTipi: PlatformType.SA,
+    durum: '-' as any,
+    durumTipi: StatusType.NONE,
+    durumAyrintisi: '-',
+    konum: '-',
+    faydaliSaat: 0,
+    durumBaslangic: '-',
+    aciklama: 'Yeni Hizmete Girecek',
+    guncellemeTarihi: '-',
+    seriNo: '-',
+    motor: 'PT6A-67F',
+    uretimYili: 2024,
+    base: '-',
     maintenanceHours: [],
     photos: []
   },

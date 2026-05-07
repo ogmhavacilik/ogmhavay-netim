@@ -67,6 +67,57 @@ function doPost(e) {
     var ss = SpreadsheetApp.openById(params.sheetId);
     var action = (params.action || "getAircraftData").toString().trim();
 
+    // 🟡 PDF EXPORT AKSİYONU (AT-802 ÇIKTI - 100 SAAT TAKİP)
+    if (action === "exportAT802CiktiPDF") {
+      try {
+        var sheet = findSheet(ss, "ÇIKTI");
+        if (!sheet) return jsonError("ÇIKTI sayfası bulunamadı.");
+        
+        var gid = sheet.getSheetId();
+        // A1:AM18 range - Landscape, Fit to Page, Centered
+        var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=pdf&gid=" + gid + "&range=A1:AM18&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false&horizontal_alignment=CENTER&vertical_alignment=CENTER";
+        
+        var token = ScriptApp.getOAuthToken();
+        var response = UrlFetchApp.fetch(url, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        
+        var blob = response.getBlob();
+        var base64 = Utilities.base64Encode(blob.getBytes());
+        return jsonSuccess({
+          filename: "AT802_100_Saat_Takip_" + Utilities.formatDate(new Date(), "GMT+3", "yyyy-MM-dd") + ".pdf",
+          base64: base64
+        });
+      } catch (e) {
+        return jsonError("PDF oluşturma hatası: " + e.toString());
+      }
+    }
+
+    // 🟡 PDF EXPORT AKSİYONU (GÜNLÜK DURUM RAPORU)
+    if (action === "exportAT802PDF") {
+      try {
+        var sheet = findSheet(ss, "GÜNLÜK DURUM");
+        if (!sheet) return jsonError("GÜNLÜK DURUM sayfası bulunamadı.");
+        
+        var gid = sheet.getSheetId();
+        var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=pdf&gid=" + gid + "&range=A1:AL18&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false";
+        
+        var token = ScriptApp.getOAuthToken();
+        var response = UrlFetchApp.fetch(url, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        
+        var blob = response.getBlob();
+        var base64 = Utilities.base64Encode(blob.getBytes());
+        return jsonSuccess({
+          filename: "AT802_Gunluk_Durum_" + Utilities.formatDate(new Date(), "GMT+3", "yyyy-MM-dd") + ".pdf",
+          base64: base64
+        });
+      } catch (e) {
+        return jsonError("PDF oluşturma hatası: " + e.toString());
+      }
+    }
+
     // -----------------------------------------------------
     // 🔵 AKSİYON: ÖPL VERİSİ (ARŞİV) SORGULAMA
     // -----------------------------------------------------
@@ -849,27 +900,45 @@ function doPost(e) {
           "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Açıklama"
         ]);
       }
+
+      var faalLogSheet = findSheet(ss, "Faaliyet Log");
+      if (!faalLogSheet) {
+        faalLogSheet = ss.insertSheet("Faaliyet Log");
+        faalLogSheet.appendRow([
+          "ID", "Tarih", "Kuyruk No", "Tip", "Durum", "Analiz Kodu"
+        ]);
+      }
       
       var dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
-      var logData = logSheet.getRange("A:A").getValues();
-      var idMap = {};
-      for (var i = 1; i < logData.length; i++) {
-        var id = String(logData[i][0]).trim();
-        if (id) idMap[id] = i + 1;
+      
+      // Cache IDs for both sheets
+      var logIds = logSheet.getRange("A:A").getValues();
+      var logIdMap = {};
+      for (var i = 1; i < logIds.length; i++) {
+        var id = String(logIds[i][0]).trim();
+        if (id) logIdMap[id] = i + 1;
+      }
+
+      var faalIds = faalLogSheet.getRange("A:A").getValues();
+      var faalIdMap = {};
+      for (var i = 1; i < faalIds.length; i++) {
+        var id = String(faalIds[i][0]).trim();
+        if (id) faalIdMap[id] = i + 1;
       }
       
       fleetData.forEach(function(data) {
         var kuyrukNo = data.kuyrukNo;
         var logId = dateStr + "_" + kuyrukNo;
         
-        var targetRow = idMap[logId];
+        // Update Envanter Log
+        var targetRow = logIdMap[logId];
         if (!targetRow) {
           logSheet.appendRow([
             logId, 
             dateStr, 
             kuyrukNo, 
             data.tip, 
-            "", // Gövde Uçuş Saati (Placeholder)
+            "", // Placeholder for govde
             data.faydaliSaat || 0,
             data.konum,
             data.durum,
@@ -887,11 +956,30 @@ function doPost(e) {
             data.aciklama ? "'" + String(data.aciklama) : ""
           ]]);
         }
-
-        // Gövde saatini tipine göre doğru formatta yaz
         setLogTimeValue(logSheet, targetRow, 5, data.govdeUcusSaati, data.tip);
-        // Açıklama alanını metin formatında tut
         logSheet.getRange(targetRow, 10).setNumberFormat("@");
+
+        // Update Faaliyet Log
+        var faalRow = faalIdMap[logId];
+        if (!faalRow) {
+          faalLogSheet.appendRow([
+            logId,
+            dateStr,
+            kuyrukNo,
+            data.tip,
+            data.durumAyrintisi,
+            data.analizKodu || "F"
+          ]);
+        } else {
+          faalLogSheet.getRange(faalRow, 1, 1, 6).setValues([[
+            logId, 
+            dateStr, 
+            kuyrukNo, 
+            data.tip, 
+            data.durumAyrintisi, 
+            data.analizKodu || "F"
+          ]]);
+        }
       });
       
       return jsonSuccess("Filo logları başarıyla güncellendi.");
@@ -2191,13 +2279,15 @@ function setLogTimeValue(sheet, row, col, value, tip) {
   var tipUpper = (tip || "").toUpperCase();
   
   // B-360, C-650, BELL-429 için ondalık saat desteği
-  var isDecimalType = tipUpper.indexOf("B-360") !== -1 || 
-                      tipUpper.indexOf("C-650") !== -1 || 
-                      tipUpper.indexOf("C-3650") !== -1 || 
-                      tipUpper.indexOf("BELL-429") !== -1;
+  // Case-insensitive and dash-flexible check
+  var cleanTip = tipUpper.replace(/[\s-]/g, "");
+  var isDecimalType = cleanTip.indexOf("B360") !== -1 || 
+                      cleanTip.indexOf("C650") !== -1 || 
+                      cleanTip.indexOf("C3650") !== -1 || 
+                      cleanTip.indexOf("BELL429") !== -1;
 
   if (isDecimalType) {
-    var n = parseFloat(valStr.replace(',', '.'));
+    var n = parseFloat(valStr.replace(/\./g, "").replace(',', '.'));
     if (!isNaN(n)) {
       range.setValue(n);
       range.setNumberFormat("#,##0.0");

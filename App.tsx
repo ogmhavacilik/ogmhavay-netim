@@ -21,7 +21,7 @@ import {
   getCallSignByTail
 } from './constants';
 import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM } from './services/sheetService';
-import { exportAT802DailyStatusToPDF, exportOPLToPDF } from './services/pdfService';
+import { exportAT802DailyStatusToPDF, exportOPLToPDF, exportAT802CiktiPDF } from './services/pdfService';
 import { exportTableToMHTML } from './services/mhtmlService';
 import { MOCK_ACTIVITY_GRID } from './constants';
 import { generateFleetExcelHtml, exportTableToExcel } from './src/services/excelService';
@@ -194,18 +194,18 @@ const App = () => {
       sheetName: 'GÜNLÜK DURUM',
       appsScriptUrl: AT802_SCRIPT_URL,
       mapping: { 
-        kuyrukNo: 'B3:B16', 
-        durum: 'C3:C16', 
-        durumAyrintisi: 'D3:D16', 
-        konum: 'E3:E16', 
-        faydaliSaat: 'V3:AI16', 
-        govdeUcusSaati: 'F3:F16',
-        aciklama: 'AL3:AL16',   
-        gelisTarihi: 'U24:V39',
-        gelisKuyrukNo: 'T24:T39',
-        bakimTakvimTarih: 'AJ3:AJ16',
-        frdsTestDateMain: 'M3:M16',
-        frdsTestDateAlt: 'N3:N16'
+        kuyrukNo: 'B3:B18', 
+        durum: 'C3:C18', 
+        durumAyrintisi: 'D3:D18', 
+        konum: 'E3:E18', 
+        faydaliSaat: 'V3:AI18', 
+        govdeUcusSaati: 'F3:F18',
+        aciklama: 'AL3:AL18',   
+        gelisTarihi: 'U24:V41',
+        gelisKuyrukNo: 'T24:T41',
+        bakimTakvimTarih: 'AJ3:AJ18',
+        frdsTestDateMain: 'M3:M18',
+        frdsTestDateAlt: 'N3:N18'
       }
     },
     {
@@ -470,35 +470,38 @@ const App = () => {
           }
           return newActivities;
         });
-
-        // Log to central log if requested
-        if (shouldLog && LOG_SCRIPT_URL) {
-          fetch(LOG_SCRIPT_URL, {
-            method: 'POST',
-            redirect: 'follow',
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({
-              action: 'logSingleAircraftActivity',
-              sheetId: MAIL_LOG_SHEET_ID,
-              data: {
-                date: formattedDate,
-                kuyrukNo: incoming.kuyrukNo,
-                tip: incoming.tip || platform,
-                govdeUcusSaati: incoming.govdeUcusSaati || 0,
-                faydaliSaat: incoming.faydaliSaat || 0,
-                konum: incoming.konum || 'ANKARA',
-                durum: incoming.durum || Status.FAAL,
-                durumAyrintisi: incoming.durumAyrintisi || '-',
-                aciklama: incoming.aciklama || '',
-                analizKodu: incoming.assignedCode || 'F'
-              }
-            })
-          }).catch(err => console.error("Sync log error:", err));
-        }
       });
 
       return updatedFleet;
     });
+
+    // Log to central log if requested - Batching all aircraft in one request
+    if (shouldLog && LOG_SCRIPT_URL && incomingData.length > 0) {
+      const fleetToLog = incomingData.map(incoming => ({
+        kuyrukNo: incoming.kuyrukNo,
+        tip: incoming.tip || platform,
+        govdeUcusSaati: incoming.govdeUcusSaati || 0,
+        faydaliSaat: incoming.faydaliSaat || 0,
+        konum: incoming.konum || 'ANKARA',
+        durum: incoming.durum || Status.FAAL,
+        durumAyrintisi: incoming.durumAyrintisi || '-',
+        aciklama: incoming.aciklama || '',
+        analizKodu: incoming.assignedCode || 'F'
+      }));
+
+      fetch(LOG_SCRIPT_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: 'logAllAircraftActivity',
+          sheetId: MAIL_LOG_SHEET_ID,
+          fleetData: fleetToLog
+        })
+      }).catch(err => {
+        console.error("Batch sync log error:", err);
+      });
+    }
 
     if (discoveredChanges.length > 0) {
       setNotifications(prev => [...discoveredChanges, ...prev].slice(0, 100));
@@ -1323,19 +1326,22 @@ const App = () => {
   const syncLogs = async () => {
     setIsSyncing(true);
     try {
-      const response = await fetch(`${AT802_SCRIPT_URL}?action=sync`, {
-        redirect: 'follow'
+      const response = await fetch(`${AT802_SCRIPT_URL}`, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: 'sync' })
       });
       const result = await response.json();
       if (result.success) {
         alert('Log senkronizasyonu başarıyla tamamlandı.');
         runGlobalSync(); // Refresh data
       } else {
-        alert('Senkronizasyon hatası: ' + result.message);
+        alert('Senkronizasyon hatası: ' + (result.message || 'Bilinmeyen hata'));
       }
     } catch (error) {
-      console.error('Sync error:', error);
-      alert('Senkronizasyon sırasında bir hata oluştu.');
+      console.error('Sync log error:', error);
+      alert(`Senkronizasyon sırasında bir hata oluştu: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsSyncing(false);
     }
@@ -1523,6 +1529,16 @@ const App = () => {
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeWidth={3}/></svg>
                       GÜNLÜK DURUM (PDF)
                     </button>
+                    <button 
+                      onClick={async () => {
+                        const res = await exportAT802CiktiPDF(AT802_SCRIPT_URL, '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4');
+                        if (!res.success) alert(res.message);
+                      }}
+                      className="bg-orange-600 hover:bg-orange-500 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeWidth={3}/></svg>
+                      100 SAAT TAKİP (PDF)
+                    </button>
                   </div>
                 )}
                 <button onClick={exportFleetToExcel} className="bg-emerald-700 hover:bg-emerald-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center">
@@ -1564,9 +1580,10 @@ const App = () => {
                   {filteredFleet.map((a, i) => {
                     const isKazaKirim = a.assignedCode === 'KK' || (a.durumAyrintisi && a.durumAyrintisi.toUpperCase().includes('KAZA KIRIM'));
                     const hasOplAlert = a.oplAlerts && a.oplAlerts.length > 0 && !isKazaKirim;
+                    const isWeeklyAlertOnly = hasOplAlert && a.oplAlerts!.every(al => al.includes('haftalık') || al.includes('Haftalık'));
                     const isFaal = String(a.durum).toUpperCase().includes("FAAL") && !String(a.durum).toUpperCase().includes("GAYRİ") && !String(a.durum).toUpperCase().includes("GAYRI");
                     return (
-                      <tr key={i} className={`hover:bg-gray-100 transition-colors cursor-pointer group ${hasOplAlert ? 'animate-intense-blink' : ''} ${historicalFleet !== null ? 'opacity-60 cursor-default' : 'active:scale-[0.99]'}`} onClick={() => historicalFleet === null && setSelectedAircraft(a)}>
+                      <tr key={i} className={`hover:bg-gray-100 transition-colors cursor-pointer group ${hasOplAlert ? (isWeeklyAlertOnly ? 'animate-yellow-blink' : 'animate-intense-blink') : ''} ${historicalFleet !== null ? 'opacity-60 cursor-default' : 'active:scale-[0.99]'}`} onClick={() => historicalFleet === null && setSelectedAircraft(a)}>
                         <td className="border border-black px-2 py-2.5 text-center font-black text-gray-900">{i + 1}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900">{a.cagriKodu}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900">
@@ -1582,7 +1599,7 @@ const App = () => {
                               return '';
                             })()}
                           </span>
-                          {hasOplAlert && (
+                          {hasOplAlert && !isWeeklyAlertOnly && (
                             <span className="ml-2 bg-red-600 text-white text-[8px] px-1.5 py-0.5 rounded-full animate-bounce shadow-[0_0_15px_rgba(220,38,38,0.8)]">
                               ALERT!
                             </span>
