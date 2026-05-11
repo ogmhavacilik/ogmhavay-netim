@@ -71,11 +71,12 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     return diffDays;
   }, [startDate, endDate, currentTime]);
 
-  const getStatusClass = (code: DailyStatusCode | string, isKarma?: boolean) => {
+  const getStatusClass = (code: DailyStatusCode | string, isCompletedToday?: boolean) => {
+    if (code === 'K' || isCompletedToday) return 'bg-white p-0 relative overflow-hidden border-black';
     switch (code) {
       case 'B': case 'BB': case 'TBU': case 'KM': return 'bg-[#FFFF00] text-black font-black border-black'; // SARI
-      case 'A': case 'PB': case 'KK': return 'bg-[#FF0000] text-black font-black border-black'; // KIRMIZI
-      case 'X': return 'bg-[#7030A0] text-black font-black border-black'; // MOR
+      case 'A': case 'PB': case 'KK': return 'bg-[#FF0000] text-white font-black border-black'; // KIRMIZI
+      case 'X': return 'bg-[#7030A0] text-white font-black border-black'; // MOR
       case 'TB': return 'bg-[#40E0D0] text-black font-black border-black'; // TURKUAZ
       case 'F': return 'bg-[#DCFCE7] text-black font-black border-black';
       case '': return 'bg-gray-200 text-transparent'; // Veri yok
@@ -83,11 +84,12 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     }
   };
 
-  const getStatusStyle = (code: DailyStatusCode | string, isKarma?: boolean): React.CSSProperties => {
+  const getStatusStyle = (code: DailyStatusCode | string, isCompletedToday?: boolean): React.CSSProperties => {
+    if (code === 'K' || isCompletedToday) return { backgroundColor: '#FFFFFF', padding: 0 };
     switch (code) {
       case 'B': case 'BB': case 'TBU': case 'KM': return { backgroundColor: '#FFFF00', color: '#000000' };
-      case 'A': case 'PB': case 'KK': return { backgroundColor: '#FF0000', color: '#000000' };
-      case 'X': return { backgroundColor: '#7030A0', color: '#000000' };
+      case 'A': case 'PB': case 'KK': return { backgroundColor: '#FF0000', color: '#FFFFFF' };
+      case 'X': return { backgroundColor: '#7030A0', color: '#FFFFFF' };
       case 'TB': return { backgroundColor: '#40E0D0', color: '#000000' };
       case 'F': return { backgroundColor: '#DCFCE7', color: '#000000' };
       case '': return { backgroundColor: '#e5e7eb', color: 'transparent' }; // Veri yok
@@ -135,13 +137,19 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
       return length;
     };
 
-    let effectiveFaal = 0;
+    const firstStatusDateKey = Object.keys(activity.dailyStatuses).sort()[0];
+    const firstStatusDate = firstStatusDateKey ? new Date(firstStatusDateKey) : null;
 
+    // First pass: Count basic stats
     visibleDates.forEach((date, idx) => {
       const isPastOrToday = todayIndex === -1 ? (date <= currentTime) : (idx <= todayIndex);
       const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-      const s = activity.dailyStatuses[dateStrKey];
+      let s = activity.dailyStatuses[dateStrKey];
       
+      if (isPastOrToday && (s === undefined || s === '') && firstStatusDate && date < firstStatusDate) {
+        s = 'X';
+      }
+
       if (isPastOrToday) {
         if (s === undefined || s === '') {
           missing++;
@@ -154,13 +162,31 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
         } else if (s === 'F') {
           faal++;
         }
+      }
+    });
 
-        // Calculate effective faal for percentage
+    // Second pass: Calculate effective faal for percentage
+    let effectiveFaal = 0;
+    const totalDowntimeDays = bakim + ariza;
+
+    visibleDates.forEach((date, idx) => {
+      const isPastOrToday = todayIndex === -1 ? (date <= currentTime) : (idx <= todayIndex);
+      const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      let s = activity.dailyStatuses[dateStrKey];
+      
+      if (isPastOrToday && (s === undefined || s === '') && firstStatusDate && date < firstStatusDate) {
+        s = 'X';
+      }
+
+      if (isPastOrToday) {
         if (s === 'F') {
           effectiveFaal++;
-        } else if (s && s !== 'X') {
+        } else if (s && !['X', ''].includes(s)) {
+          // Rule: Downtime is ignored for activity rate if:
+          // 1. It is NOT part of a 3D+ streak 
+          // 2. AND the total downtime in this report is < 3 days
           const streakLen = getStreakLengthAt(dateStrKey, date);
-          if (streakLen < 3) {
+          if (streakLen < 3 && totalDowntimeDays < 3) {
             effectiveFaal++;
           }
         }
@@ -352,15 +378,24 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                         ) : (
                           visibleDates.map((date, dIdx) => {
                             const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                            const status = act.dailyStatuses[dateStrKey] || '';
+                            let status = act.dailyStatuses[dateStrKey] || '';
+                            
+                            // Auto-infer 'X' for display if date is before first ever entry
+                            const firstKey = Object.keys(act.dailyStatuses).sort()[0];
+                            if (status === '' && firstKey && dateStrKey < firstKey) {
+                              status = 'X';
+                            }
+
                             const isCompletedToday = act.intraDayCompletions?.[dateStrKey];
+                            const isKarma = status === 'K' || isCompletedToday;
+
                             return (
                               <td 
                                 key={dIdx} 
                                 className={`border border-black text-center text-[10px] relative ${getStatusClass(status, isCompletedToday)} cursor-pointer hover:opacity-80 ${dIdx === todayIndex ? 'bg-red-50/10' : ''}`} 
                                 style={getStatusStyle(status, isCompletedToday)}
                                 onClick={() => {
-                                  if (isCompletedToday) {
+                                  if (isKarma) {
                                     setSelectedDayView({ activity: act, date: date });
                                   }
                                 }}
@@ -368,12 +403,71 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                                 {dIdx === todayIndex && (
                                    <div className="absolute inset-y-0 right-[-2px] w-0 border-r-[3.5px] border-dashed border-red-600 z-[50] pointer-events-none" />
                                 )}
-                                <div className="flex items-center justify-center min-h-[24px]">
-                                  {status !== 'F' && status}
-                                  {isCompletedToday && (
-                                    <span className="text-orange-500 font-black text-base leading-none ml-0.5">*</span>
-                                  )}
-                                </div>
+                                {isKarma ? (
+                                  <div className="absolute inset-0 w-full h-full overflow-hidden">
+                                     {/* Üst-Sol Başlangıç Durumu (Orange Star) */}
+                                     {(() => {
+                                       const startStatus = act.intraDayStartStatuses?.[dateStrKey] || 'F';
+                                       let startBg = '#DCFCE7'; // F
+                                       if (startStatus === 'X') startBg = '#7030A0';
+                                       else if (['B','BB','KM','TBU'].includes(startStatus)) startBg = '#FFFF00';
+                                       else if (['A','PB','KK'].includes(startStatus)) startBg = '#FF0000';
+                                       else if (startStatus === 'TB') startBg = '#40E0D0';
+                                       
+                                       return (
+                                         <div className="absolute inset-0" style={{ clipPath: 'polygon(0 0, 100% 0, 0 100%)', backgroundColor: startBg }}>
+                                            <span className="absolute top-[0px] left-[1px] font-black text-[15px] leading-tight drop-shadow-sm" style={{ color: '#FFA500' }}>★</span>
+                                         </div>
+                                       );
+                                     })()}
+                                     
+                                     {/* Alt-Sağ Son Durum (Kırmızı/Sarı vb) */}
+                                     {(() => {
+                                       const hourlyData = act.hourlyStatuses?.[dateStrKey] || {};
+                                       const hStatuses = Object.values(hourlyData) as string[];
+                                       const startStatus = act.intraDayStartStatuses?.[dateStrKey] || 'F';
+                                       
+                                       // Find a status different from start status to represent the second half
+                                       const otherStatus = hStatuses.find(sh => sh !== startStatus) || status;
+                                       
+                                       const isMaintenance = ['B','BB','KM','TBU'].includes(otherStatus);
+                                       const isOlmadi = otherStatus === 'X';
+                                       const isKM = otherStatus === 'KM';
+                                       
+                                       let bg = '#FF0000'; // Default Ariza
+                                       let fg = '#FFFFFF';
+                                       let label = 'A';
+
+                                       if (isMaintenance) {
+                                         bg = '#FFFF00';
+                                         fg = '#000000';
+                                         label = isKM ? 'KM' : 'B';
+                                       } else if (isOlmadi) {
+                                         bg = '#7030A0';
+                                         fg = '#FFFFFF';
+                                         label = 'X';
+                                       } else if (otherStatus === 'F') {
+                                         bg = '#DCFCE7';
+                                         fg = '#000000';
+                                         label = ''; // Faal ise boş kalsın veya F yazılsın
+                                       } else if (otherStatus === 'TB') {
+                                         bg = '#40E0D0';
+                                         fg = '#000000';
+                                         label = 'TB';
+                                       }
+                                       
+                                       return (
+                                         <div className="absolute inset-0 flex items-center justify-center" style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 100%)', backgroundColor: bg, color: fg }}>
+                                            <span className="absolute bottom-[1px] right-[2px] font-black text-[9px] leading-none">{label}</span>
+                                         </div>
+                                       );
+                                     })()}
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-center min-h-[24px]">
+                                    {status !== 'F' && status}
+                                  </div>
+                                )}
                               </td>
                             );
                           })
@@ -437,33 +531,88 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
         </table>
       </div>
 
-      <div className="mt-6 flex flex-col px-2">
-        <div className="flex flex-wrap gap-4 mb-4">
-           <div className="flex flex-col space-y-1">
-              <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">B: BAKIM</div>
-              <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">BB: BAKIM BEKLER</div>
-              <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">TBU: TEKNİK BÜLTEN UYGULAMASI</div>
-              <div className="bg-[#ffff00] border border-black px-2 py-1 text-[9px] font-black w-40">KM: KABUL MUAYENESİ</div>
-           </div>
-           <div className="flex flex-col space-y-1">
-              <div className="bg-[#ff0000] text-white border border-black px-2 py-1 text-[9px] font-black w-40">A: ARIZA</div>
-              <div className="bg-[#ff0000] text-white border border-black px-2 py-1 text-[9px] font-black w-40">PB: PARÇA BEKLER</div>
-              <div className="bg-[#ff0000] text-white border border-black px-2 py-1 text-[9px] font-black w-40">KK: KAZA KIRIM</div>
-           </div>
-           <div className="flex flex-col space-y-1">
-              <div className="bg-[#7030a0] text-white border border-black px-2 py-1 text-[9px] font-black w-40">X: OLMADIĞI GÜNLER</div>
-              <div className="bg-[#40E0D0] text-black border border-black px-2 py-1 text-[9px] font-black w-40">TB: TECRÜBE BEKLER</div>
-           </div>
-           <div className="flex flex-col space-y-1">
-              <div className="bg-white border border-black px-2 py-1 text-[9px] font-black w-64 flex items-center">
-                <span className="text-orange-500 font-black text-base leading-none mr-2">*</span>
-                KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)
+      <div className="mt-8 flex flex-col px-2 bg-slate-50 p-6 rounded-3xl border border-slate-200">
+        <h4 className="text-sm font-black text-slate-800 mb-6 uppercase tracking-widest border-l-4 border-slate-800 pl-4">AÇIKLAMALAR VE KISALTMALAR</h4>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
+          {/* Column 1: Maintenance (SARI) */}
+          <div className="flex flex-col space-y-3">
+            <div className="flex items-center space-x-3 group">
+              <div className="w-10 h-10 bg-[#ffff00] border-2 border-black flex items-center justify-center text-[11px] font-black shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">B</div>
+              <div className="text-[11px] font-black text-slate-700 uppercase">B: BAKIM</div>
+            </div>
+            <div className="flex items-center space-x-3 group">
+              <div className="w-10 h-10 bg-[#ffff00] border-2 border-black flex items-center justify-center text-[10px] font-black shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">BB</div>
+              <div className="text-[11px] font-black text-slate-700 uppercase">BB: BAKIM BEKLER</div>
+            </div>
+            <div className="flex items-center space-x-3 group">
+              <div className="w-10 h-10 bg-[#ffff00] border-2 border-black flex items-center justify-center text-[8px] font-black leading-tight shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform text-center">TBU</div>
+              <div className="text-[10px] font-black text-slate-700 uppercase leading-none">TBU: TEKNİK BÜLTEN<br/>UYGULAMASI</div>
+            </div>
+            <div className="flex items-center space-x-3 group">
+              <div className="w-10 h-10 bg-[#ffff00] border-2 border-black flex items-center justify-center text-[9px] font-black shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">KM</div>
+              <div className="text-[11px] font-black text-slate-700 uppercase">KM: KABUL MUAYENESİ</div>
+            </div>
+          </div>
+
+          {/* Column 2: Fault/Accident (KIRMIZI) */}
+          <div className="flex flex-col space-y-3">
+            <div className="flex items-center space-x-3 group">
+              <div className="w-10 h-10 bg-[#ff0000] border-2 border-black flex items-center justify-center text-[12px] font-black text-white shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">A</div>
+              <div className="text-[11px] font-black text-slate-700 uppercase">A: ARIZA</div>
+            </div>
+            <div className="flex items-center space-x-3 group">
+              <div className="w-10 h-10 bg-[#ff0000] border-2 border-black flex items-center justify-center text-[10px] font-black text-white shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">PB</div>
+              <div className="text-[11px] font-black text-slate-700 uppercase">PB: PARÇA BEKLER</div>
+            </div>
+            <div className="flex items-center space-x-3 group">
+              <div className="w-10 h-10 bg-[#ff0000] border-2 border-black flex items-center justify-center text-[10px] font-black text-white shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">KK</div>
+              <div className="text-[11px] font-black text-slate-700 uppercase">KK: KAZA KIRIM</div>
+            </div>
+          </div>
+
+          {/* Column 3: Absent/Experience (MOR/TURKUAZ) */}
+          <div className="flex flex-col space-y-3">
+            <div className="flex items-center space-x-3 group">
+              <div className="w-10 h-10 bg-[#7030a0] border-2 border-black flex items-center justify-center text-[12px] font-black text-white shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">X</div>
+              <div className="text-[11px] font-black text-slate-700 uppercase">X: OLMADIĞI GÜNLER</div>
+            </div>
+            <div className="flex items-center space-x-3 group">
+              <div className="w-10 h-10 bg-[#40E0D0] border-2 border-black flex items-center justify-center text-[10px] font-black shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">TB</div>
+              <div className="text-[11px] font-black text-slate-700 uppercase">TB: TECRÜBE BEKLER</div>
+            </div>
+          </div>
+
+          {/* Column 4: Karma (STAR) */}
+          <div className="flex flex-col space-y-3">
+            <div className="flex flex-col">
+              <div className="flex items-center space-x-3 group">
+                <div className="px-3 h-10 border-2 border-black flex items-center justify-center bg-white shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-105 transition-transform min-w-[32px]">
+                   <span className="text-[#f97316] text-[24px] font-black leading-none">*</span>
+                </div>
+                <div className="text-[10px] font-black text-slate-700 uppercase leading-tight">KARMA GÜN<br/>(HEM FAAL HEM GAYRİ FAAL)</div>
               </div>
-           </div>
+            </div>
+          </div>
         </div>
-        <div className="text-[10px] font-bold text-gray-500 mt-1 flex items-center">
-          <div className="w-3 h-3 bg-gray-200 border border-gray-300 mr-2 inline-block"></div>
-          Soluk alanlar veri tabanında bulunmamaktadır.
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+          <div className="bg-emerald-100/50 border-l-4 border-emerald-500 p-4 rounded-r-xl">
+             <p className="text-[11px] font-black text-emerald-900 leading-relaxed uppercase tracking-tight">
+               NOT: AYNI GÜN İÇİNDE HEM FAAL HEM GAYRİ FAAL OLAN GÜNLER KÖŞEGENLİ VE TURUNCU YILDIZLI GÖSTERİLİR.
+             </p>
+          </div>
+          <div className="bg-slate-200/50 border-l-4 border-slate-400 p-4 rounded-r-xl flex items-center">
+             <div className="w-4 h-4 bg-gray-200 border border-gray-300 mr-3 inline-block shadow-sm"></div>
+             <p className="text-[11px] font-black text-slate-600 uppercase tracking-tight">
+               Soluk alanlar veri tabanında bulunmamaktadır.
+             </p>
+          </div>
+        </div>
+        <div className="mt-4 pt-4 border-t border-slate-200">
+           <p className="text-[12px] font-black text-red-600 text-center uppercase tracking-wider">
+             ** 3 GÜNE KADAR OLAN GAYRI FAAL DURUMLAR FAALİYET ORANINA YANSITILMAMIŞTIR.
+           </p>
         </div>
       </div>
 

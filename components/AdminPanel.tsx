@@ -208,45 +208,115 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
     alert('Değişiklikler başarıyla kaydedildi!');
   };
 
+  const [excelRawData, setExcelRawData] = useState<any[]>([]);
+  const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
+  const [mapping, setMapping] = useState<Record<string, string>>({
+    kuyrukNo: '',
+    durum: '',
+    konum: '',
+    durumAyrintisi: '',
+    govdeUcusSaati: '',
+    faydaliSaat: '',
+    aciklama: '',
+    assignedCode: ''
+  });
+  const [showMappingStep, setShowMappingStep] = useState(false);
+
   const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsLoading(true);
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
-      const data = XLSX.utils.sheet_to_json(ws);
-      
-      // Map Excel data to Aircraft type
-      // Expecting columns like "Kuyruk No", "Durum", "Konum", etc.
-      const mappedData = data.map((row: any) => ({
-        kuyrukNo: row['Kuyruk No'] || row['KUYRUK NO'] || row['kuyrukNo'],
-        durum: row['Durum'] || row['DURUM'] || row['durum'],
-        konum: row['Konum'] || row['KONUM'] || row['konum'],
-        durumAyrintisi: row['Durum Ayrıntısı'] || row['DURUM AYRINTISI'] || row['durumAyrintisi'],
-        faydaliSaat: row['Faydalı Saat'] || row['FAYDALI SAAT'] || row['faydaliSaat'],
-        aciklama: row['Açıklama'] || row['AÇIKLAMA'] || row['aciklama'],
-        assignedCode: row['Analiz Kodu'] || row['ANALİZ KODU'] || row['assignedCode'] || 'F'
-      })).filter(a => a.kuyrukNo);
-
-      if (mappedData.length > 0) {
-        setPreviewData(prev => {
-          const newData = [...prev];
-          mappedData.forEach(incoming => {
-            const idx = newData.findIndex(a => a.kuyrukNo === incoming.kuyrukNo);
-            if (idx !== -1) {
-              newData[idx] = { ...newData[idx], ...incoming };
-            }
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const rawData = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+        
+        if (rawData.length > 0) {
+          const headers = rawData[0].map(h => String(h || '').trim());
+          const rows = rawData.slice(1).map(row => {
+            const obj: any = {};
+            headers.forEach((h, i) => {
+              obj[h] = row[i];
+            });
+            return obj;
           });
-          return newData;
-        });
-        alert(`${mappedData.length} adet hava aracı verisi Excel'den yüklendi. Kaydetmeyi unutmayınız.`);
+          
+          setExcelHeaders(headers);
+          setExcelRawData(rows);
+          
+          // Auto-mapping attempt
+          const newMapping = { ...mapping };
+          const fieldKeywords: Record<string, string[]> = {
+            kuyrukNo: ['KUYRUK', 'TAIL', 'K.NO', 'NO'],
+            durum: ['DURUM', 'STATUS', 'FAAL'],
+            konum: ['KONUM', 'LOCATION', 'MEYDAN'],
+            durumAyrintisi: ['AYRINTI', 'DETAIL', 'ALT DURUM'],
+            govdeUcusSaati: ['GÖVDE', 'GOVDE', 'TOTAL', 'TT', 'SAAT'],
+            faydaliSaat: ['FAYDALI', 'REMAINING', 'KALAN'],
+            aciklama: ['AÇIKLAMA', 'ACIKLAMA', 'REMARKS', 'NOT'],
+            assignedCode: ['ANALİZ', 'ANALIZ', 'KOD', 'CODE']
+          };
+
+          headers.forEach(h => {
+             const upperH = h.toUpperCase();
+             Object.entries(fieldKeywords).forEach(([field, keywords]) => {
+                if (keywords.some(k => upperH.includes(k))) {
+                   if (!newMapping[field]) newMapping[field] = h;
+                }
+             });
+          });
+
+          setMapping(newMapping);
+          setShowMappingStep(true);
+        }
+      } catch (err) {
+        alert('Excel okuma hatası: ' + String(err));
+      } finally {
+        setIsLoading(false);
       }
     };
     reader.readAsBinaryString(file);
+  };
+
+  const applyMapping = () => {
+    if (!mapping.kuyrukNo) {
+      alert('Kuyruk No alanı eşleştirilmelidir.');
+      return;
+    }
+
+    const mappedData = excelRawData.map(row => ({
+      tip: row['TIP'] || row['Tip'] || 'BELİRSİZ',
+      kuyrukNo: String(row[mapping.kuyrukNo] || '').trim(),
+      durum: String(row[mapping.durum] || '').trim(),
+      konum: String(row[mapping.konum] || '').trim(),
+      durumAyrintisi: String(row[mapping.durumAyrintisi] || '').trim(),
+      govdeUcusSaati: String(row[mapping.govdeUcusSaati] || '').trim(),
+      faydaliSaat: String(row[mapping.faydaliSaat] || '').trim(),
+      aciklama: String(row[mapping.aciklama] || '').trim(),
+      assignedCode: row[mapping.assignedCode] || 'F'
+    })).filter(a => a.kuyrukNo);
+
+    if (mappedData.length > 0) {
+      setPreviewData(prev => {
+        const newData = [...prev];
+        mappedData.forEach(incoming => {
+          const idx = newData.findIndex(a => a.kuyrukNo === incoming.kuyrukNo);
+          if (idx !== -1) {
+            newData[idx] = { ...newData[idx], ...incoming };
+          } else {
+            newData.push(incoming);
+          }
+        });
+        return newData;
+      });
+      setShowMappingStep(false);
+      alert(`${mappedData.length} adet hava aracı verisi eşleştirildi.`);
+    }
   };
 
   return (
@@ -371,7 +441,59 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                   </div>
                 </div>
                 <div className="bg-[#021a0c] p-10 flex-1 overflow-y-auto custom-scrollbar rounded-b-[3rem]">
-                   <table className="w-full text-left bg-white/5 rounded-3xl overflow-hidden border-collapse">
+                   {showMappingStep ? (
+                     <div className="bg-white/5 p-10 rounded-[2.5rem] border border-orange-500/30">
+                        <div className="flex justify-between items-center mb-10">
+                           <h2 className="text-orange-500 font-black text-xl uppercase italic tracking-tighter">Hücre Okuyucu - Kolon Eşleştirme</h2>
+                           <div className="flex space-x-3">
+                              <button onClick={() => setShowMappingStep(false)} className="px-6 py-3 rounded-xl border border-white/10 text-white font-black text-[10px] uppercase">Vazgeç</button>
+                              <button onClick={applyMapping} className="px-10 py-3 rounded-xl bg-orange-600 text-white font-black text-[10px] uppercase shadow-xl hover:bg-orange-500 transition-all">Veriyi İşle ve Aktar</button>
+                           </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                           {[
+                             { label: 'Kuyruk No', key: 'kuyrukNo' },
+                             { label: 'Durum', key: 'durum' },
+                             { label: 'Konum', key: 'konum' },
+                             { label: 'Durum Ayrıntısı', key: 'durumAyrintisi' },
+                             { label: 'Gövde Saati', key: 'govdeUcusSaati' },
+                             { label: 'Faydalı Saat', key: 'faydaliSaat' },
+                             { label: 'Analiz Kodu', key: 'assignedCode' },
+                             { label: 'Açıklama', key: 'aciklama' }
+                           ].map(item => (
+                             <div key={item.key} className="bg-black/40 p-5 rounded-2xl border border-white/5">
+                                <label className="block text-[8px] font-black text-gray-500 uppercase tracking-widest mb-3">{item.label}</label>
+                                <select 
+                                  className="w-full bg-emerald-950/50 text-white font-bold p-3 rounded-xl border border-emerald-900/40 text-xs outline-none focus:border-orange-500"
+                                  value={mapping[item.key]}
+                                  onChange={(e) => setMapping({ ...mapping, [item.key]: e.target.value })}
+                                >
+                                   <option value="">-- SEÇİNİZ --</option>
+                                   {excelHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                </select>
+                             </div>
+                           ))}
+                        </div>
+                        <div className="mt-10 overflow-x-auto">
+                           <h3 className="text-gray-600 text-[10px] font-black uppercase mb-4 ml-2 italic underline">Excel Ham Veri Önizleme (İlk 5 Satır)</h3>
+                           <table className="w-full border-collapse text-[10px]">
+                              <thead>
+                                 <tr className="bg-white/5">
+                                    {excelHeaders.map(h => <th key={h} className="p-3 border border-white/5 text-gray-400 font-black uppercase text-left">{h}</th>)}
+                                 </tr>
+                              </thead>
+                              <tbody>
+                                 {excelRawData.slice(0, 5).map((row, i) => (
+                                   <tr key={i} className="border-b border-white/5">
+                                      {excelHeaders.map(h => <td key={h} className="p-3 border border-white/5 text-gray-500 italic">{row[h]}</td>)}
+                                   </tr>
+                                 ))}
+                              </tbody>
+                           </table>
+                        </div>
+                     </div>
+                   ) : (
+                    <table className="w-full text-left bg-white/5 rounded-3xl overflow-hidden border-collapse">
                       <thead className="bg-emerald-800/40 text-emerald-400">
                          <tr>
                             <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Platform</th>
@@ -430,6 +552,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                         ))}
                       </tbody>
                    </table>
+                   )}
                 </div>
             </div>
           ) : (

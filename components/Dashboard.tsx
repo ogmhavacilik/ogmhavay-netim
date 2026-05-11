@@ -16,11 +16,11 @@ const Dashboard: React.FC<DashboardProps> = ({ fleet, activities, startDate, end
 
   const faalList = fleet.filter(a => a.durum === Status.FAAL);
   const bakimList = fleet.filter(a => !faalList.includes(a) && a.durumAyrintisi && (
-    a.durumAyrintisi.toUpperCase().includes('BAKIM') || 
-    a.durumAyrintisi.toUpperCase().includes('KABUL') || 
-    a.durumAyrintisi.toUpperCase().includes('TEKNİK BÜLTEN')
+    (a.durumAyrintisi || '').toUpperCase().includes('BAKIM') || 
+    (a.durumAyrintisi || '').toUpperCase().includes('KABUL') || 
+    (a.durumAyrintisi || '').toUpperCase().includes('TEKNİK BÜLTEN')
   ));
-  const parcaBeklerList = fleet.filter(a => !faalList.includes(a) && !bakimList.includes(a) && a.durumAyrintisi && a.durumAyrintisi.toUpperCase().includes('PARÇA BEKLER'));
+  const parcaBeklerList = fleet.filter(a => !faalList.includes(a) && !bakimList.includes(a) && a.durumAyrintisi && (a.durumAyrintisi || '').toUpperCase().includes('PARÇA BEKLER'));
   const arizaList = fleet.filter(a => !faalList.includes(a) && !bakimList.includes(a) && !parcaBeklerList.includes(a));
 
   const chartData = [

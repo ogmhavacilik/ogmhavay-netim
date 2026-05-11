@@ -7,7 +7,6 @@ import { getCallSignByTail } from '../constants';
 export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretation: string } => {
   if (!item) return { code: 'F', interpretation: 'FAAL' };
   
-  // Helper to get value from multiple possible keys (headers, column letters, mapping keys)
   const getVal = (keys: string[]) => {
     for (const key of keys) {
       if (item[key] !== undefined && item[key] !== null && item[key] !== '') return String(item[key]);
@@ -15,114 +14,83 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
     return '';
   };
 
-  const detail = getVal(['durumAyrintisi', 'Durum Ayrıntısı', 'DURUM AYRINTISI', 'O', 'o', 'C', 'c', 'durum_ayrintisi']).toLocaleLowerCase('tr-TR').trim();
-  const desc = getVal(['aciklama', 'Açıklama', 'AÇIKLAMA', 'P', 'p', 'D', 'd', 'aciklama']).toLocaleLowerCase('tr-TR').trim();
-  const durumStr = getVal(['durum', 'Durum', 'DURUM', 'N', 'n', 'B', 'b', 'durum']).toLocaleUpperCase('tr-TR').trim();
+  const durumStr = (getVal(['durum', 'Durum', 'DURUM', 'N', 'n', 'B', 'b', 'durum']) || '').toLocaleUpperCase('tr-TR').trim();
+  const detail = (getVal(['durumAyrintisi', 'Durum Ayrıntısı', 'DURUM AYRINTISI', 'O', 'o', 'C', 'c', 'durum_ayrintisi']) || '').toLocaleLowerCase('tr-TR').trim();
   const detailUpper = detail.toLocaleUpperCase('tr-TR');
-  
-  // 0. KRİTİK ÖNCELİK: Arıza veya Overspeed durumu varsa TBU vb. yerine ARIZA olarak işaretle
-  const detailHasMalfunction = detailUpper.includes('ARIZASI') || detailUpper.includes('ARIZA') || detailUpper.includes('OVERSPEED');
+  const desc = (getVal(['aciklama', 'Açıklama', 'AÇIKLAMA', 'P', 'p', 'D', 'd', 'aciklama']) || '').toLocaleLowerCase('tr-TR').trim();
+  const descUpper = desc.toLocaleUpperCase('tr-TR');
 
-  if (detailHasMalfunction) {
-    return { code: 'A', interpretation: 'ARIZA' };
+  // Hiyerarşi Adım 1: DURUM (Ana Durum)
+  // Varsayılan değerleri belirle
+  let code: DailyStatusCode = 'F';
+  let interpretation = 'FAAL';
+
+  const isGayriFaalStatus = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('GF') || durumStr === 'G.FAAL' || durumStr === 'A' || durumStr === 'ARIZA';
+  if (isGayriFaalStatus) {
+    code = 'A';
+    interpretation = 'ARIZA';
   }
 
-  // 1. KESİN ÖNCELİK: DURUM AYRINTISI (BİREBİR EŞLEŞME VEYA NET ANAHTAR KELİME)
-  // Kullanıcı "Eğer durum ayrıntısı varsa birebir onu baz al" dedi.
-  
-  // PARÇA BEKLER (PB) - En yüksek öncelik
-  if (detailUpper.includes('PARÇA BEKLER') || detailUpper.includes('PARCA BEKLER') || detailUpper === 'PB') return { code: 'PB', interpretation: 'PARÇA BEKLER' };
-  
-  // TECRÜBE BEKLER (TB) - İSTİSNA: Durum ayrıntısında varsa kesinlikle TB
-  if (detailUpper.includes('TECRÜBE BEKLER') || detailUpper.includes('TECRUBE BEKLER') || detailUpper === 'TB') return { code: 'TB', interpretation: 'TECRÜBE BEKLER' };
+  // Hiyerarşi Adım 2: DURUM AYRINTISI (Detay Bilgisi)
+  // Eğer detay bilgisi varsa, ana durumu daha spesifik bir koda dönüştürür.
+  let detailCode: DailyStatusCode | null = null;
+  let detailInterp = '';
 
-  // TEKNİK BÜLTEN UYGULAMASI (TBU)
-  const isGayriFaalStatus = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('GF');
-  const hasYillikBakim = detailUpper.includes('YILLIK') || desc.includes('yıllık') || desc.includes('yillik');
-  
-  if (!detailHasMalfunction && !hasYillikBakim && (detailUpper.includes('TBU') || (isGayriFaalStatus && (
-    detailUpper.includes('SL') || 
-    desc.includes('sl ') || desc.includes(' sl') || desc === 'sl' ||
-    desc.includes('gereği') || desc.includes('geregi') || 
-    desc.includes('uygulanan') || desc.includes('teknik bülten')
-  )))) {
-    return { code: 'TBU', interpretation: 'TEKNİK BÜLTEN UYGULAMASI' };
+  if (detailUpper.includes('PARÇA BEKLER') || detailUpper.includes('PARCA BEKLER') || detailUpper === 'PB') {
+    detailCode = 'PB'; detailInterp = 'PARÇA BEKLER';
+  } else if (detailUpper.includes('TECRÜBE BEKLER') || detailUpper.includes('TECRUBE BEKLER') || detailUpper === 'TB' || detailUpper.includes('TECRÜBE') || detailUpper.includes('TEST')) {
+    detailCode = 'TB'; detailInterp = 'TECRÜBE BEKLER';
+  } else if (detailUpper.includes('TBU') || detailUpper.includes('TEKNİK BÜLTEN')) {
+    detailCode = 'TBU'; detailInterp = 'TEKNİK BÜLTEN UYGULAMASI';
+  } else if (detailUpper.includes('BAKIM BEKLER') || detailUpper === 'BB') {
+    detailCode = 'BB'; detailInterp = 'BAKIM BEKLER';
+  } else if (detailUpper.includes('KABUL MUAYENE') || detailUpper === 'KM') {
+    detailCode = 'KM'; detailInterp = 'KABUL MUAYENESİ';
+  } else if (detailUpper.includes('KAZA KIRIM') || detailUpper === 'KK') {
+    detailCode = 'KK'; detailInterp = 'KAZA KIRIM';
+  } else if (detailUpper.includes('BAKIM') || detailUpper === 'B') {
+    detailCode = 'B'; detailInterp = 'BAKIM';
+  } else if (detailUpper.includes('ARIZA') || detailUpper === 'A' || detailUpper.includes('OVERSPEED') || detailUpper.includes('NG') || detailUpper.includes('MOTOR') || detailUpper.includes('ENGINE')) {
+    detailCode = 'A'; detailInterp = 'ARIZA';
+  } else if (detailUpper.includes('KARMA') || detailUpper.includes('HEM FAAL')) {
+    detailCode = 'K'; detailInterp = 'KARMA GÜN (BİRDEN FAZLA DURUM)';
+  } else if (detailUpper.includes('OLMADIĞI GÜNLER') || detailUpper.includes('OLMADIGI GUNLER') || detailUpper === 'X') {
+    detailCode = 'X'; detailInterp = 'OLMADIĞI GÜNLER';
   }
 
-  // BAKIM BEKLER (BB)
-  if (detailUpper.includes('BAKIM BEKLER') || detailUpper === 'BB') return { code: 'BB', interpretation: 'BAKIM BEKLER' };
-  
-  // KABUL MUAYENE (KM)
-  if (detailUpper.includes('KABUL MUAYENE') || detailUpper === 'KM') return { code: 'KM', interpretation: 'KABUL MUAYENESİ' };
-  
-  // KAZA KIRIM (KK)
-  if (detailUpper.includes('KAZA KIRIM') || detailUpper === 'KK') return { code: 'KK', interpretation: 'KAZA KIRIM' };
-  
-  // BAKIM (B)
-  if (detailUpper.includes('BAKIM') || detailUpper === 'B') return { code: 'B', interpretation: 'BAKIM' };
-  
-  // ARIZA (A)
-  if (detailUpper.includes('ARIZA') || detailUpper === 'A') return { code: 'A', interpretation: 'ARIZA' };
-  
-  // OLMADIĞI GÜNLER (X)
-  if (detailUpper.includes('OLMADIĞI GÜNLER') || detailUpper.includes('OLMADIGI GUNLER') || detailUpper === 'X') return { code: 'X', interpretation: 'OLMADIĞI GÜNLER' };
-
-  // TECRÜBE / TEST (TB) - Durum ayrıntısında varsa
-  if (detailUpper.includes('TECRÜBE') || detailUpper.includes('TECRUBE') || detailUpper.includes('TEST')) return { code: 'TB', interpretation: 'TECRÜBE BEKLER' };
-
-  const fullText = `${detail} ${desc} ${durumStr.toLocaleLowerCase('tr-TR')}`;
-
-  // 2. FALLBACK: AÇIKLAMA VE DURUM AYRINTISI BİRLİKTE
-  // OLMADIĞI GÜNLER -> X
-  if (fullText.includes('olmadığı günler') || fullText.includes('olmadigi gunler')) {
-    return { code: 'X', interpretation: 'OLMADIĞI GÜNLER' };
+  if (detailCode) {
+    code = detailCode;
+    interpretation = detailInterp;
   }
 
-  // KABUL MUAYENESİ -> KM
-  if (fullText.includes('kabul muayene') || fullText.includes('kabul mua')) {
-    return { code: 'KM', interpretation: 'KABUL MUAYENESİ' };
-  }
-
-  // PARÇA BEKLER -> PB
-  if (fullText.includes('parça') && (fullText.includes('bekle') || fullText.includes('sipariş') || fullText.includes('siparis'))) {
-    return { code: 'PB', interpretation: 'PARÇA BEKLER' };
-  }
+  // Hiyerarşi Adım 3: AÇIKLAMA (Manuel Açıklama)
+  // Sadece kod genel ise (F veya A) veya açıklamada KRİTİK bir anahtar kelime varsa güncelle.
+  // Not: Eğer Adım 2'de spesifik bir kod belirlenmişse (örn: KM, PB, TBU, B), 
+  // açıklamadaki genel kelimelerin (faal, arıza vb.) bu spesifik durumu bozmasına izin vermiyoruz.
+  const isGenericCode = code === 'F' || code === 'A';
+  const hasMixedKeyword = descUpper.includes('KARMA') || descUpper.includes('HEM FAAL') || descUpper.includes('YARIM GÜN');
   
-  // TECRÜBE BEKLER -> TB
-  if (fullText.includes('tecrübe') || fullText.includes('tecrube') || fullText.includes('test')) {
-    if (detail.includes('test uçuşu') || detail.includes('test/tecrübe') || fullText.includes('bekliyor') || fullText.includes('bekler') || fullText.includes('sıra')) {
-      return { code: 'TB', interpretation: 'TECRÜBE BEKLER' };
+  if (hasMixedKeyword) {
+    code = 'K'; interpretation = 'KARMA GÜN';
+  } else if (isGenericCode) {
+    if (descUpper.includes('PARÇA BEKLER') || descUpper.includes('PARCA BEKLER') || (descUpper.includes('PARÇA') && (descUpper.includes('BEKLE') || descUpper.includes('SİPARİŞ')))) {
+      code = 'PB'; interpretation = 'PARÇA BEKLER';
+    } else if (descUpper.includes('TECRÜBE BEKLER') || descUpper.includes('TECRUBE BEKLER') || descUpper.includes('TEST UÇUŞU') || descUpper.includes('TEST UCUSU') || descUpper.includes('TECRÜBE')) {
+      code = 'TB'; interpretation = 'TECRÜBE BEKLER';
+    } else if (descUpper.includes('TBU') || descUpper.includes('TEKNİK BÜLTEN')) {
+      code = 'TBU'; interpretation = 'TEKNİK BÜLTEN UYGULAMASI';
+    } else if (descUpper.includes('BAKIM BEKLER') || (descUpper.includes('BAKIM') && (descUpper.includes('BEKLER') || descUpper.includes('SIYA')))) {
+      code = 'BB'; interpretation = 'BAKIM BEKLER';
+    } else if (descUpper.includes('KABUL MUAYENE')) {
+      code = 'KM'; interpretation = 'KABUL MUAYENESİ';
+    } else if (descUpper.includes('BAKIM') || descUpper.includes('PERİYODİK') || descUpper.includes('YILLIK') || /\b\d+H\b/.test(descUpper)) {
+      code = 'B'; interpretation = 'BAKIM';
+    } else if (descUpper.includes('ARIZA') || descUpper.includes('PROBLEM') || descUpper.includes('OVERSPEED') || descUpper.includes('NG')) {
+      code = 'A'; interpretation = 'ARIZA';
     }
   }
 
-  // TEKNİK BÜLTEN UYGULAMASI -> TBU
-  if (fullText.includes('tbu') || fullText.includes('teknik bülten') || fullText.includes('teknik bulten')) {
-    return { code: 'TBU', interpretation: 'TEKNİK BÜLTEN UYGULAMASI' };
-  }
-
-  // BAKIM BEKLER -> BB
-  if (fullText.includes('bakım bekler') || fullText.includes('bakim bekler') || 
-     ((fullText.includes('bakım') || fullText.includes('bakim')) && (fullText.includes('bekliyor') || fullText.includes('bekler') || fullText.includes('sıra') || fullText.includes('sira')))) {
-    return { code: 'BB', interpretation: 'BAKIM BEKLER' };
-  }
-
-  // BAKIM -> B
-  if (fullText.includes('bakım') || fullText.includes('bakim') || fullText.includes('yıllık') || fullText.includes('yillik') || fullText.includes('periyodik') || /\b\d+h\b/.test(fullText)) {
-    return { code: 'B', interpretation: 'BAKIM' };
-  }
-
-  // ARIZA -> A
-  if (fullText.includes('arıza') || fullText.includes('ariza') || fullText.includes('problem')) {
-    return { code: 'A', interpretation: 'ARIZA' };
-  }
-
-  // 3. DURUM KONTROLÜ
-  if (durumStr === 'FAAL' || durumStr === 'F') return { code: 'F', interpretation: 'FAAL' };
-
-  const isGayriFaal = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('G.FAAL');
-  if (isGayriFaal) return { code: 'A', interpretation: 'ARIZA' };
-
-  return { code: 'F', interpretation: 'FAAL' };
+  return { code, interpretation };
 };
 
 /**

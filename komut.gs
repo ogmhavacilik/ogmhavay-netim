@@ -436,7 +436,8 @@ function doPost(e) {
         if (!sheet) return jsonError("GÜNLÜK DURUM sayfası bulunamadı.");
         
         var gid = sheet.getSheetId();
-        var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=pdf&gid=" + gid + "&range=A1:AL18&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false";
+        // Range: A1:AL18 as per user request
+        var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=pdf&gid=" + gid + "&range=A1:AL18&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false&horizontal_alignment=CENTER&vertical_alignment=CENTER";
         
         var token = ScriptApp.getOAuthToken();
         var response = UrlFetchApp.fetch(url, {
@@ -454,14 +455,14 @@ function doPost(e) {
       }
     }
 
-    // 🟡 PDF EXPORT AKSİYONU (AT-802 ÇIKTI)
+    // 🟡 PDF EXPORT AKSİYONU (AT-802 ÇIKTI / 100 SAAT TAKİP)
     if (action === "exportAT802CiktiPDF") {
       try {
         var sheet = findSheet(ss, "ÇIKTI");
         if (!sheet) return jsonError("ÇIKTI sayfası bulunamadı.");
         
         var gid = sheet.getSheetId();
-        // A1:AM18 range - Landscape, Fit to Page, Centered
+        // A1:AM18 range as per user request - Landscape, Fit to Page, Centered
         var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=pdf&gid=" + gid + "&range=A1:AM18&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false&horizontal_alignment=CENTER&vertical_alignment=CENTER";
         
         var token = ScriptApp.getOAuthToken();
@@ -541,30 +542,6 @@ function doPost(e) {
       }
     }
 
-    // 🔴 PDF EXPORT AKSİYONU (AT-802)
-    if (action === "exportAT802PDF") {
-      try {
-        var sheet = findSheet(ss, "GÜNLÜK DURUM");
-        if (!sheet) return jsonError("GÜNLÜK DURUM sayfası bulunamadı.");
-        
-        var gid = sheet.getSheetId();
-        var url = "https://docs.google.com/spreadsheets/d/" + ss.getId() + "/export?format=pdf&gid=" + gid + "&range=A1:AL25&portrait=false&scale=4&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25&gridlines=false";
-        
-        var token = ScriptApp.getOAuthToken();
-        var response = UrlFetchApp.fetch(url, {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        
-        var blob = response.getBlob();
-        var base64 = Utilities.base64Encode(blob.getBytes());
-        return jsonSuccess({
-          filename: "AT802_Gunluk_Durum_" + Utilities.formatDate(new Date(), "GMT+3", "yyyy-MM-dd") + ".pdf",
-          base64: base64
-        });
-      } catch (e) {
-        return jsonError("PDF oluşturma hatası: " + e.toString());
-      }
-    }
 
     // 🟠 GÜNCELLEME AKSİYONU
     if (action === "updateAircraftData") {
@@ -1034,109 +1011,64 @@ function syncFleetToLogs() {
 function analyzeStatusGS(item) {
   if (!item) return 'F';
   
-  var toLowerTR = function(s) {
-    return String(s || '').replace(/I/g, 'ı').replace(/İ/g, 'i').toLowerCase().trim();
-  };
   var toUpperTR = function(s) {
     return String(s || '').replace(/i/g, 'İ').replace(/ı/g, 'I').toUpperCase().trim();
   };
   
+  var durumUpper = toUpperTR(item.durum);
   var detailUpper = toUpperTR(item.durumAyrintisi);
-  var detail = toLowerTR(item.durumAyrintisi);
-  var desc = toLowerTR(item.aciklama);
-  var durumStr = toUpperTR(item.durum);
+  var descUpper = toUpperTR(item.aciklama);
   
-  // 1. KESİN ÖNCELİK: DURUM AYRINTISI (BİREBİR EŞLEŞME VEYA NET ANAHTAR KELİME)
-  // Kullanıcı "Eğer durum ayrıntısı varsa birebir onu baz al" dedi.
-  
-  // PARÇA BEKLER (PB) - En yüksek öncelik
-  if (detailUpper.indexOf('PARÇA BEKLER') !== -1 || detailUpper.indexOf('PARCA BEKLER') !== -1 || detailUpper === 'PB') return 'PB';
-  
-  // BAKIM BEKLER (BB)
-  if (detailUpper.indexOf('BAKIM BEKLER') !== -1 || detailUpper === 'BB') return 'BB';
-  
-  // KABUL MUAYENE (KM)
-  if (detailUpper.indexOf('KABUL MUAYENE') !== -1 || detailUpper === 'KM') return 'KM';
-  
-  // TECRÜBE BEKLER (TB)
-  if (detailUpper.indexOf('TECRÜBE BEKLER') !== -1 || detailUpper.indexOf('TECRUBE BEKLER') !== -1 || detailUpper === 'TB') return 'TB';
-  
-  // TEKNİK BÜLTEN UYGULAMASI (TBU)
-  var isGayriFaalStatus = durumStr.indexOf('GAYRİ') !== -1 || durumStr.indexOf('GAYRI') !== -1 || durumStr.indexOf('GF') !== -1;
-  var hasYillikBakim = detailUpper.indexOf('YILLIK') !== -1 || desc.indexOf('yıllık') !== -1 || desc.indexOf('yillik') !== -1;
-  
-  if (!hasYillikBakim && (detailUpper.indexOf('TBU') !== -1 || (isGayriFaalStatus && (
-    detailUpper.indexOf('SL') !== -1 || 
-    desc.indexOf('sl ') !== -1 || desc.indexOf(' sl') !== -1 || desc === 'sl' ||
-    desc.indexOf('gereği') !== -1 || desc.indexOf('geregi') !== -1 || 
-    desc.indexOf('uygulanan') !== -1 || desc.indexOf('teknik bülten') !== -1
-  )))) {
-    return 'TBU';
+  // Hiyerarşi Adım 1: DURUM
+  var code = 'F';
+  var isGayriFaalStatus = durumUpper.indexOf('GAYRİ') !== -1 || durumUpper.indexOf('GAYRI') !== -1 || durumUpper.indexOf('GF') !== -1 || durumUpper === 'G.FAAL';
+  if (isGayriFaalStatus) {
+    code = 'A';
   }
-  
-  // KAZA KIRIM (KK)
-  if (detailUpper.indexOf('KAZA KIRIM') !== -1 || detailUpper === 'KK') return 'KK';
-  
-  // BAKIM (B)
-  if (detailUpper.indexOf('BAKIM') !== -1 || detailUpper === 'B') return 'B';
-  
-  // ARIZA (A)
-  if (detailUpper.indexOf('ARIZA') !== -1 || detailUpper === 'A') return 'A';
-  
-  // OLMADIĞI GÜNLER (X)
-  if (detailUpper.indexOf('OLMADIĞI GÜNLER') !== -1 || detailUpper.indexOf('OLMADIGI GUNLER') !== -1 || detailUpper === 'X') return 'X';
 
-  // TECRÜBE / TEST (TB) - Durum ayrıntısında varsa
-  if (detailUpper.indexOf('TECRÜBE') !== -1 || detailUpper.indexOf('TECRUBE') !== -1 || detailUpper.indexOf('TEST') !== -1) return 'TB';
+  // Hiyerarşi Adım 2: DURUM AYRINTISI
+  if (detailUpper.indexOf('PARÇA BEKLER') !== -1 || detailUpper.indexOf('PARCA BEKLER') !== -1 || detailUpper === 'PB') {
+    code = 'PB';
+  } else if (detailUpper.indexOf('TECRÜBE BEKLER') !== -1 || detailUpper.indexOf('TECRUBE BEKLER') !== -1 || detailUpper === 'TB' || detailUpper.indexOf('TECRÜBE') !== -1 || detailUpper.indexOf('TEST') !== -1) {
+    code = 'TB';
+  } else if (detailUpper.indexOf('TBU') !== -1 || detailUpper.indexOf('TEKNİK BÜLTEN') !== -1) {
+    code = 'TBU';
+  } else if (detailUpper.indexOf('BAKIM BEKLER') !== -1 || detailUpper === 'BB') {
+    code = 'BB';
+  } else if (detailUpper.indexOf('KABUL MUAYENE') !== -1 || detailUpper === 'KM') {
+    code = 'KM';
+  } else if (detailUpper.indexOf('KAZA KIRIM') !== -1 || detailUpper === 'KK') {
+    code = 'KK';
+  } else if (detailUpper.indexOf('BAKIM') !== -1 || detailUpper === 'B') {
+    code = 'B';
+  } else if (detailUpper.indexOf('ARIZA') !== -1 || detailUpper === 'A') {
+    code = 'A';
+  } else if (detailUpper.indexOf('OLMADIĞI GÜNLER') !== -1 || detailUpper.indexOf('OLMADIGI GUNLER') !== -1 || detailUpper === 'X') {
+    code = 'X';
+  }
 
-  // 2. FALLBACK: AÇIKLAMA VE DURUM AYRINTISI BİRLİKTE ANALİZ
-  var fullText = detail + " " + desc + " " + toLowerTR(item.durum);
-
-  // OLMADIĞI GÜNLER -> X
-  if (fullText.indexOf('olmadığı günler') !== -1 || fullText.indexOf('olmadigi gunler') !== -1) return 'X';
-
-  // KABUL MUAYENESİ -> KM
-  if (fullText.indexOf('kabul muayene') !== -1 || fullText.indexOf('kabul mua') !== -1) return 'KM';
-
-  // PARÇA BEKLER -> PB
-  if (fullText.indexOf('parça') !== -1 && (fullText.indexOf('bekle') !== -1 || fullText.indexOf('sipariş') !== -1 || fullText.indexOf('siparis') !== -1)) return 'PB';
-
-  // TECRÜBE BEKLER -> TB
-  if (fullText.indexOf('tecrübe') !== -1 || fullText.indexOf('tecrube') !== -1 || fullText.indexOf('test') !== -1) {
-    if (detail.indexOf('test uçuşu') !== -1 || detail.indexOf('test/tecrübe') !== -1 || fullText.indexOf('bekliyor') !== -1 || fullText.indexOf('bekler') !== -1 || fullText.indexOf('sıra') !== -1) {
-      return 'TB';
+  // Hiyerarşi Adım 3: AÇIKLAMA (Fallback if code is generic)
+  if (code === 'F' || code === 'A') {
+    if (descUpper.indexOf('PARÇA BEKLER') !== -1 || descUpper.indexOf('PARCA BEKLER') !== -1 || (descUpper.indexOf('PARÇA') !== -1 && (descUpper.indexOf('BEKLE') !== -1 || descUpper.indexOf('SİPARİŞ') !== -1))) {
+      code = 'PB';
+    } else if (descUpper.indexOf('TECRÜBE BEKLER') !== -1 || descUpper.indexOf('TECRUBE BEKLER') !== -1 || descUpper.indexOf('TEST UÇUŞU') !== -1 || descUpper.indexOf('TEST UCUSU') !== -1) {
+      code = 'TB';
+    } else if (descUpper.indexOf("TBU") !== -1 || descUpper.indexOf("TEKNİK BÜLTEN") !== -1 || descUpper.indexOf("TEKNIK BULTEN") !== -1) {
+      code = "TBU";
+    } else if (descUpper.indexOf('BAKIM BEKLER') !== -1 || (descUpper.indexOf('BAKIM') !== -1 && (descUpper.indexOf('BEKLER') !== -1 || descUpper.indexOf('SIYA') !== -1))) {
+      code = 'BB';
+    } else if (descUpper.indexOf('KABUL MUAYENE') !== -1) {
+      code = 'KM';
+    } else if (descUpper.indexOf('BAKIM') !== -1 || descUpper.indexOf('PERİYODİK') !== -1 || descUpper.indexOf('YILLIK') !== -1 || /\b\d+H\b/.test(descUpper)) {
+      code = 'B';
+    } else if (descUpper.indexOf('ARIZA') !== -1 || descUpper.indexOf('PROBLEM') !== -1) {
+      code = 'A';
     }
   }
 
-  // TEKNİK BÜLTEN UYGULAMASI -> TBU
-  if (fullText.indexOf('tbu') !== -1 || fullText.indexOf('teknik bülten') !== -1 || fullText.indexOf('teknik bulten') !== -1) {
-    return 'TBU';
-  }
-
-  // BAKIM BEKLER -> BB
-  if (fullText.indexOf('bakım bekler') !== -1 || fullText.indexOf('bakim bekler') !== -1 || 
-     ((fullText.indexOf('bakım') !== -1 || fullText.indexOf('bakim') !== -1) && (fullText.indexOf('bekliyor') !== -1 || fullText.indexOf('bekler') !== -1 || fullText.indexOf('sıra') !== -1 || fullText.indexOf('sira') !== -1))) {
-    return 'BB';
-  }
-
-  // BAKIM -> B
-  if (fullText.indexOf('bakım') !== -1 || fullText.indexOf('bakim') !== -1 || fullText.indexOf('yıllık') !== -1 || fullText.indexOf('yillik') !== -1 || fullText.indexOf('periyodik') !== -1 || /\b\d+h\b/.test(fullText)) {
-    return 'B';
-  }
-
-  // ARIZA -> A
-  if (fullText.indexOf('arıza') !== -1 || fullText.indexOf('ariza') !== -1 || fullText.indexOf('problem') !== -1) {
-    return 'A';
-  }
-
-  // 3. DURUM KONTROLÜ
-  if (durumStr === 'FAAL' || durumStr === 'F') return 'F';
-  
-  var isGayriFaal = durumStr.indexOf('GAYRİ') !== -1 || durumStr.indexOf('GAYRI') !== -1 || durumStr.indexOf('G.FAAL') !== -1;
-  if (isGayriFaal) return 'A';
-
-  return 'F';
+  return code;
 }
+
 
 function saveLogsToSheets(ss, fleetData) {
   var envLogSheet = findSheet(ss, "Envanter Log");

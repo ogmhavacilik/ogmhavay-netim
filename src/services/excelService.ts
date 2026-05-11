@@ -108,11 +108,11 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
     const faydaliSaat = (aircraft.faydaliSaat !== null && aircraft.faydaliSaat !== undefined) ? formatToHHMM(aircraft.faydaliSaat) : '';
     const abbr = getAbbreviation(aircraft.kuyrukNo || '');
     
-    const isFaal = String(aircraft.durum).toUpperCase().includes("FAAL") && !String(aircraft.durum).toUpperCase().includes("GAYRİ") && !String(aircraft.durum).toUpperCase().includes("GAYRI");
+    const isFaal = String(aircraft.durum || '').toUpperCase().includes("FAAL") && !String(aircraft.durum || '').toUpperCase().includes("GAYRİ") && !String(aircraft.durum || '').toUpperCase().includes("GAYRI");
     const durumClass = isFaal ? "faal" : "gayrifaal";
 
-    const durumText = aircraft.durum ? aircraft.durum.toUpperCase() : '';
-    const alertText = aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? aircraft.durumAyrintisi.toUpperCase() : '';
+    const durumText = aircraft.durum ? String(aircraft.durum).toUpperCase() : '';
+    const alertText = aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? String(aircraft.durumAyrintisi).toUpperCase() : '';
     
     html += `
       <tr>

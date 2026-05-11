@@ -909,25 +909,33 @@ function doPost(e) {
         ]);
       }
       
-      var dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
-      
+      var dateStr = params.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
+      // Normalize date string if it comes from frontend as yyyy-MM-dd
+      if (dateStr.includes('-')) {
+        var parts = dateStr.split('-');
+        if (parts[0].length === 4) {
+          dateStr = parts[2] + "." + parts[1] + "." + parts[0];
+        }
+      }
+
       // Cache IDs for both sheets
-      var logIds = logSheet.getRange("A:A").getValues();
+      var logValues = logSheet.getRange("A:A").getValues();
       var logIdMap = {};
-      for (var i = 1; i < logIds.length; i++) {
-        var id = String(logIds[i][0]).trim();
+      for (var i = 0; i < logValues.length; i++) {
+        var id = String(logValues[i][0]).trim();
         if (id) logIdMap[id] = i + 1;
       }
 
-      var faalIds = faalLogSheet.getRange("A:A").getValues();
+      var faalValues = faalLogSheet.getRange("A:A").getValues();
       var faalIdMap = {};
-      for (var i = 1; i < faalIds.length; i++) {
-        var id = String(faalIds[i][0]).trim();
-        if (id) faalIdMap[id] = i + 1;
+      for (var j = 0; j < faalValues.length; j++) {
+        var id = String(faalValues[j][0]).trim();
+        if (id) faalIdMap[id] = j + 1;
       }
       
       fleetData.forEach(function(data) {
-        var kuyrukNo = data.kuyrukNo;
+        var kuyrukNo = String(data.kuyrukNo || "").trim();
+        if (!kuyrukNo) return;
         var logId = dateStr + "_" + kuyrukNo;
         
         // Update Envanter Log
@@ -946,6 +954,7 @@ function doPost(e) {
             data.aciklama ? "'" + String(data.aciklama) : ""
           ]);
           targetRow = logSheet.getLastRow();
+          logIdMap[logId] = targetRow; // Update cache for same-day multiple calls if any
         } else {
           logSheet.getRange(targetRow, 1, 1, 4).setValues([[logId, dateStr, kuyrukNo, data.tip]]);
           logSheet.getRange(targetRow, 6, 1, 5).setValues([[
@@ -970,6 +979,7 @@ function doPost(e) {
             data.durumAyrintisi,
             data.analizKodu || "F"
           ]);
+          faalIdMap[logId] = faalLogSheet.getLastRow();
         } else {
           faalLogSheet.getRange(faalRow, 1, 1, 6).setValues([[
             logId, 
@@ -987,14 +997,23 @@ function doPost(e) {
 
     if (action === "logSingleAircraftActivity") {
       var data = params.data;
-      var dateStr =
+      var rawDate =
         data.date ||
         Utilities.formatDate(
           new Date(),
           Session.getScriptTimeZone(),
           "dd.MM.yyyy",
         );
-      var kuyrukNo = data.kuyrukNo;
+      
+      var dateStr = rawDate;
+      if (rawDate.includes('-')) {
+        var dParts = rawDate.split('-');
+        if (dParts[0].length === 4) {
+          dateStr = dParts[2] + "." + dParts[1] + "." + dParts[0];
+        }
+      }
+      
+      var kuyrukNo = String(data.kuyrukNo || "").trim();
       var id = dateStr + "_" + kuyrukNo;
 
       var logSheet = findSheet(ss, "Envanter Log");
@@ -1490,13 +1509,6 @@ function getCallSignByTail(tail) {
 function analyzeStatusGS(item) {
   if (!item) return "F";
 
-  var toLowerTR = function (s) {
-    return String(s || "")
-      .replace(/I/g, "ı")
-      .replace(/İ/g, "i")
-      .toLowerCase()
-      .trim();
-  };
   var toUpperTR = function (s) {
     return String(s || "")
       .replace(/i/g, "İ")
@@ -1506,166 +1518,76 @@ function analyzeStatusGS(item) {
   };
 
   var detailUpper = toUpperTR(item.durumAyrintisi);
-  var detail = toLowerTR(item.durumAyrintisi);
-  var desc = toLowerTR(item.aciklama);
-  var durumStr = toUpperTR(item.durum);
+  var descUpper = toUpperTR(item.aciklama);
+  var durumUpper = toUpperTR(item.durum);
 
-  // 1. ÖNCELİK: SADECE DURUM AYRINTISI İÇİNDE ARAMA
-  if (
-    detail.indexOf("kabul muayene") !== -1 ||
-    detail.indexOf("kabul mua") !== -1
-  )
-    return "KM";
-  if (detailUpper.indexOf("KAZA KIRIM") !== -1 || detailUpper === "KK") {
-    return "KK";
+  // Hiyerarşi Adım 1: DURUM
+  var code = "F";
+  var isGayriFaal = DURUM_IS_GAYRI_FAAL(durumUpper);
+  if (isGayriFaal) {
+    code = "A";
   }
-  if (
-    detail.indexOf("parça bekler") !== -1 ||
-    detail.indexOf("parca bekler") !== -1 ||
-    detail === "pb"
-  )
-    return "PB";
 
-  // TB İSTİSNASI: Durum ayrıntısında "tecrübe bekler" yazıyorsa kesinlikle TB
-  if (
-    detail.indexOf("tecrübe bekler") !== -1 ||
-    detail.indexOf("tecrube bekler") !== -1 ||
-    detail === "tb"
-  )
-    return "TB";
+  // Hiyerarşi Adım 2: DURUM AYRINTISI
+  // Bu adımda daha spesifik kodlar belirlenir. 
+  // Eğer detayda spesifik bir durum varsa, kod o olur.
+  var detailCode = null;
+  if (detailUpper.indexOf("PARÇA BEKLER") !== -1 || detailUpper.indexOf("PARCA BEKLER") !== -1 || detailUpper === "PB") {
+    detailCode = "PB";
+  } else if (detailUpper.indexOf("TECRÜBE BEKLER") !== -1 || detailUpper.indexOf("TECRUBE BEKLER") !== -1 || detailUpper === "TB" || detailUpper.indexOf("TECRÜBE") !== -1 || detailUpper.indexOf("TEST") !== -1) {
+    detailCode = "TB";
+  } else if (detailUpper.indexOf("TBU") !== -1 || detailUpper.indexOf("TEKNİK BÜLTEN") !== -1) {
+    detailCode = "TBU";
+  } else if (detailUpper.indexOf("BAKIM BEKLER") !== -1 || detailUpper === "BB") {
+    detailCode = "BB";
+  } else if (detailUpper.indexOf("KABUL MUAYENE") !== -1 || detailUpper === "KM") {
+    detailCode = "KM";
+  } else if (detailUpper.indexOf("KAZA KIRIM") !== -1 || detailUpper === "KK") {
+    detailCode = "KK";
+  } else if (detailUpper.indexOf("BAKIM") !== -1 || detailUpper === "B") {
+    detailCode = "B";
+  } else if (detailUpper.indexOf("ARIZA") !== -1 || detailUpper === "A" || detailUpper.indexOf("OVERSPEED") !== -1 || detailUpper.indexOf("NG") !== -1 || detailUpper.indexOf("MOTOR") !== -1) {
+    detailCode = "A";
+  } else if (detailUpper.indexOf("KARMA") !== -1 || detailUpper.indexOf("HEM FAAL") !== -1) {
+    detailCode = "K";
+  } else if (detailUpper === "OLMADIĞI GÜNLER" || detailUpper.indexOf("OLMADIGI GUNLER") !== -1 || detailUpper === "X") {
+    detailCode = "X";
+  }
 
-  // TBU (TEKNİK BÜLTEN UYGULAMASI)
-  var isGayriFaal = toLowerTR(item.durum).indexOf("gayr") !== -1 || toLowerTR(item.durum).indexOf("gf") !== -1;
-  var hasYillikBakim = detailUpper.indexOf("YILLIK") !== -1 || desc.indexOf("yıllık") !== -1 || desc.indexOf("yillik") !== -1;
+  if (detailCode) {
+    code = detailCode;
+  }
+
+  // Hiyerarşi Adım 3: AÇIKLAMA
+  // Sadece kod genel ise (F veya A) veya açıklamada KRİTİK bir anahtar kelime varsa güncelle.
+  var isGeneric = (code === "F" || code === "A");
+  var hasKarma = (descUpper.indexOf("KARMA") !== -1 || descUpper.indexOf("HEM FAAL") !== -1 || descUpper.indexOf("YARIM GÜN") !== -1);
   
-  if (!hasYillikBakim && (detailUpper.indexOf("TBU") !== -1 || (isGayriFaal && (
-    detailUpper.indexOf("SL") !== -1 ||
-    desc.indexOf("sl ") !== -1 || desc.indexOf(" sl") !== -1 || desc === "sl" ||
-    desc.indexOf("gereği") !== -1 || desc.indexOf("geregi") !== -1 ||
-    desc.indexOf("uygulanan") !== -1 || desc.indexOf("teknik bülten") !== -1
-  )))) {
-    return "TBU";
-  }
-
-  if (
-    detail.indexOf("bakım bekler") !== -1 ||
-    detail.indexOf("bakim bekler") !== -1 ||
-    (detail.indexOf("bakım") !== -1 &&
-      (detail.indexOf("sıra") !== -1 || detail.indexOf("bekliyor") !== -1))
-  )
-    return "BB";
-  if (detail.indexOf("arıza") !== -1 || detail.indexOf("ariza") !== -1)
-    return "A";
-  if (
-    detail.indexOf("bakım") !== -1 ||
-    detail.indexOf("bakim") !== -1 ||
-    detail.indexOf("yıllık") !== -1 ||
-    detail.indexOf("yillik") !== -1 ||
-    detail.indexOf("periyodik") !== -1
-  )
-    return "B";
-  if (detailUpper === "OLMADIĞI GÜNLER") return "X";
-
-  // 2. AÇIKLAMA VE DURUM AYRINTISI İÇİNDE ARAMA (Fallback)
-  var fullText = detail + " " + desc + " " + toLowerTR(item.durum);
-
-  // KABUL MUAYENESİ -> KM
-  if (
-    fullText.indexOf("kabul muayenelerı") !== -1 ||
-    fullText.indexOf("kabul muayeneleri") !== -1 ||
-    fullText.indexOf("kabul mua") !== -1
-  ) {
-    return "KM";
-  }
-
-  // KAZA KIRIM -> KK
-  // (Zaten yukarıda Durum Ayrıntısı için kontrol edildi, fallback olarak genel aramaya dahil etmiyoruz)
-
-  // PARÇA BEKLER -> PB (Öncelikli)
-  if (
-    fullText.indexOf("parça") !== -1 &&
-    (fullText.indexOf("bekle") !== -1 ||
-      fullText.indexOf("sipariş") !== -1 ||
-      fullText.indexOf("siparis") !== -1)
-  ) {
-    return "PB";
-  }
-
-  // TECRÜBE BEKLER -> TB
-  if (
-    fullText.indexOf("tecrübe") !== -1 ||
-    fullText.indexOf("tecrube") !== -1 ||
-    fullText.indexOf("test") !== -1
-  ) {
-    if (
-      detail.indexOf("test uçuşu") !== -1 ||
-      detail.indexOf("test/tecrübe") !== -1 ||
-      detail.indexOf("test/tecrube") !== -1 ||
-      fullText.indexOf("bekliyor") !== -1 ||
-      fullText.indexOf("bekler") !== -1 ||
-      fullText.indexOf("sıra") !== -1
-    ) {
-      return "TB";
+  if (hasKarma) {
+    code = "K";
+  } else if (isGeneric) {
+    if (descUpper.indexOf("PARÇA BEKLER") !== -1 || descUpper.indexOf("PARCA BEKLER") !== -1 || (descUpper.indexOf("PARÇA") !== -1 && (descUpper.indexOf("BEKLE") !== -1 || descUpper.indexOf("SİPARİŞ") !== -1))) {
+      code = "PB";
+    } else if (descUpper.indexOf("TECRÜBE BEKLER") !== -1 || descUpper.indexOf("TECRUBE BEKLER") !== -1 || descUpper.indexOf("TEST UÇUŞU") !== -1 || descUpper.indexOf("TEST UCUSU") !== -1 || descUpper.indexOf("TECRÜBE") !== -1) {
+      code = "TB";
+    } else if (descUpper.indexOf("TBU") !== -1 || descUpper.indexOf("TEKNİK BÜLTEN") !== -1) {
+      code = "TBU";
+    } else if (descUpper.indexOf("BAKIM BEKLER") !== -1 || (descUpper.indexOf("BAKIM") !== -1 && (descUpper.indexOf("BEKLER") !== -1 || descUpper.indexOf("SIYA") !== -1))) {
+      code = "BB";
+    } else if (descUpper.indexOf("KABUL MUAYENE") !== -1) {
+      code = "KM";
+    } else if (descUpper.indexOf("BAKIM") !== -1 || descUpper.indexOf("PERİYODİK") !== -1 || descUpper.indexOf("YILLIK") !== -1 || /\b\d+H\b/.test(descUpper)) {
+      code = "B";
+    } else if (descUpper.indexOf("ARIZA") !== -1 || descUpper.indexOf("PROBLEM") !== -1 || descUpper.indexOf("OVERSPEED") !== -1 || descUpper.indexOf("NG") !== -1) {
+      code = "A";
     }
   }
 
-  // TEKNİK BÜLTEN UYGULAMASI -> TBU
-  if (
-    fullText.indexOf("tbu") !== -1 ||
-    fullText.indexOf("teknik bülten") !== -1 ||
-    fullText.indexOf("teknik bulten") !== -1
-  ) {
-    return "TBU";
-  }
+  return code;
+}
 
-  // BAKIM BEKLER -> BB
-  if (
-    fullText.indexOf("bakım") !== -1 ||
-    fullText.indexOf("bakim") !== -1 ||
-    fullText.indexOf("yıllık") !== -1 ||
-    fullText.indexOf("yillik") !== -1 ||
-    fullText.indexOf("periyodik") !== -1 ||
-    /\b\d+h\b/.test(fullText)
-  ) {
-    if (
-      fullText.indexOf("bekliyor") !== -1 ||
-      fullText.indexOf("bekler") !== -1 ||
-      fullText.indexOf("sıra") !== -1 ||
-      fullText.indexOf("sira") !== -1
-    ) {
-      return "BB";
-    }
-  }
-
-  // ARIZA -> A
-  if (
-    fullText.indexOf("arıza") !== -1 ||
-    fullText.indexOf("ariza") !== -1 ||
-    fullText.indexOf("problem") !== -1
-  ) {
-    return "A";
-  }
-
-  // BAKIM -> B
-  if (
-    fullText.indexOf("bakım") !== -1 ||
-    fullText.indexOf("bakim") !== -1 ||
-    fullText.indexOf("yıllık") !== -1 ||
-    fullText.indexOf("yillik") !== -1 ||
-    fullText.indexOf("periyodik") !== -1 ||
-    /\b\d+h\b/.test(fullText)
-  ) {
-    return "B";
-  }
-
-  // GAYRİ FAAL -> A (Eğer yukarıdakilerden hiçbiri değilse ama durum Gayri Faal ise)
-  var isGayriFaalExplicit =
-    durumStr.indexOf("GAYRİ") !== -1 ||
-    durumStr.indexOf("GAYRI") !== -1 ||
-    durumStr.indexOf("G.FAAL") !== -1;
-  if (isGayriFaalExplicit) return "A";
-
-  return "F";
+function DURUM_IS_GAYRI_FAAL(s) {
+  return s.indexOf("GAYRİ") !== -1 || s.indexOf("GAYRI") !== -1 || s.indexOf("GF") !== -1 || s === "G.FAAL" || s === "A" || s === "ARIZA";
 }
 
 function formatToHHMM(val) {
@@ -1886,31 +1808,6 @@ function performDailyMidnightLogging() {
     ]);
   }
 
-  var fleetData = getFleetDataFromServer();
-  var dateStr = Utilities.formatDate(
-    new Date(),
-    Session.getScriptTimeZone(),
-    "dd.MM.yyyy",
-  );
-
-  fleetData.forEach(function (item) {
-    var id = dateStr + "_" + item.kuyrukNo;
-    logSheet.appendRow([
-      id,
-      dateStr,
-      item.kuyrukNo,
-      item.tip,
-      item.govdeUcusSaati || 0,
-      item.faydaliSaat || 0,
-      item.konum,
-      item.durum,
-      item.durumAyrintisi,
-      item.aciklama ? "'" + String(item.aciklama) : "",
-    ]);
-    // Açıklama sütununu (10. kolon) metin formatına zorla
-    logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");
-  });
-
   var faalLogSheet = findSheet(ss, "Faaliyet Log");
   if (!faalLogSheet) {
     faalLogSheet = ss.insertSheet("Faaliyet Log");
@@ -1924,16 +1821,76 @@ function performDailyMidnightLogging() {
     ]);
   }
 
+  var fleetData = getFleetDataFromServer();
+  var dateStr = Utilities.formatDate(
+    new Date(),
+    Session.getScriptTimeZone(),
+    "dd.MM.yyyy",
+  );
+
+  // Cache IDs for de-duplication
+  var logIds = logSheet.getRange("A:A").getValues().map(function(r){ return String(r[0]).trim(); });
+  var faalIds = faalLogSheet.getRange("A:A").getValues().map(function(r){ return String(r[0]).trim(); });
+
   fleetData.forEach(function (item) {
     var id = dateStr + "_" + item.kuyrukNo;
-    faalLogSheet.appendRow([
-      id,
-      dateStr,
-      item.kuyrukNo,
-      item.tip,
-      item.durumAyrintisi,
-      analyzeStatusGS(item),
-    ]);
+    
+    // De-duplicate Envanter Log
+    var logIndex = logIds.indexOf(id);
+    if (logIndex === -1) {
+      logSheet.appendRow([
+        id,
+        dateStr,
+        item.kuyrukNo,
+        item.tip,
+        item.govdeUcusSaati || 0,
+        item.faydaliSaat || 0,
+        item.konum,
+        item.durum,
+        item.durumAyrintisi,
+        item.aciklama ? "'" + String(item.aciklama) : "",
+      ]);
+      logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");
+    } else {
+      // Update existing if exists (shouldn't happen in normal midnight run, but good for safety)
+      var targetRow = logIndex + 1;
+      logSheet.getRange(targetRow, 1, 1, 10).setValues([[
+        id,
+        dateStr,
+        item.kuyrukNo,
+        item.tip,
+        item.govdeUcusSaati || 0,
+        item.faydaliSaat || 0,
+        item.konum,
+        item.durum,
+        item.durumAyrintisi,
+        item.aciklama ? "'" + String(item.aciklama) : "",
+      ]]);
+      logSheet.getRange(targetRow, 10).setNumberFormat("@");
+    }
+
+    // De-duplicate Faaliyet Log
+    var faalIndex = faalIds.indexOf(id);
+    var analysisCode = analyzeStatusGS(item);
+    if (faalIndex === -1) {
+      faalLogSheet.appendRow([
+        id,
+        dateStr,
+        item.kuyrukNo,
+        item.tip,
+        item.durumAyrintisi,
+        analysisCode,
+      ]);
+    } else {
+      faalLogSheet.getRange(faalIndex + 1, 1, 1, 6).setValues([[
+        id,
+        dateStr,
+        item.kuyrukNo,
+        item.tip,
+        item.durumAyrintisi,
+        analysisCode,
+      ]]);
+    }
   });
 }
 
@@ -2278,16 +2235,37 @@ function setLogTimeValue(sheet, row, col, value, tip) {
   var valStr = String(value).trim();
   var tipUpper = (tip || "").toUpperCase();
   
-  // B-360, C-650, BELL-429 için ondalık saat desteği
-  // Case-insensitive and dash-flexible check
+  // B-360, C-650, BELL-429 ve diğer ondalık tercih edenler
   var cleanTip = tipUpper.replace(/[\s-]/g, "");
   var isDecimalType = cleanTip.indexOf("B360") !== -1 || 
                       cleanTip.indexOf("C650") !== -1 || 
-                      cleanTip.indexOf("C3650") !== -1 || 
                       cleanTip.indexOf("BELL429") !== -1;
 
+  // EXTREME PRECISION: Eğer değerde virgül varsa ve saat formatında değilse (HH:MM), 
+  // direk ondalık sayı olarak yazalım.
+  if (!valStr.includes(":") && (valStr.includes(",") || valStr.includes("."))) {
+    var n = parseFloat(valStr.replace(",", "."));
+    if (!isNaN(n)) {
+      range.setValue(n);
+      range.setNumberFormat("#,##0.0#"); // En az 1, opsiyonel 2 basamak
+      return;
+    }
+  }
+
   if (isDecimalType) {
-    var n = parseFloat(valStr.replace(/\./g, "").replace(',', '.'));
+    // Robust decimal parsing for Turkish context:
+    // If it has a comma and a dot, assume dot is thousand separator.
+    // If it only has a dot, we need to decide if it's decimal or thousand.
+    // In many cases, 1732.5 is intended as decimal if it's small.
+    var n;
+    if (valStr.includes(',') && valStr.includes('.')) {
+      n = parseFloat(valStr.replace(/\./g, "").replace(',', '.'));
+    } else if (valStr.includes(',')) {
+      n = parseFloat(valStr.replace(',', '.'));
+    } else {
+      n = parseFloat(valStr);
+    }
+    
     if (!isNaN(n)) {
       range.setValue(n);
       range.setNumberFormat("#,##0.0");
@@ -2295,30 +2273,16 @@ function setLogTimeValue(sheet, row, col, value, tip) {
     }
   }
 
+  // Time based parsing
   if (/^\d+$/.test(valStr)) {
     valStr = valStr + ':00';
   } else if (/^\d+[.,]\d+$/.test(valStr)) {
-    valStr = valStr.replace(/[.,]/, ':');
-    if (!valStr.includes(':') || valStr.split(':')[1].length === 1) {
-       // If it was 1732.5 -> 1732:5, we might want 1732:30 or similar? 
-       // But usually in this sheet, 1732,5 means 1732 hours 30 mins if decimal, 
-       // OR it's just a decimal number.
-       // The original setLogTimeValue tries to convert HH:MM to decimal for Excel.
-    }
-  }
-
-  // If it's pure decimal now (e.g. "1732:5" or "1732:30")
-  if (/^\d+[:]\d+$/.test(valStr)) {
-    var parts = valStr.split(':');
-    var hours = parseInt(parts[0], 10);
-    var mins = parseInt(parts[1], 10);
-    // If mins is single digit like "5", we should treat it as 5 mins or 50 mins? 
-    // In many aviation logs, .5 is 30 mins. 
-    // But if they typed 1732:5, usually they mean 1732:05 or 1732:50.
-    // Let's stick to standard parsing.
-    if (parts[1].length === 1 && parseInt(parts[1]) < 6) {
-       // If it came from a decimal like 1732.5, it should be 1732.5 * 24 or similar?
-       // Actually, the easiest is to just let setValue handle the number if it's a number.
+    // If they typed 1732.5 -> treat as 1732:30 or just use decimal if it's a number
+    var n = parseFloat(valStr.replace(',', '.'));
+    if (!isNaN(n)) {
+      range.setValue(n / 24);
+      range.setNumberFormat("[h]:mm");
+      return;
     }
   }
 
@@ -2326,14 +2290,13 @@ function setLogTimeValue(sheet, row, col, value, tip) {
     var parts = valStr.split(':');
     var hours = parseInt(parts[0], 10);
     var mins = parseInt(parts[1], 10);
-    if (parts[1].length === 1) mins = mins * 10; // "1732:5" -> 1732:50 (common for decimal input)
+    if (parts[1].length === 1) mins = mins * 10;
     
     var secs = parts.length > 2 ? parseInt(parts[2], 10) : 0;
     var decimalValue = (hours + (mins / 60) + (secs / 3600)) / 24;
     range.setValue(decimalValue);
     range.setNumberFormat("[h]:mm");
   } else {
-    // If it's a pure number or something else, handle it.
     var n = parseFloat(String(value).replace(',', '.'));
     if (!isNaN(n)) {
       range.setValue(n / 24);

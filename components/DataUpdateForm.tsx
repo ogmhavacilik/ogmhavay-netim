@@ -326,7 +326,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     
     if (inputHours !== null) {
       const searchDate = formData.islemTarihi;
-      const searchKuyruk = selectedAircraft.kuyrukNo.trim().toUpperCase();
+      const searchKuyruk = (selectedAircraft.kuyrukNo || "").trim().toUpperCase();
       
       // Previous logs check
       const prevLog = envanterLog
@@ -335,7 +335,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           const lT = String(log.tarih || "").trim();
           return lK === searchKuyruk && lT < searchDate;
         })
-        .sort((a, b) => b.tarih.localeCompare(a.tarih))[0];
+        .sort((a, b) => (a.tarih || "").localeCompare(b.tarih || ""))[0];
 
       if (prevLog) {
         const prevHoursValue = parseSingleCellToHour(prevLog.govdeUcusSaati, selectedAircraft.tip);
@@ -358,7 +358,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           const lT = String(log.tarih || "").trim();
           return lK === searchKuyruk && lT > searchDate;
         })
-        .sort((a, b) => a.tarih.localeCompare(b.tarih))[0];
+        .sort((a, b) => (a.tarih || "").localeCompare(b.tarih || ""))[0];
 
       if (nextLog) {
         const nextHoursValue = parseSingleCellToHour(nextLog.govdeUcusSaati, selectedAircraft.tip);
@@ -377,6 +377,48 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
 
     setIsSubmitting(true);
     setMessage(null);
+
+    // 0. TAIL AND DATE CHECK (Mükerrer Kayıt Engeli)
+    const searchDateStr = formData.islemTarihi;
+    const searchKNoClean = (selectedAircraft.kuyrukNo || "").trim().toUpperCase();
+    
+    // Check if entry already exists in logs (Envanter Log)
+    const existingLog = envanterLog?.find(log => {
+      const logK = String(log.kuyrukNo || "").trim().toUpperCase();
+      let logT = String(log.tarih || "").trim();
+      // Normalize logT if it's dd.MM.yyyy
+      if (logT.match(/^\d{2}\.\d{2}\.\d{4}$/)) {
+        const p = logT.split('.');
+        logT = `${p[2]}-${p[1]}-${p[0]}`;
+      }
+      return logK === searchKNoClean && logT === searchDateStr;
+    });
+
+    if (existingLog && !isPastDate) {
+      const confirmUpdate = window.confirm(`DİKKAT: ${searchKNoClean} için ${searchDateStr} tarihinde zaten bir kayıt mevcut. Mevcut kaydı GÜNCELLEMEK istediğinize emin misiniz? (Her hava aracı için günde tek satır girilebilir)`);
+      if (!confirmUpdate) {
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
+    // 1. CONFLICT PREVENTION (Durum Çakışması Engeli)
+    // Bir hava aracı aynı gün hem Faal hem Bakım olamaz.
+    const durum = (formData.durum || '').toLocaleUpperCase('tr-TR');
+    const ayrinti = (formData.durumAyrintisi || '').toLocaleUpperCase('tr-TR');
+    const desc = (formData.aciklama || '').toLocaleUpperCase('tr-TR');
+    
+    const isMaintenance = ayrinti.includes('BAKIM') || ayrinti.includes('KABUL MUAYENE') || ayrinti === 'B' || ayrinti === 'KM' || ayrinti === 'BB';
+    const isActuallyFaal = durum === 'FAAL';
+
+    if (isActuallyFaal && isMaintenance) {
+      setMessage({ 
+        type: 'error', 
+        text: 'HATA: Bir hava aracı aynı gün hem "FAAL" hem de "BAKIM" durumunda olamaz! Lütfen durum veya durumu detaylandıran ayrıntı bilgisini kontrol edin.' 
+      });
+      setIsSubmitting(false);
+      return;
+    }
 
     let finalData: Record<string, any>;
     
@@ -403,7 +445,8 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       } else {
         // Boş alanları temizle (Sadece güncel tarih için)
         Object.keys(finalData).forEach(key => {
-          if (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined) {
+          // Açıklama alanı boş olsa bile gönderilmelidir ki silinebilsin
+          if (key !== 'aciklama' && (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined)) {
             delete finalData[key];
           }
         });
@@ -442,18 +485,28 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         // B-360 ve C-650 için boş verilerin gönderilmesini engelle
         const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
         if (decimalTypes.includes(selectedAircraft.tip)) {
-          if (selectedAircraft.tip !== 'Bell-429') { // Already handled or shared logic
-            Object.keys(finalData).forEach(key => {
-              if (key !== 'aciklama' && (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined)) {
-                delete finalData[key];
-              }
-            });
-          }
+          Object.keys(finalData).forEach(key => {
+            // Açıklama alanı boş olsa bile gönderilmelidir ki silinebilsin
+            if (key !== 'aciklama' && (finalData[key] === '' || finalData[key] === null || finalData[key] === undefined)) {
+              delete finalData[key];
+            }
+          });
           
           if (finalData.govdeUcusSaati) {
             const parsedHours = parseSingleCellToHour(finalData.govdeUcusSaati, selectedAircraft.tip);
             if (parsedHours !== null) {
-              finalData.govdeUcusSaati = parsedHours.toFixed(1).replace('.', ',');
+              // Preserve decimal precision (use more decimals or just ensure it's not rounded to whole)
+              // User said "virgülden sonraki hanesiyle birlikte aynen yazılacaktır"
+              // If they entered 1790,54 we should keep .54. toFixed(1) would lose the 4.
+              // Let's use up to 2 decimal places if they exist, or just 1 as standard.
+              // Actually, keeping exactly what they typed is better if it's already a string.
+              // But we need to normalize to comma.
+              const s = String(finalData.govdeUcusSaati).replace('.', ',');
+              if (!s.includes(',')) {
+                finalData.govdeUcusSaati = parsedHours.toFixed(1).replace('.', ',');
+              } else {
+                finalData.govdeUcusSaati = s;
+              }
             }
           }
           
@@ -675,7 +728,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         
         // Use the same normalization logic as App.tsx to ensure match
         const searchDate = formData.islemTarihi; // yyyy-MM-dd
-        const searchKuyruk = selectedKuyruk.trim().toUpperCase();
+        const searchKuyruk = (selectedKuyruk || "").trim().toUpperCase();
         
         // Öncelikle seçili tarihteki kaydı bul
         let logEntry = envanterLog.find(log => {
@@ -905,6 +958,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                               <option value="KAZA KIRIM">KAZA KIRIM</option>
                               <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
                               <option value="TECRÜBE BEKLER">TECRÜBE BEKLER</option>
+                              <option value="KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)">KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)</option>
                             </datalist>
                           </div>
                         </>
@@ -999,6 +1053,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                               <option value="KAZA KIRIM">KAZA KIRIM</option>
                               <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
                               <option value="TECRÜBE BEKLER">TECRÜBE BEKLER</option>
+                              <option value="KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)">KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)</option>
                             </datalist>
                           </div>
                         </>
@@ -1089,6 +1144,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                               <option value="KAZA KIRIM">KAZA KIRIM</option>
                               <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
                               <option value="TECRÜBE BEKLER">TECRÜBE BEKLER</option>
+                              <option value="KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)">KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)</option>
                             </datalist>
                           </div>
                         </>
@@ -1230,6 +1286,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                                   <option value="KAZA KIRIM">KAZA KIRIM</option>
                                   <option value="OLMADIĞI GÜNLER">OLMADIĞI GÜNLER</option>
                                   <option value="TECRÜBE BEKLER">TECRÜBE BEKLER</option>
+                                  <option value="KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)">KARMA GÜN (HEM FAAL HEM GAYRİ FAAL)</option>
                                 </datalist>
                               </div>
                             </>

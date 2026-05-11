@@ -599,6 +599,34 @@ const App = () => {
         const now = new Date();
         const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
+        fleet.forEach(a => {
+          let code: DailyStatusCode = 'F';
+          if (a.assignedCode) {
+            code = a.assignedCode as DailyStatusCode;
+          } else {
+            const upperDurum = String(a.durum || '').trim().toUpperCase();
+            const upperAyrinti = String(a.durumAyrintisi || '').trim().toUpperCase();
+            if (upperDurum.includes('BAKIM') || upperAyrinti.includes('BAKIM')) code = 'B';
+            else if (upperDurum.includes('ARIZA') || upperAyrinti.includes('ARIZA') || upperAyrinti.includes('OVERSPEED') || upperAyrinti.includes('NG')) code = 'A';
+            else if (upperDurum.includes('OLMADIĞI') || upperAyrinti.includes('OLMADIĞI')) code = 'X';
+          }
+
+          if (!activityMap.has(a.kuyrukNo)) {
+            activityMap.set(a.kuyrukNo, {
+              kuyrukNo: a.kuyrukNo,
+              cagriKodu: a.cagriKodu,
+              tip: a.tip || 'Bilinmiyor',
+              dailyStatuses: { [todayStr]: code },
+              hourlyStatuses: {},
+              intraDayCompletions: {},
+              intraDayDurations: {}
+            });
+          } else {
+            const existing = activityMap.get(a.kuyrukNo)!;
+            existing.dailyStatuses[todayStr] = code;
+          }
+        });
+
         const normalizedEnvanterLog: any[] = [];
 
         // Process Daily Logs
@@ -640,6 +668,7 @@ const App = () => {
 
             if (dayNum !== -1) {
               const dateStrKey = `${yearNum}-${String(monthNum + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+              if (dateStrKey > todayStr) return;
               
               normalizedEnvanterLog.push({
                 ...logEntry,
@@ -649,13 +678,14 @@ const App = () => {
 
               // Bugünün verisini logdan değil, canlı veriden alıyoruz (ancak logda varsa ve canlıda yoksa eklenebilir)
               let code: DailyStatusCode = 'F';
+              const upperAyrinti = durumAyrintisi.toUpperCase();
+              if (upperAyrinti.includes('BAKIM')) code = 'B';
+              else if (upperAyrinti.includes('ARIZA') || upperAyrinti.includes('PARÇA BEKLER') || upperAyrinti.includes('KAZA KIRIM') || upperAyrinti.includes('OVERSPEED') || upperAyrinti.includes('NG')) code = 'A';
+              else if (upperAyrinti.includes('OLMADIĞI GÜNLER')) code = 'X';
+              else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') code = 'B';
+              
               if (analizKodu) {
                 code = analizKodu as DailyStatusCode;
-              } else {
-                if (durumAyrintisi.includes('BAKIM')) code = 'B';
-                else if (durumAyrintisi.includes('ARIZA') || durumAyrintisi.includes('PARÇA BEKLER') || durumAyrintisi.includes('KAZA KIRIM')) code = 'A';
-                else if (durumAyrintisi.includes('OLMADIĞI GÜNLER')) code = 'X';
-                else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') code = 'B';
               }
 
               let act = activityMap.get(kuyrukNo);
@@ -677,7 +707,8 @@ const App = () => {
                   dailyStatuses: { [dateStrKey]: code },
                   hourlyStatuses: {},
                   intraDayCompletions: {},
-                  intraDayDurations: {}
+                  intraDayDurations: {},
+                  intraDayStartStatuses: {}
                 });
               }
             }
@@ -713,202 +744,182 @@ const App = () => {
               }
             }
           }
-          if (!dateStr) return;
+          if (!dateStr || dateStr > todayStr) return;
 
           const key = `${kuyrukNo}_${dateStr}`;
           if (!intraDayGroups.has(key)) intraDayGroups.set(key, []);
           intraDayGroups.get(key)!.push(log);
         });
 
-        intraDayGroups.forEach((logs, key) => {
-          const [kuyrukNo, dateStr] = key.split('_');
-          let act = activityMap.get(kuyrukNo);
-          if (!act) {
-            // Create activity if it doesn't exist
-            act = {
-              kuyrukNo: kuyrukNo,
-              cagriKodu: getCallSignByTail(kuyrukNo),
-              tip: 'Bilinmiyor',
-              dailyStatuses: {},
-              hourlyStatuses: {},
-              intraDayCompletions: {},
-              intraDayDurations: {}
-            };
-            activityMap.set(kuyrukNo, act);
-          }
+        // Track carry-over status per tail
+        const tailLastStatusMap = new Map<string, string>();
 
-          let totalGayriFaalMins = 0;
-          let hasFaal = false;
-          let hasGayriFaal = false;
+        // Full date range
+        const startDateObj = new Date(filterStartDate);
+        const endDateObj = new Date(filterEndDate);
+        const dateRangeArray: string[] = [];
+        let walkDate = new Date(startDateObj);
+        while (walkDate <= endDateObj) {
+          dateRangeArray.push(`${walkDate.getFullYear()}-${String(walkDate.getMonth() + 1).padStart(2, '0')}-${String(walkDate.getDate()).padStart(2, '0')}`);
+          walkDate.setDate(walkDate.getDate() + 1);
+        }
 
-          const hourlyStatuses: Record<string, string> = {};
-          const hourlyDescriptions: Record<string, string> = {};
+        const allTails = Array.from(activityMap.keys());
 
-          type LogEvent = { hour: number; exactMins: number; type: 'down' | 'up'; status: string; desc: string };
-          const events: LogEvent[] = [];
+        dateRangeArray.forEach((dateStr) => {
+          allTails.forEach((kuyrukNo) => {
+            const key = `${kuyrukNo}_${dateStr}`;
+            const logs = intraDayGroups.get(key) || [];
+            let act = activityMap.get(kuyrukNo);
+            if (!act) return;
 
-          logs.forEach(log => {
-            const statusRaw = String(log.status || log.Status || log.durum || log.Durum || '').trim().toUpperCase();
-            const startStr = String(log.startTime || log.gayriFaalBaslangicSaati || log['GAYRİ FAAL BAŞLANGIÇ SAATİ'] || '').trim();
-            const endStr = String(log.endTime || log.faalBaslangicSaati || log['FAAL BAŞLANGIÇ SAATİ'] || '').trim();
-            const description = String(log.description || log.aciklama || log.Açıklama || '').trim();
+            let totalGayriFaalMins = 0;
+            const previousTailStatus = tailLastStatusMap.get(kuyrukNo) || 'F';
 
-            if (statusRaw === 'FAAL') {
-              hasFaal = true;
-            } else if (statusRaw !== '' || startStr !== '' || endStr !== '') {
-              hasGayriFaal = true;
-              
-              let code = statusRaw ? statusRaw.substring(0, 2) : 'B';
-              const hasYillik = statusRaw.includes('YILLIK');
-              if (!hasYillik && (statusRaw.includes('TEKNİK BÜLTEN') || statusRaw.includes('TBU'))) code = 'TBU';
-              else if (statusRaw.includes('BAKIM') && statusRaw.includes('BEKLER')) code = 'BB';
-              else if (statusRaw.includes('BAKIM') || hasYillik) code = 'B';
-              else if (statusRaw.includes('ARIZA')) code = 'A';
-              else if (statusRaw.includes('PARÇA')) code = 'PB';
-              else if (statusRaw.includes('KABUL')) code = 'KM';
-              else if (statusRaw.includes('KAZA')) code = 'KK';
-              else if (statusRaw.includes('OLMADIĞI')) code = 'X';
-              else if (statusRaw.includes('TECRÜBE')) code = 'TB';
+            const hourlyStatuses: Record<string, string> = {};
+            const hourlyDescriptions: Record<string, string> = {};
+            type LogEvent = { hour: number; exactMins: number; type: 'down' | 'up'; status: string; desc: string };
+            const events: LogEvent[] = [];
 
-              const parseExactMins = (timeStr: string) => {
-                if (!timeStr) return -1;
+            logs.forEach(log => {
+              const statusRaw = String(log.status || log.Status || log.durum || log.Durum || '').trim().toUpperCase();
+              const startStr = String(log.startTime || log.gayriFaalBaslangicSaati || log['GAYRİ FAAL BAŞLANGIÇ SAATİ'] || '').trim();
+              const endStr = String(log.endTime || log.faalBaslangicSaati || log['FAAL BAŞLANGIÇ SAATİ'] || '').trim();
+              const description = String(log.description || log.aciklama || log.Açıklama || '').trim();
 
-                // Handle full date string from Google Sheets (e.g., "Sat Dec 30 1899 08:00:00 GMT+0200 (EET)")
-                if (timeStr.includes('GMT') || timeStr.includes('T')) {
-                  const match = timeStr.match(/(\d{2}):(\d{2}):(\d{2})/);
-                  if (match) {
-                    return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+              if (statusRaw === 'FAAL') {
+                // No-op
+              } else if (statusRaw !== '' || startStr !== '' || endStr !== '') {
+                let code = 'B';
+                if (statusRaw.includes('TEKNİK BÜLTEN') || statusRaw.includes('TBU')) code = 'TBU';
+                else if (statusRaw.includes('BAKIM') && statusRaw.includes('BEKLER')) code = 'BB';
+                else if (statusRaw.includes('BAKIM')) code = 'B';
+                else if (statusRaw.includes('ARIZA') || statusRaw.includes('OVERSPEED') || statusRaw.includes('NG')) code = 'A';
+                else if (statusRaw.includes('PARÇA')) code = 'PB';
+                else if (statusRaw.includes('KABUL')) code = 'KM';
+                else if (statusRaw.includes('KAZA')) code = 'KK';
+                else if (statusRaw.includes('OLMADIĞI')) code = 'X';
+                else if (statusRaw.includes('TECRÜBE')) code = 'TB';
+                else if (statusRaw.length > 0) code = statusRaw.substring(0, 2);
+
+                const parseExactMins = (timeStr: string) => {
+                  if (!timeStr) return -1;
+                  if (timeStr.includes('GMT') || timeStr.includes('T')) {
+                    const match = timeStr.match(/(\d{2}):(\d{2}):(\d{2})/);
+                    if (match) return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+                    const d = new Date(timeStr);
+                    if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
                   }
-                  const d = new Date(timeStr);
-                  if (!isNaN(d.getTime())) {
-                    return d.getHours() * 60 + d.getMinutes();
-                  }
-                }
+                  if (!timeStr.includes(':')) return -1;
+                  const parts = timeStr.split(':');
+                  const h = parseInt(parts[0], 10);
+                  const m = parseInt(parts[1], 10);
+                  if (isNaN(h) || isNaN(m)) return -1;
+                  return h * 60 + m;
+                };
 
-                if (!timeStr.includes(':')) return -1;
-                
-                // Handle "08:00" or "08:00:00"
-                const parts = timeStr.split(':');
-                const h = parseInt(parts[0], 10);
-                const m = parseInt(parts[1], 10);
-                
-                if (isNaN(h) || isNaN(m)) return -1;
-                return h * 60 + m;
-              };
-
-              const sMins = parseExactMins(startStr);
-              const eMins = parseExactMins(endStr);
-
-              if (sMins !== -1) {
-                events.push({ hour: Math.floor(sMins / 60), exactMins: sMins, type: 'down', status: code, desc: description });
+                const sMins = parseExactMins(startStr);
+                const eMins = parseExactMins(endStr);
+                if (sMins !== -1) events.push({ hour: Math.floor(sMins / 60), exactMins: sMins, type: 'down', status: code, desc: description });
+                if (eMins !== -1) events.push({ hour: Math.floor(eMins / 60), exactMins: eMins, type: 'up', status: code, desc: description });
               }
-              if (eMins !== -1) {
-                events.push({ hour: Math.floor(eMins / 60), exactMins: eMins, type: 'up', status: code, desc: description });
+            });
+
+            events.sort((a, b) => a.exactMins - b.exactMins);
+
+            if (!act.dailyStatuses) act.dailyStatuses = {};
+            const dailyStatus = act.dailyStatuses[dateStr] || 'F';
+            const now = new Date();
+            const todayStrComp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const isToday = dateStr === todayStrComp;
+            const isFuture = dateStr > todayStrComp;
+
+            if (isFuture) return;
+
+            const currentMins = now.getHours() * 60 + now.getMinutes();
+            const endOfDayMins = isToday ? currentMins : 24 * 60;
+
+            let isDown = (previousTailStatus !== 'F');
+            let lastDownMins = 0;
+            
+            if (!act.intraDayStartStatuses) act.intraDayStartStatuses = {};
+            act.intraDayStartStatuses[dateStr] = previousTailStatus;
+
+            if (events.length > 0 && events[0].type === 'up') {
+              isDown = true;
+              lastDownMins = 0;
+            } else if (events.length === 0 && dailyStatus !== 'F') {
+              isDown = true;
+              lastDownMins = 0;
+            }
+
+            for (const ev of events) {
+              if (ev.type === 'down') {
+                if (!isDown) {
+                  isDown = true;
+                  lastDownMins = ev.exactMins;
+                }
+              } else if (ev.type === 'up') {
+                if (isDown) {
+                  isDown = false;
+                  const upMins = isToday ? Math.min(ev.exactMins, currentMins) : ev.exactMins;
+                  totalGayriFaalMins += Math.max(0, upMins - lastDownMins);
+                }
+              }
+            }
+
+            if (isDown) {
+              totalGayriFaalMins += Math.max(0, endOfDayMins - lastDownMins);
+            }
+
+            let currentState = previousTailStatus;
+            let currentDesc = '';
+
+            if (events.length === 0 && dailyStatus !== 'F' && previousTailStatus === 'F') {
+              currentState = dailyStatus;
+            }
+
+            for (let h = 0; h < 24; h++) {
+              const eventsAtHour = events.filter(e => e.hour === h);
+              eventsAtHour.sort((a, b) => (a.type === 'down' ? -1 : 1));
+              for (const ev of eventsAtHour) {
+                if (ev.type === 'down') {
+                  currentState = ev.status;
+                  currentDesc = ev.desc;
+                } else if (ev.type === 'up') {
+                  currentState = 'F';
+                  currentDesc = ev.desc;
+                }
+              }
+              const hStr = `${h.toString().padStart(2, '0')}:00`;
+              hourlyStatuses[hStr] = currentState;
+              if (currentState !== 'F' || eventsAtHour.length > 0) {
+                hourlyDescriptions[hStr] = currentDesc || (currentState !== 'F' ? 'Gayri Faal Durum Devam Ediyor' : '');
+              }
+            }
+
+            tailLastStatusMap.set(kuyrukNo, currentState);
+            
+            if ((!act.dailyStatuses[dateStr] || act.dailyStatuses[dateStr] === 'F') && currentState !== 'F') {
+              act.dailyStatuses[dateStr] = currentState as DailyStatusCode;
+            }
+
+            if (logs.length > 0 || dailyStatus !== 'F') {
+              if (!act.intraDayDurations) act.intraDayDurations = {};
+              act.intraDayDurations[dateStr] = totalGayriFaalMins;
+              if (!act.intraDayEvents) act.intraDayEvents = {};
+              act.intraDayEvents[dateStr] = events;
+              if (!act.hourlyStatuses) act.hourlyStatuses = {};
+              act.hourlyStatuses[dateStr] = { ...act.hourlyStatuses[dateStr], ...hourlyStatuses } as Record<string, DailyStatusCode>;
+              if (!act.hourlyDescriptions) act.hourlyDescriptions = {};
+              act.hourlyDescriptions[dateStr] = { ...act.hourlyDescriptions[dateStr], ...hourlyDescriptions };
+              
+              if (totalGayriFaalMins > 0 && totalGayriFaalMins < endOfDayMins) {
+                if (!act.intraDayCompletions) act.intraDayCompletions = {};
+                act.intraDayCompletions[dateStr] = true;
               }
             }
           });
-
-          // Sort events by exact time
-          events.sort((a, b) => a.exactMins - b.exactMins);
-
-          // Determine daily status
-          if (!act.dailyStatuses) act.dailyStatuses = {};
-          const dailyStatus = act.dailyStatuses[dateStr] || 'F';
-          if (dailyStatus !== 'F') hasGayriFaal = true;
-          else hasFaal = true;
-
-          const now = new Date();
-          const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-          const isToday = dateStr === todayStr;
-          const currentMins = now.getHours() * 60 + now.getMinutes();
-          const endOfDayMins = isToday ? currentMins : 24 * 60;
-
-          totalGayriFaalMins = 0;
-          let isDown = false;
-          let lastDownMins = 0;
-
-          if (events.length > 0 && events[0].type === 'up') {
-            isDown = true;
-            lastDownMins = 0;
-          } else if (events.length === 0 && dailyStatus !== 'F') {
-            totalGayriFaalMins = endOfDayMins;
-          }
-
-          for (const ev of events) {
-            if (ev.type === 'down' && !isDown) {
-              isDown = true;
-              lastDownMins = ev.exactMins;
-            } else if (ev.type === 'up' && isDown) {
-              isDown = false;
-              // If the 'up' event is in the future today, cap it at current time
-              const upMins = isToday ? Math.min(ev.exactMins, currentMins) : ev.exactMins;
-              totalGayriFaalMins += Math.max(0, upMins - lastDownMins);
-            }
-          }
-
-          if (isDown) {
-            totalGayriFaalMins += Math.max(0, endOfDayMins - lastDownMins);
-          }
-
-          let currentState = 'F';
-          let currentDesc = '';
-
-          if (events.length > 0) {
-            if (events[0].type === 'up') {
-              currentState = events[0].status;
-              currentDesc = 'Gayri faal durum devam ediyor';
-            }
-          } else if (dailyStatus !== 'F') {
-            currentState = dailyStatus;
-            const logWithDesc = logs.find(l => String(l.description || l.aciklama || l.Açıklama || '').trim() !== '');
-            if (logWithDesc) {
-              currentDesc = String(logWithDesc.description || logWithDesc.aciklama || logWithDesc.Açıklama || '').trim();
-            }
-          }
-
-          for (let h = 0; h < 24; h++) {
-            const eventsAtHour = events.filter(e => e.hour === h);
-            eventsAtHour.sort((a, b) => (a.type === 'down' ? -1 : 1));
-
-            for (const ev of eventsAtHour) {
-              if (ev.type === 'down') {
-                currentState = ev.status;
-                currentDesc = ev.desc;
-              } else if (ev.type === 'up') {
-                currentState = 'F';
-                currentDesc = ev.desc;
-              }
-            }
-
-            const hStr = `${h.toString().padStart(2, '0')}:00`;
-            hourlyStatuses[hStr] = currentState;
-            
-            let displayDesc = currentDesc;
-            if (currentState === 'F' && eventsAtHour.length === 0) {
-              displayDesc = '';
-            }
-            if (displayDesc) {
-              hourlyDescriptions[hStr] = displayDesc;
-            }
-          }
-
-          if (!act.intraDayDurations) act.intraDayDurations = {};
-          act.intraDayDurations[dateStr] = totalGayriFaalMins;
-          
-          if (!act.intraDayEvents) act.intraDayEvents = {};
-          act.intraDayEvents[dateStr] = events;
-          
-          if (!act.hourlyStatuses) act.hourlyStatuses = {};
-          act.hourlyStatuses[dateStr] = { ...act.hourlyStatuses[dateStr], ...hourlyStatuses } as Record<string, DailyStatusCode>;
-          
-          if (!act.hourlyDescriptions) act.hourlyDescriptions = {};
-          act.hourlyDescriptions[dateStr] = { ...act.hourlyDescriptions[dateStr], ...hourlyDescriptions };
-          
-          // Karma day: Both FAAL and GAYRİ FAAL exist
-          if (hasFaal && hasGayriFaal) {
-            if (!act.intraDayCompletions) act.intraDayCompletions = {};
-            act.intraDayCompletions[dateStr] = true;
-          }
         });
         return Array.from(activityMap.values());
       });

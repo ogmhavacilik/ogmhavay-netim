@@ -85,7 +85,7 @@ export interface Aircraft {
   bakim200H?: string;
 }
 
-export type DailyStatusCode = 'B' | 'BB' | 'TBU' | 'KM' | 'A' | 'PB' | 'KK' | 'X' | 'F' | 'TB' | '';
+export type DailyStatusCode = 'B' | 'BB' | 'TBU' | 'KM' | 'A' | 'PB' | 'KK' | 'X' | 'F' | 'TB' | 'K' | '';
 
 export interface LogEvent {
   hour: number;
@@ -105,6 +105,7 @@ export interface AircraftActivity {
   intraDayCompletions?: { [dateStr: string]: boolean };
   intraDayDurations?: { [dateStr: string]: number };
   intraDayEvents?: { [dateStr: string]: LogEvent[] };
+  intraDayStartStatuses?: { [dateStrKey: string]: string };
 }
 
 export interface SheetMapping {
