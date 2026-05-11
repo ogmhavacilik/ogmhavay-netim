@@ -395,7 +395,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     });
 
     if (existingLog && !isPastDate) {
-      const confirmUpdate = window.confirm(`DİKKAT: ${searchKNoClean} için ${searchDateStr} tarihinde zaten bir kayıt mevcut. Mevcut kaydı GÜNCELLEMEK istediğinize emin misiniz? (Her hava aracı için günde tek satır girilebilir)`);
+      const confirmUpdate = window.confirm('Mevcut kaydı güncellemek istediğinize emin misiniz?');
       if (!confirmUpdate) {
         setIsSubmitting(false);
         return;
