@@ -34,6 +34,7 @@ export interface Aircraft {
   konum: string;
   faydaliSaat: number | null;
   govdeUcusSaati?: string;
+  govdeUcusSaatiRaw?: number | null;
   durumBaslangic: string;
   durumBitis?: string;
   aciklama: string;

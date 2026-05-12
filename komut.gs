@@ -1005,7 +1005,20 @@ function syncFleetToLogs() {
             govdeUcusSaati: row[config.map.gHour],
             faydaliSaat: row[config.map.fHour]
           };
+          // --- ANALİZ KODU SABİTLEME (STAY STICKY) ---
+          // Gece yarısı loglarken eğer o gün için zaten bir kod varsa (veya güncelleniyorsa),
+          // ve status değişmediyse mevcut kodu koru.
+          var envKey = dateStr + "_" + tail;
+          var existingFaalCode = (faalMap[envKey] && faalMap[envKey].data) ? String(faalMap[envKey].data[5] || "") : "";
+          
           item.assignedCode = analyzeStatusGS(item);
+          if (existingFaalCode && existingFaalCode !== 'F' && existingFaalCode !== '?') {
+            // Eğer elle bir kod girildiyse veya önceki sync'den bir kod kaldıysa onu koruyalım.
+            // Fakat status değişmişse analyzeStatusGS'den geleni kullanalım (isteğe göre).
+            // Kullanıcı "dk bir veri çekilirken sabitle" dediği için burada da korumak mantıklı.
+            item.assignedCode = existingFaalCode;
+          }
+          
           fleetData.push(item);
         }
       });

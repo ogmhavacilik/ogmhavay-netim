@@ -2309,16 +2309,17 @@ function setLogTimeValue(sheet, row, col, value, tip) {
   var valStr = String(value).trim();
   var tipUpper = (tip || "").toUpperCase();
   
-  // B-360, C-650, BELL-429 ve diğer ondalık tercih edenler
+  // B-360, C-650, BELL-429, AT-802 ve diğer ondalık tercih edenler
   var cleanTip = tipUpper.replace(/[\s-]/g, "");
   var isDecimalType = cleanTip.indexOf("B360") !== -1 || 
                       cleanTip.indexOf("C650") !== -1 || 
-                      cleanTip.indexOf("BELL429") !== -1;
+                      cleanTip.indexOf("BELL429") !== -1 ||
+                      cleanTip.indexOf("AT802") !== -1;
 
   // EXTREME PRECISION: Eğer değerde virgül varsa ve saat formatında değilse (HH:MM), 
-  // direk ondalık sayı olarak yazalım.
-  if (!valStr.includes(":") && (valStr.includes(",") || valStr.includes("."))) {
-    var n = parseFloat(valStr.replace(",", "."));
+  // direk ondalık sayı olarak yazalım. Ayrıca binlik ayıraç (.) varsa temizleyelim.
+  if (!valStr.includes(":") && (valStr.includes(",") || (valStr.includes(".") && valStr.split(".").length > 2))) {
+    var n = parseFloat(valStr.replace(/\./g, "").replace(",", "."));
     if (!isNaN(n)) {
       range.setValue(n);
       range.setNumberFormat("#,##0.0#"); // En az 1, opsiyonel 2 basamak
@@ -2328,9 +2329,6 @@ function setLogTimeValue(sheet, row, col, value, tip) {
 
   if (isDecimalType) {
     // Robust decimal parsing for Turkish context:
-    // If it has a comma and a dot, assume dot is thousand separator.
-    // If it only has a dot, we need to decide if it's decimal or thousand.
-    // In many cases, 1732.5 is intended as decimal if it's small.
     var n;
     if (valStr.includes(',') && valStr.includes('.')) {
       n = parseFloat(valStr.replace(/\./g, "").replace(',', '.'));

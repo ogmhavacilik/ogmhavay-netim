@@ -477,7 +477,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         // Geçmiş tarihli seçildiğinde tüm hava araçlarında gövde saati sadece değiştirebilirler
         finalData = { govdeUcusSaati: formData.govdeUcusSaati, islemTarihi: formData.islemTarihi };
         
-        const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
+        const decimalTypes = ['Bell-429', 'B-360', 'C-650', 'AT-802'];
         if (decimalTypes.includes(selectedAircraft.tip) && finalData.govdeUcusSaati) {
           const parsedHours = parseSingleCellToHour(finalData.govdeUcusSaati, selectedAircraft.tip);
           if (parsedHours !== null) {
@@ -504,7 +504,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         }
 
         // B-360 ve C-650 için boş verilerin gönderilmesini engelle
-        const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
+        const decimalTypes = ['Bell-429', 'B-360', 'C-650', 'AT-802'];
         if (decimalTypes.includes(selectedAircraft.tip)) {
           Object.keys(finalData).forEach(key => {
             // Açıklama alanı boş olsa bile gönderilmelidir ki silinebilsin
@@ -660,12 +660,12 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           // Log flight hours with decimal support for specific types
           const getFormattedHourForLog = (val: any) => {
             if (!val) return null;
-            const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
+            const decimalTypes = ['Bell-429', 'B-360', 'C-650', 'AT-802'];
             if (decimalTypes.includes(selectedAircraft.tip)) {
               const parsed = parseSingleCellToHour(val, selectedAircraft.tip);
               return parsed !== null ? parsed.toFixed(1).replace('.', ',') : val;
             }
-            // For T-70 and AT-802, use HH:mm format in the log
+            // For T-70, use HH:mm format in the log
             const parsed = parseSingleCellToHour(val, selectedAircraft.tip);
             if (parsed !== null) {
               const h = Math.floor(Math.abs(parsed));

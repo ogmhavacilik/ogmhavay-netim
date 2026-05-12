@@ -189,27 +189,8 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
   if (typeof val === 'number') {
     if (val <= 0) return null;
     let n = val;
-    // AT-802 correction for numeric hours (days or hours)
-    if (aircraftType === 'AT-802') {
-      // If it's a number like 73.3333333, it's definitely days (duration in Sheets)
-      // Most AT-802 flight hours are between 100 and 5000 hours.
-      // 10000 hours is ~416 days.
-      if (n < 500) {
-        // Additional heuristic: durations in Sheets almost always have decimals
-        if (n % 1 !== 0) {
-          n = n * 24;
-        } else if (n < 100) {
-          // Humans might enter 25 hours? But durations < 4 days (96 hours) are rare for total flight hours.
-          // However, if it's an integer < 100, we'll keep it as hours for now unless it's clearly a day count.
-          // But wait, the previous code was n < 100 -> multiply by 24.
-          // That would turn 73 hours into 1752 hours. 
-          // If the user meant 73 hours, then n < 100 was wrong.
-          // BUT if they meant 73 days (1752 hours), then n < 100 was correct.
-          // Given the user's data (1760 hours = 73.33 days), n < 100 seems to be for DAY interpretation.
-          n = n * 24; 
-        }
-      }
-    }
+    // Removed problematic day-to-hour multiplier (n < 500) as it was causing issues for small hour values
+    // like 25.5 becoming 612. Most modern sheets now return hours via displayValues or durations are handled.
     return n;
   }
 
@@ -257,17 +238,14 @@ export const formatGovdeHour = (val: any, aircraftType: string): string => {
   
   const s = String(raw).trim();
 
-  // For AT-802, if it looks like a date or a shifted duration, we must parse and correct it
-  if (aircraftType === 'AT-802') {
-    const parsed = parseSingleCellToHour(raw, aircraftType);
-    if (parsed !== null) {
-      return formatToHHMM(parsed, aircraftType);
-    }
-    return s;
-  }
-
   const parsed = parseSingleCellToHour(raw, aircraftType);
   if (parsed !== null) {
+    if (aircraftType === 'AT-802') {
+      return parsed.toFixed(1).replace('.', ',');
+    }
+    // Revert back to HH:mm for all except maybe specific requests.
+    // User said: "Bell-429, B-360 ve C-650 lerdeki verileri dönüştürme hatan eskiye döne"
+    // This implies they want the HH:mm format (1234:30) back in the UI.
     return formatToHHMM(parsed, aircraftType);
   }
   return s;
@@ -420,6 +398,8 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
       if (!item || typeof item !== 'object') return null;
       const analysis = analyzeStatus(item);
       const kuyrukNo = String(item.kuyrukNo || '').trim();
+      if (!kuyrukNo || kuyrukNo === '-' || kuyrukNo === '0' || kuyrukNo === 'null' || kuyrukNo.length < 3) return null;
+      
       const cleanKuyrukNo = kuyrukNo.toUpperCase();
       
       let finalMinHour: number | null = null;
@@ -456,19 +436,21 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         maintenanceHours = [{ bakimTuru: 'KALAN', kalanSaat: hourInt || 0 }];
       }
 
-      const govdeStr = formatGovdeHour(item.govdeUcusSaati ?? item.E ?? item.e ?? item[4], config.aircraftType);
+    const parsedGovde = parseSingleCellToHour(item.govdeUcusSaati ?? item.E ?? item.e ?? item[4], config.aircraftType);
+    const govdeStr = formatGovdeHour(item.govdeUcusSaati ?? item.E ?? item.e ?? item[4], config.aircraftType);
 
-      const aircraft: Partial<Aircraft> = {
-        kuyrukNo: kuyrukNo,
-        cagriKodu: getCallSignByTail(kuyrukNo),
-        durum: (analysis.code !== 'F') ? Status.GAYRI_FAAL : Status.FAAL,
-        durumTipi: (analysis.code === 'B' || analysis.code === 'BB' || analysis.code === 'TBU' || analysis.code === 'KM') ? StatusType.BAKIM : 
-                   (analysis.code === 'A' || analysis.code === 'PB') ? StatusType.ARIZA : StatusType.NONE,
-        durumAyrintisi: String(item.durumAyrintisi || '-'),
-        konum: String(item.konum || 'ANKARA'),
-        faydaliSaat: finalMinHour, 
-        govdeUcusSaati: govdeStr,
-        aciklama: String(item.aciklama || ''),
+    const aircraft: Partial<Aircraft> = {
+      kuyrukNo: kuyrukNo,
+      cagriKodu: getCallSignByTail(kuyrukNo),
+      durum: (analysis.code !== 'F') ? Status.GAYRI_FAAL : Status.FAAL,
+      durumTipi: (analysis.code === 'B' || analysis.code === 'BB' || analysis.code === 'TBU' || analysis.code === 'KM') ? StatusType.BAKIM : 
+                 (analysis.code === 'A' || analysis.code === 'PB') ? StatusType.ARIZA : StatusType.NONE,
+      durumAyrintisi: String(item.durumAyrintisi || '-'),
+      konum: String(item.konum || 'ANKARA'),
+      faydaliSaat: finalMinHour, 
+      govdeUcusSaati: govdeStr,
+      govdeUcusSaatiRaw: parsedGovde,
+      aciklama: String(item.aciklama || ''),
         guncellemeTarihi: timestamp,
         durumBaslangic: new Date().toISOString().split('T')[0],
         maintenanceHours: maintenanceHours,

@@ -439,7 +439,31 @@ const App = () => {
         }
 
         if (existingIdx !== -1) {
-          updatedFleet[existingIdx] = { ...updatedFleet[existingIdx], ...incoming } as Aircraft;
+          const existing = updatedFleet[existingIdx];
+          
+          // --- ANALİZ KODU SABİTLEME (USER REQUEST) ---
+          // Eğer durum, durum ayrıntısı veya açıklama değişmediyse, mevcut analiz kodunu koru.
+          // Sadece bu alanlardan biri değişirse yeni koda izin ver.
+          // Ve her dakikada bir veri çekilirken otomatik değişimi engelle.
+          let finalIncomingCode = incoming.assignedCode;
+          
+          if (existing.assignedCode) {
+            const hasStatusChange = 
+              String(existing.durum) !== String(incoming.durum) ||
+              String(existing.durumAyrintisi) !== String(incoming.durumAyrintisi) ||
+              String(existing.aciklama) !== String(incoming.aciklama);
+            
+            // Eğer status değişmediyse, eskini koru
+            if (!hasStatusChange) {
+              finalIncomingCode = existing.assignedCode;
+            }
+          }
+
+          updatedFleet[existingIdx] = { 
+            ...existing, 
+            ...incoming,
+            assignedCode: finalIncomingCode // Stickiness applied here
+          } as Aircraft;
         } else {
           // Yeni Ekle - Sadece kuyruk no geçerli görünüyorsa (T-70 junk koruması)
           const isJunkT70 = incoming.tip === 'T-70' && !incomingKNo.includes('OR-') && !incomingKNo.includes('10');
@@ -700,6 +724,14 @@ const App = () => {
                 if (dateStrKey === todayStr) {
                   if (analizKodu) {
                     act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
+                    
+                    // UPDATE FLEET WITH CODE FROM LOG (STICKINESS)
+                    setFleet(prev => prev.map(f => {
+                       if (f.kuyrukNo === kuyrukNo) {
+                         return { ...f, assignedCode: code };
+                       }
+                       return f;
+                    }));
                   }
                 } else {
                   act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
@@ -965,29 +997,58 @@ const App = () => {
       // Toplu loglama işlemi - LOGKOMUT tarafında değişim kontrolü yapıldığı için güvenle çağrılabilir
       // Ancak gereksiz trafik oluşturmamak için frontend tarafında da basit bir kontrol eklenebilir
       if (fetchedFleet.length > 0) {
-        try {
-          await fetch(LOG_SCRIPT_URL, {
-            method: 'POST',
-            redirect: 'follow',
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({
-              action: 'logAllAircraftActivity',
-              sheetId: MAIL_LOG_SHEET_ID,
-              fleetData: fetchedFleet.map(a => ({
-                kuyrukNo: a.kuyrukNo,
-                tip: a.tip || '',
-                govdeUcusSaati: a.govdeUcusSaati,
-                faydaliSaat: a.faydaliSaat,
-                konum: a.konum,
-                durum: a.durum,
-                durumAyrintisi: a.durumAyrintisi,
-                aciklama: a.aciklama,
-                analizKodu: a.assignedCode
-              }))
-            })
-          });
-        } catch (logError) {
-          console.error("Otomatik log güncelleme hatası:", logError);
+        // Simple change detection: Compare with previous fleet state
+        const hasAnyChange = fetchedFleet.some(newA => {
+          const oldA = fleet.find(fa => fa.kuyrukNo === newA.kuyrukNo);
+          if (!oldA) return true;
+          return (
+            String(oldA.durum) !== String(newA.durum) ||
+            String(oldA.konum) !== String(newA.konum) ||
+            String(oldA.durumAyrintisi) !== String(newA.durumAyrintisi) ||
+            String(oldA.govdeUcusSaati) !== String(newA.govdeUcusSaati) ||
+            String(oldA.faydaliSaat) !== String(newA.faydaliSaat) ||
+            String(oldA.aciklama) !== String(newA.aciklama)
+          );
+        });
+
+        if (hasAnyChange) {
+          try {
+            await fetch(LOG_SCRIPT_URL, {
+              method: 'POST',
+              redirect: 'follow',
+              headers: { "Content-Type": "text/plain;charset=utf-8" },
+              body: JSON.stringify({
+                action: 'logAllAircraftActivity',
+                sheetId: MAIL_LOG_SHEET_ID,
+                fleetData: fetchedFleet.map(a => {
+                  const isDecimalType = a.tip === 'Bell-429' || a.tip === 'B-360' || a.tip === 'C-650' || a.tip === 'AT-802';
+                  
+                  // For log sheets (Inventory Log), they want decimal with comma for these types
+                  const govdeVal = (isDecimalType && a.govdeUcusSaatiRaw !== undefined && a.govdeUcusSaatiRaw !== null)
+                    ? a.govdeUcusSaatiRaw.toFixed(1).replace('.', ',')
+                    : a.govdeUcusSaati;
+                    
+                  const faydaliVal = (isDecimalType && a.faydaliSaat !== null)
+                    ? a.faydaliSaat.toFixed(1).replace('.', ',')
+                    : a.faydaliSaat;
+
+                  return {
+                    kuyrukNo: a.kuyrukNo,
+                    tip: a.tip || '',
+                    govdeUcusSaati: govdeVal,
+                    faydaliSaat: faydaliVal,
+                    konum: a.konum,
+                    durum: a.durum,
+                    durumAyrintisi: a.durumAyrintisi,
+                    aciklama: a.aciklama,
+                    analizKodu: a.assignedCode
+                  };
+                })
+              })
+            });
+          } catch (logError) {
+            console.error("Otomatik log güncelleme hatası:", logError);
+          }
         }
       }
 
@@ -1174,40 +1235,14 @@ const App = () => {
 
         const filtered = data.filter((row: any) => {
           if (!row.tarih) return false;
+          const kNo = String(row.kuyrukNo || "").trim();
+          if (!kNo || kNo === '-' || kNo === '0' || kNo === 'null' || kNo.length < 3) return false;
+          
           const rowDate = new Date(row.tarih);
           return rowDate.getDate() === targetDay && 
                  rowDate.getMonth() === targetMonth && 
                  rowDate.getFullYear() === targetYear;
         });
-
-        const parseHour = (val: any, aircraftType?: string): number | null => {
-          if (val === null || val === undefined || String(val).trim() === "" || String(val).toUpperCase() === "N/A") return null;
-          
-          if (typeof val === 'string' && val.includes('T') && val.includes('Z')) {
-            const d = new Date(val);
-            const epoch = new Date(Date.UTC(1899, 11, 30));
-            return (d.getTime() - epoch.getTime()) / (1000 * 60 * 60);
-          }
-          
-          let s = String(val).trim();
-          
-          // Handle Turkish format: dots for thousands, comma for decimal (e.g. 1.736,6)
-          if (s.includes('.') && s.includes(',')) {
-            s = s.replace(/\./g, '').replace(',', '.');
-          } else if (s.includes(',')) {
-            s = s.replace(',', '.');
-          }
-          
-          if (s.includes(':')) {
-            const parts = s.split(':').map(Number);
-            if (parts.length >= 2) return (parts[0] || 0) + (parts[1] || 0) / 60;
-          }
-          
-          const n = parseFloat(s);
-          if (isNaN(n)) return null;
-
-          return n;
-        };
 
         const historyFleet: Aircraft[] = filtered.map((row: any) => {
           const rowTip = row.tip || '';
@@ -1215,17 +1250,7 @@ const App = () => {
           
           let govdeStr = '-';
           if (govdeSaat !== null) {
-            if (rowTip === 'Bell-429' || rowTip === 'B-360' || rowTip === 'C-650') {
-              govdeStr = govdeSaat.toFixed(1).replace('.', ',');
-            } else {
-              let h = Math.floor(govdeSaat);
-              let m = Math.round((govdeSaat - h) * 60);
-              if (m === 60) {
-                h += 1;
-                m = 0;
-              }
-              govdeStr = `${h}:${m.toString().padStart(2, '0')}`;
-            }
+            govdeStr = formatToHHMM(govdeSaat);
           }
 
           return {
@@ -1679,7 +1704,11 @@ const App = () => {
                         <td className={`border border-black px-3 py-2.5 text-center font-black ${isFaal ? 'bg-[#e8f5e9] text-[#2e7d32]' : 'bg-[#ffebee] text-[#c62828]'}`}>{a.durum.toUpperCase()}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-gray-900 uppercase">{a.durumAyrintisi !== '-' ? a.durumAyrintisi : ''}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900 uppercase">{a.konum}</td>
-                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">{formatToHHMM(a.faydaliSaat)}</td>
+                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">
+                          {a.tip === 'AT-802' && a.faydaliSaat !== null 
+                            ? a.faydaliSaat.toFixed(1).replace('.', ',') 
+                            : formatToHHMM(a.faydaliSaat)}
+                        </td>
                         <td className="border border-black px-4 py-2 text-left text-[11px] leading-tight text-gray-600 italic whitespace-pre-wrap">{a.aciklama}</td>
                       </tr>
                     );
