@@ -597,15 +597,12 @@ const App = () => {
         const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
         fleet.forEach(a => {
-          let code: DailyStatusCode = 'F';
+          let code: DailyStatusCode = '?';
           if (a.assignedCode) {
             code = a.assignedCode as DailyStatusCode;
           } else {
             const upperDurum = String(a.durum || '').trim().toUpperCase();
-            const upperAyrinti = String(a.durumAyrintisi || '').trim().toUpperCase();
-            if (upperDurum.includes('BAKIM') || upperAyrinti.includes('BAKIM')) code = 'B';
-            else if (upperDurum.includes('ARIZA') || upperAyrinti.includes('ARIZA') || upperAyrinti.includes('OVERSPEED') || upperAyrinti.includes('NG')) code = 'A';
-            else if (upperDurum.includes('OLMADIĞI') || upperAyrinti.includes('OLMADIĞI')) code = 'X';
+            if (upperDurum === 'FAAL') code = 'F';
           }
 
           if (!activityMap.has(a.kuyrukNo)) {
@@ -673,13 +670,9 @@ const App = () => {
                 tarih: dateStrKey
               });
 
-              // Bugünün verisini logdan değil, canlı veriden alıyoruz (ancak logda varsa ve canlıda yoksa eklenebilir)
-              let code: DailyStatusCode = 'F';
-              const upperAyrinti = durumAyrintisi.toUpperCase();
-              if (upperAyrinti.includes('BAKIM')) code = 'B';
-              else if (upperAyrinti.includes('ARIZA') || upperAyrinti.includes('PARÇA BEKLER') || upperAyrinti.includes('KAZA KIRIM') || upperAyrinti.includes('OVERSPEED') || upperAyrinti.includes('NG')) code = 'A';
-              else if (upperAyrinti.includes('OLMADIĞI GÜNLER')) code = 'X';
-              else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') code = 'B';
+              // Bugünün verisini logdan değil, canlı veriden alıyoruz
+              let code: DailyStatusCode = '?';
+              if (String(durumAyrintisi).toUpperCase() === 'FAAL') code = 'F';
               
               if (analizKodu) {
                 code = analizKodu as DailyStatusCode;

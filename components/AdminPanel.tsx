@@ -20,6 +20,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
   const [isLoading, setIsLoading] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [editingCode, setEditingCode] = useState<{ kuyrukNo: string, code: string } | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
+  const [selectedForOverride, setSelectedForOverride] = useState<any>(null);
   const [recipients, setRecipients] = useState<MailRecipient[]>([]);
   const [editingRecipientId, setEditingRecipientId] = useState<string | null>(null);
   const [newRecipient, setNewRecipient] = useState<Omit<MailRecipient, 'id'>>({
@@ -353,6 +356,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
     }
   };
 
+  const filteredOverrideData = previewData.filter(a => 
+    a.kuyrukNo.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4">
       <div className="bg-[#052e16] w-full max-w-[1700px] h-[95vh] rounded-[4rem] border border-green-800/40 flex overflow-hidden shadow-[0_0_100px_rgba(0,0,0,1)]">
@@ -458,69 +465,90 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                     </button>
                   </div>
                 </div>
-                <div className="bg-[#021a0c] p-4 flex-1 overflow-y-auto custom-scrollbar rounded-b-[3rem]">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left bg-white/5 rounded-3xl border-collapse">
-                        <thead className="bg-[#021a0c] sticky top-0 z-20">
-                           <tr className="border-b border-green-900/40">
-                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Platform</th>
-                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Kuyruk No</th>
-                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap text-center">MEVCUT ANALİZ KODU (DEĞİŞTİRMEK İÇİN TIKLA)</th>
-                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Durum / Ayrıntı</th>
-                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Açıklama</th>
-                           </tr>
-                        </thead>
-                       <tbody>
-                        {previewData.map((row, i) => (
-                          <tr key={i} className="border-b border-white/5 text-white text-sm font-medium hover:bg-white/5 transition-colors">
-                            <td className="px-6 py-4"><span className="text-[10px] font-black bg-emerald-900/50 px-2 py-1 rounded text-emerald-400">{row.tip || "BELİRSİZ"}</span></td>
-                            <td className="px-6 py-4 font-bold text-lg italic tracking-tighter">{row.kuyrukNo}</td>
-                            <td className="px-6 py-4">
-                               <div className="flex justify-center">
-                                 {editingCode?.kuyrukNo === row.kuyrukNo ? (
-                                   <select 
-                                     autoFocus
-                                     className="bg-black text-white px-4 py-2 rounded-xl border-2 border-emerald-500 font-black text-sm shadow-[0_0_20px_rgba(16,185,129,0.3)]"
-                                     value={editingCode.code}
-                                     onChange={(e) => handleCodeChange(row.kuyrukNo, e.target.value)}
-                                     onBlur={() => setEditingCode(null)}
-                                   >
-                                     {['B', 'BB', 'TBU', 'KM', 'A', 'PB', 'KK', 'X', 'F', '?'].map(c => (
-                                       <option key={c} value={c}>{c}</option>
-                                     ))}
-                                   </select>
-                                 ) : (
-                                   <div 
-                                     className="flex items-center space-x-2 group cursor-pointer"
-                                     onClick={() => setEditingCode({ kuyrukNo: row.kuyrukNo, code: row.assignedCode || '?' })}
-                                   >
-                                     <span className={`px-8 py-3 rounded-2xl text-lg font-black transition-all shadow-lg ${!row.assignedCode || row.assignedCode === '?' ? 'bg-red-500/20 text-red-400 border border-red-500/40 group-hover:bg-red-500/40' : (row.assignedCode === 'F' ? 'bg-emerald-500/20 text-emerald-400 group-hover:bg-emerald-500/40 border border-emerald-500/20' : 'bg-orange-500/20 text-orange-400 group-hover:bg-orange-500/40 border border-orange-500/20')}`}>
+                <div className="bg-[#021a0c] p-10 flex-1 overflow-y-auto custom-scrollbar rounded-b-[3rem] flex flex-col">
+                    <div className="mb-10 flex items-center space-x-6">
+                      <div className="flex-1 relative group">
+                        <svg className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-emerald-500/40 group-focus-within:text-emerald-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        <input 
+                          type="text" 
+                          placeholder="ARAMA: KUYRUK NUMARASI YAZINIZ..."
+                          className="w-full bg-black/40 border-2 border-green-900/40 rounded-[2rem] py-6 pl-16 pr-8 text-white font-black text-xl uppercase tracking-widest outline-none focus:border-emerald-500 transition-all shadow-2xl"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                      </div>
+                      <div className="text-right">
+                         <span className="text-gray-600 text-[10px] font-black uppercase block mb-1">TOPLAM KAYIT</span>
+                         <span className="text-white text-2xl font-black italic">{filteredOverrideData.length} / {previewData.length}</span>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto flex-1 bg-black/20 rounded-[3rem] border border-green-900/20 p-4">
+                      {searchTerm.length > 0 ? (
+                        <table className="w-full text-left border-collapse">
+                          <thead className="bg-[#021a0c] sticky top-0 z-20">
+                             <tr className="border-b border-green-900/40">
+                                <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Platform</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Kuyruk No</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap text-center">KESİN ANALİZ KODU</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Durum / Ayrıntı</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Açıklama</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">EYLEM</th>
+                             </tr>
+                          </thead>
+                         <tbody>
+                          {filteredOverrideData.map((row, i) => (
+                            <tr 
+                              key={i} 
+                              onDoubleClick={() => {
+                                setSelectedForOverride(row);
+                                setIsOverrideModalOpen(true);
+                              }}
+                              className="border-b border-white/5 text-white text-sm font-medium hover:bg-emerald-500/10 transition-all cursor-pointer group"
+                            >
+                              <td className="px-6 py-6"><span className="text-[10px] font-black bg-emerald-900/50 px-2 py-1 rounded text-emerald-400">{row.tip || "BELİRSİZ"}</span></td>
+                              <td className="px-6 py-6 font-black text-2xl italic tracking-tighter group-hover:text-emerald-400 transition-colors uppercase">{row.kuyrukNo}</td>
+                              <td className="px-6 py-6">
+                                 <div className="flex justify-center">
+                                     <span className={`px-10 py-4 rounded-2xl text-xl font-black transition-all shadow-lg ${!row.assignedCode || row.assignedCode === '?' ? 'bg-red-500/20 text-red-400 border border-red-500/40' : (row.assignedCode === 'F' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 'bg-orange-500/20 text-orange-400 border border-orange-500/20')}`}>
                                        {row.assignedCode || '?'}
                                      </span>
-                                     <svg className="w-4 h-4 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                     </svg>
-                                   </div>
-                                 )}
-                               </div>
-                            </td>
-                            <td className="px-6 py-4">
-                               <div className="flex flex-col">
-                                  <span className={`font-black ${String(row.durum).toUpperCase().includes('FAAL') && !String(row.durum).toUpperCase().includes('GAYRİ') ? 'text-emerald-400' : 'text-red-400'}`}>
-                                     {row.durum}
-                                  </span>
-                                  {row.durumAyrintisi && row.durumAyrintisi !== '-' && (
-                                    <span className="text-[10px] text-orange-400 font-bold italic">({row.durumAyrintisi})</span>
-                                  )}
-                               </div>
-                            </td>
-                            <td className="px-6 py-4 italic text-gray-400">
-                               <div className="text-xs truncate max-w-sm">"{row.aciklama}"</div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                                 </div>
+                              </td>
+                              <td className="px-6 py-6">
+                                 <div className="flex flex-col">
+                                    <span className={`font-black uppercase ${String(row.durum).toUpperCase().includes('FAAL') && !String(row.durum).toUpperCase().includes('GAYRİ') ? 'text-emerald-400' : 'text-red-400'}`}>
+                                       {row.durum}
+                                    </span>
+                                    {row.durumAyrintisi && row.durumAyrintisi !== '-' && (
+                                      <span className="text-[10px] text-orange-400 font-bold italic">({row.durumAyrintisi})</span>
+                                    )}
+                                 </div>
+                              </td>
+                              <td className="px-6 py-6 italic text-gray-400">
+                                 <div className="text-xs truncate max-w-sm">"{row.aciklama}"</div>
+                              </td>
+                              <td className="px-6 py-6">
+                                 <button 
+                                   onClick={() => {
+                                      setSelectedForOverride(row);
+                                      setIsOverrideModalOpen(true);
+                                   }}
+                                   className="bg-emerald-600/20 text-emerald-400 p-3 rounded-xl border border-emerald-500/20 opacity-0 group-hover:opacity-100 transition-all hover:bg-emerald-500 hover:text-white"
+                                 >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                 </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      ) : (
+                        <div className="h-full flex flex-col items-center justify-center space-y-4 opacity-30">
+                           <svg className="w-20 h-20 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                           <p className="text-white font-black uppercase tracking-[0.4em] text-center">Arama kutusuna kuyruk no yazınız<br/><span className="text-[10px] text-emerald-500">Örn: 9005, T-173</span></p>
+                        </div>
+                      )}
                     </div>
                 </div>
             </div>
@@ -708,8 +736,89 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                 </div>
             </div>
           )}
+          {isOverrideModalOpen && selectedForOverride && (
+            <OverrideModal 
+              aircraft={selectedForOverride} 
+              onClose={() => setIsOverrideModalOpen(false)}
+              onSave={(code) => {
+                handleCodeChange(selectedForOverride.kuyrukNo, code);
+                setIsOverrideModalOpen(false);
+              }}
+            />
+          )}
         </div>
       </div>
+    </div>
+  );
+};
+
+const OverrideModal: React.FC<{ 
+  aircraft: any; 
+  onSave: (code: string) => void; 
+  onClose: () => void 
+}> = ({ aircraft, onSave, onClose }) => {
+  const [code, setCode] = useState(aircraft.assignedCode || '?');
+
+  return (
+    <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+       <div className="bg-[#052e16] w-full max-w-md rounded-[3rem] border border-orange-500/30 overflow-hidden shadow-[0_0_50px_rgba(249,115,22,0.2)]">
+          <div className="p-10 border-b border-orange-500/20 bg-orange-500/5">
+             <div className="flex justify-between items-start mb-6">
+                <div>
+                   <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">{aircraft.kuyrukNo}</h2>
+                   <p className="text-emerald-400 text-[10px] font-black uppercase tracking-widest mt-1">{aircraft.tip}</p>
+                </div>
+                <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+             </div>
+             
+             <div className="bg-black/40 p-4 rounded-3xl border border-white/5 space-y-1">
+                <div className="flex justify-between">
+                   <span className="text-[9px] font-black text-gray-600 uppercase">Mevcut Durum</span>
+                   <span className="text-white text-xs font-bold">{aircraft.durum}</span>
+                </div>
+                <div className="flex justify-between">
+                   <span className="text-[9px] font-black text-gray-600 uppercase">Ayrıntı</span>
+                   <span className="text-orange-400 text-xs font-bold italic">{aircraft.durumAyrintisi || '-'}</span>
+                </div>
+             </div>
+          </div>
+
+          <div className="p-10 space-y-8">
+             <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] mb-4 text-center">KESİN ANALİZ KODUNU SEÇİNİZ</label>
+                <div className="grid grid-cols-4 gap-3">
+                   {['B', 'BB', 'TBU', 'KM', 'A', 'PB', 'KK', 'X', 'F', '?'].map(c => (
+                     <button 
+                       key={c}
+                       onClick={() => setCode(c)}
+                       className={`py-4 rounded-2xl font-black text-lg transition-all ${code === c ? 'bg-orange-500 text-white shadow-[0_0_20px_rgba(249,115,22,0.4)] border-2 border-white/20' : 'bg-black/40 text-gray-500 border border-white/5 hover:border-orange-500/50'}`}
+                     >
+                       {c}
+                     </button>
+                   ))}
+                </div>
+                <p className="text-orange-500/60 text-[8px] font-bold text-center mt-6 uppercase tracking-widest">BU İŞLEM İLE ANALİZ MOTORU BU UÇAK İÇİN DEVRE DIŞI KALIR</p>
+             </div>
+
+             <div className="flex flex-col space-y-3">
+                <button 
+                  onClick={() => onSave(code)}
+                  className="w-full py-6 rounded-2xl bg-emerald-600 text-white font-black text-sm uppercase tracking-[0.2em] shadow-xl hover:bg-emerald-500 transition-all flex items-center justify-center space-x-3"
+                >
+                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                   <span>EMRİ ONAYLA VE KAYDET</span>
+                </button>
+                <button 
+                  onClick={onClose}
+                  className="w-full py-5 rounded-2xl bg-black/40 text-gray-500 font-black text-[10px] uppercase tracking-widest border border-white/5 hover:text-white transition-all"
+                >
+                   İPTAL ET
+                </button>
+             </div>
+          </div>
+       </div>
     </div>
   );
 };

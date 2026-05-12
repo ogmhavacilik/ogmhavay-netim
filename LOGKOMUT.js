@@ -1083,7 +1083,7 @@ function doPost(e) {
           "Açıklama",
         ]);
       }
-      var finalAnaliz = (data.analizKodu && data.analizKodu !== 'F') ? data.analizKodu : (data.analizKodu || '?');
+      var finalAnaliz = data.analizKodu || '?';
 
       var logData = logSheet.getRange("A:A").getValues();
       var foundLog = false;
@@ -1934,30 +1934,8 @@ function performDailyMidnightLogging() {
 
     // De-duplicate Faaliyet Log
     var targetFaalEntry = faalMap[id];
-    var analysisCode = '?';
+    var analysisCode = item.analizKodu || '?';
     
-    // YÖNETİCİ PANELİNDEKİ MANUEL KODU KORUMA (Carry-over logic)
-    // Eğer bugün için henüz log yoksa, dünün loguna bakıp manuel bir kod var mı ve durum aynı mı kontrol edelim
-    if (!targetFaalEntry) {
-      var yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      var yesterdayStr = Utilities.formatDate(yesterday, Session.getScriptTimeZone(), "dd.MM.yyyy");
-      var yesterdayId = yesterdayStr + "_" + item.kuyrukNo;
-      
-      // Dünün verisini arayalım (Map'te yoksa sheetten bakmaya gerek yok, performans için sadece dünün mapini kursak iyi olurdu ama faalMap tüm sheet'i kapsıyor)
-      var prevEntry = faalMap[yesterdayId];
-      if (prevEntry) {
-        var prevAyrinti = String(prevEntry.data[4]).trim().toUpperCase();
-        var prevCode = String(prevEntry.data[5]).trim().toUpperCase();
-        var currentAyrinti = String(item.durumAyrintisi || "").trim().toUpperCase();
-        
-        // Eğer ayrıntı değişmediyse ve dünkü kod 'F' değilse (manueldir), o kodu bugün için de kullanalım
-        if (prevAyrinti === currentAyrinti && prevCode !== 'F') {
-          analysisCode = prevCode;
-        }
-      }
-    }
-
     var newFaalValues = [
       id,
       dateStr,
