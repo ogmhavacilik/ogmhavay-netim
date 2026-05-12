@@ -1013,10 +1013,29 @@ function syncFleetToLogs() {
           
           item.assignedCode = analyzeStatusGS(item);
           if (existingFaalCode && existingFaalCode !== 'F' && existingFaalCode !== '?') {
-            // Eğer elle bir kod girildiyse veya önceki sync'den bir kod kaldıysa onu koruyalım.
-            // Fakat status değişmişse analyzeStatusGS'den geleni kullanalım (isteğe göre).
-            // Kullanıcı "dk bir veri çekilirken sabitle" dediği için burada da korumak mantıklı.
+            // Priority to existing manual codes or sticky codes from log
             item.assignedCode = existingFaalCode;
+          }
+          
+          // Improved Hour Parsing for Midnight Sync
+          var parsedGovde = parseSingleCellToHourGS(item.govdeUcusSaati, item.tip);
+          if (parsedGovde !== null) {
+            var isDecimalType = ['BELL-429', 'B-360', 'C-650', 'AT-802'].includes(String(item.tip).toUpperCase().replace(/[\s-]/g, ''));
+            if (isDecimalType) {
+              item.govdeUcusSaati = parsedGovde.toFixed(1).replace('.', ',');
+            } else {
+              item.govdeUcusSaati = formatToHHMMGS(parsedGovde);
+            }
+          }
+          
+          var parsedFaydali = parseSingleCellToHourGS(item.faydaliSaat, item.tip);
+          if (parsedFaydali !== null) {
+             var isDecimalType = ['BELL-429', 'B-360', 'C-650', 'AT-802'].includes(String(item.tip).toUpperCase().replace(/[\s-]/g, ''));
+             if (isDecimalType) {
+               item.faydaliSaat = parsedFaydali.toFixed(1).replace('.', ',');
+             } else {
+               item.faydaliSaat = formatToHHMMGS(parsedFaydali);
+             }
           }
           
           fleetData.push(item);
@@ -1033,6 +1052,41 @@ function syncFleetToLogs() {
     saveLogsToSheets(logSs, fleetData);
     console.log("Fleet logs synced successfully to central sheet. Total aircraft: " + fleetData.length);
   }
+}
+
+function formatToHHMMGS(totalHours) {
+  if (totalHours === null || totalHours === undefined) return "";
+  var h = Math.floor(Math.abs(totalHours));
+  var m = Math.round((Math.abs(totalHours) - h) * 60);
+  return h + ":" + (m < 10 ? "0" + m : m);
+}
+
+function parseSingleCellToHourGS(val, tip) {
+  if (val === null || val === undefined || val === "") return null;
+  if (val instanceof Date) {
+    var base = new Date(Date.UTC(1899, 11, 30));
+    var diffHours = (val.getTime() - base.getTime()) / (1000 * 60 * 60);
+    // 1900 leap bug or timezone offset might add ~2 hours for very early dates
+    if (val.getFullYear() < 1905 && diffHours > 0) {
+       // Heuristic adjustment if needed, but for now just returning diff
+    }
+    return diffHours;
+  }
+  if (typeof val === 'number') {
+    return val;
+  }
+  var s = String(val).trim();
+  if (s.includes(':')) {
+    var p = s.split(':').map(Number);
+    return (p[0] || 0) + (p[1] || 0) / 60;
+  }
+  // Thousand separators
+  if (s.includes('.') && s.includes(',')) s = s.replace(/\./g, "").replace(",", ".");
+  else if (s.includes('.') && /\.\d{3}$/.test(s)) s = s.replace(/\./g, "");
+  else if (s.includes(',')) s = s.replace(',', '.');
+  
+  var n = parseFloat(s);
+  return isNaN(n) ? null : n;
 }
 
 function analyzeStatusGS(item) {

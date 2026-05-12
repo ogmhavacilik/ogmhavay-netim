@@ -197,15 +197,7 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
   if (typeof val === 'string') {
     let s = val.trim();
     
-    // Check for Turkish format: dots for thousands, comma for decimal (e.g. 1.736,6)
-    if (s.includes('.') && s.includes(',')) {
-      // If comma exists, dots are almost certainly thousands separators
-      s = s.replace(/\./g, '').replace(',', '.');
-    } else if (s.includes(',')) {
-      // Only comma exists: treat as decimal
-      s = s.replace(',', '.');
-    }
-    
+    // Check for HH:mm format first
     if (s.includes(':')) {
       const parts = s.split(':').map(Number);
       if (parts.length >= 2) {
@@ -213,11 +205,24 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
         const m = parts[1] || 0;
         const s_sec = parts[2] || 0;
         let total = h + m / 60 + s_sec / 3600;
-        
         return total;
       }
     }
 
+    // Enhanced Turkish/Global thousand separator handling
+    // Case 1: "1.687,5" -> Includes both dot and comma
+    if (s.includes('.') && s.includes(',')) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } 
+    // Case 2: "1.687" -> Only dots, but looks like thousand separator (3 digits after last dot)
+    else if (s.includes('.') && /\.\d{3}$/.test(s)) {
+      s = s.replace(/\./g, '');
+    }
+    // Case 3: "1687,5" -> Only comma
+    else if (s.includes(',')) {
+      s = s.replace(',', '.');
+    }
+    
     const n = parseFloat(s);
     if (!isNaN(n)) {
       return n;
@@ -240,12 +245,10 @@ export const formatGovdeHour = (val: any, aircraftType: string): string => {
 
   const parsed = parseSingleCellToHour(raw, aircraftType);
   if (parsed !== null) {
-    if (aircraftType === 'AT-802') {
+    if (aircraftType === 'AT-802' || aircraftType === 'Bell-429' || aircraftType === 'B-360' || aircraftType === 'C-650') {
       return parsed.toFixed(1).replace('.', ',');
     }
-    // Revert back to HH:mm for all except maybe specific requests.
-    // User said: "Bell-429, B-360 ve C-650 lerdeki verileri dönüştürme hatan eskiye döne"
-    // This implies they want the HH:mm format (1234:30) back in the UI.
+    // Revert back to HH:mm for all except specific decimal-preferred types.
     return formatToHHMM(parsed, aircraftType);
   }
   return s;

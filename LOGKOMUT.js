@@ -2318,7 +2318,8 @@ function setLogTimeValue(sheet, row, col, value, tip) {
 
   // EXTREME PRECISION: Eğer değerde virgül varsa ve saat formatında değilse (HH:MM), 
   // direk ondalık sayı olarak yazalım. Ayrıca binlik ayıraç (.) varsa temizleyelim.
-  if (!valStr.includes(":") && (valStr.includes(",") || (valStr.includes(".") && valStr.split(".").length > 2))) {
+  // "1.687,5" veya "1.687" (binlik ayıraçlı) durumlarını yakalar.
+  if (!valStr.includes(":") && (valStr.includes(",") || (valStr.includes(".") && (valStr.split(".").length > 2 || /\.\d{3}$/.test(valStr))))) {
     var n = parseFloat(valStr.replace(/\./g, "").replace(",", "."));
     if (!isNaN(n)) {
       range.setValue(n);

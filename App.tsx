@@ -1250,7 +1250,12 @@ const App = () => {
           
           let govdeStr = '-';
           if (govdeSaat !== null) {
-            govdeStr = formatToHHMM(govdeSaat);
+            const isDecimalType = rowTip === 'Bell-429' || rowTip === 'B-360' || rowTip === 'C-650' || rowTip === 'AT-802';
+            if (isDecimalType) {
+              govdeStr = govdeSaat.toFixed(1).replace('.', ',');
+            } else {
+              govdeStr = formatToHHMM(govdeSaat);
+            }
           }
 
           return {
@@ -1705,7 +1710,7 @@ const App = () => {
                         <td className="border border-black px-3 py-2.5 text-center font-black text-gray-900 uppercase">{a.durumAyrintisi !== '-' ? a.durumAyrintisi : ''}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900 uppercase">{a.konum}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">
-                          {a.tip === 'AT-802' && a.faydaliSaat !== null 
+                          {(a.tip === 'AT-802' || a.tip === 'Bell-429' || a.tip === 'B-360' || a.tip === 'C-650') && a.faydaliSaat !== null 
                             ? a.faydaliSaat.toFixed(1).replace('.', ',') 
                             : formatToHHMM(a.faydaliSaat)}
                         </td>
