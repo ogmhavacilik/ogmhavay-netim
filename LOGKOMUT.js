@@ -943,12 +943,7 @@ function doPost(e) {
         var logId = dateStr + "_" + kuyrukNo;
         var newAyrinti = String(data.durumAyrintisi || "").trim().toUpperCase();
 
-        var calculatedAnaliz = analyzeStatusGS({
-          durum: data.durum,
-          durumAyrintisi: data.durumAyrintisi,
-          aciklama: data.aciklama
-        });
-        var finalAnaliz = data.analizKodu || calculatedAnaliz;
+        var finalAnaliz = data.analizKodu || '?';
 
         // --- 1. Envanter Log Güncelleme & Değişiklik Kontrolü ---
         var logEntry = logIdMap[logId];
@@ -1088,12 +1083,7 @@ function doPost(e) {
           "Açıklama",
         ]);
       }
-      var calculatedAnaliz = analyzeStatusGS({
-        durum: data.durum,
-        durumAyrintisi: data.durumAyrintisi,
-        aciklama: data.aciklama
-      });
-      var finalAnaliz = (data.analizKodu && data.analizKodu !== 'F') ? data.analizKodu : (data.analizKodu || calculatedAnaliz);
+      var finalAnaliz = (data.analizKodu && data.analizKodu !== 'F') ? data.analizKodu : (data.analizKodu || '?');
 
       var logData = logSheet.getRange("A:A").getValues();
       var foundLog = false;
@@ -1156,7 +1146,7 @@ function doPost(e) {
         if (String(faalData[j][0]).trim() === id) {
           faalLogSheet
             .getRange(j + 1, 5, 1, 2)
-            .setValues([[data.durumAyrintisi, data.analizKodu]]);
+            .setValues([[data.durumAyrintisi, finalAnaliz]]);
           foundFaal = true;
           break;
         }
@@ -1168,7 +1158,7 @@ function doPost(e) {
           kuyrukNo,
           data.tip,
           data.durumAyrintisi,
-          data.analizKodu,
+          finalAnaliz,
         ]);
       }
 
@@ -1944,7 +1934,7 @@ function performDailyMidnightLogging() {
 
     // De-duplicate Faaliyet Log
     var targetFaalEntry = faalMap[id];
-    var analysisCode = analyzeStatusGS(item);
+    var analysisCode = '?';
     
     // YÖNETİCİ PANELİNDEKİ MANUEL KODU KORUMA (Carry-over logic)
     // Eğer bugün için henüz log yoksa, dünün loguna bakıp manuel bir kod var mı ve durum aynı mı kontrol edelim
