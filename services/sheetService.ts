@@ -14,83 +14,71 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
     return '';
   };
 
-  const durumStr = (getVal(['durum', 'Durum', 'DURUM', 'N', 'n', 'B', 'b', 'durum']) || '').toLocaleUpperCase('tr-TR').trim();
-  const detail = (getVal(['durumAyrintisi', 'Durum Ayrıntısı', 'DURUM AYRINTISI', 'O', 'o', 'C', 'c', 'durum_ayrintisi']) || '').toLocaleLowerCase('tr-TR').trim();
+  const durumStr = (getVal(['durum', 'Durum', 'DURUM', 'N', 'n', 'B', 'b']) || '').toLocaleUpperCase('tr-TR').trim();
+  const detail = (getVal(['durumAyrintisi', 'Durum Ayrıntısı', 'DURUM AYRINTISI', 'O', 'o', 'C', 'c', 'durum_ayrintisi']) || '').trim();
   const detailUpper = detail.toLocaleUpperCase('tr-TR');
-  const desc = (getVal(['aciklama', 'Açıklama', 'AÇIKLAMA', 'P', 'p', 'D', 'd', 'aciklama']) || '').toLocaleLowerCase('tr-TR').trim();
+  const desc = (getVal(['aciklama', 'Açıklama', 'AÇIKLAMA', 'P', 'p', 'D', 'd', 'aciklama']) || '').trim();
   const descUpper = desc.toLocaleUpperCase('tr-TR');
 
-  // Hiyerarşi Adım 1: DURUM (Ana Durum)
-  // Varsayılan değerleri belirle
-  let code: DailyStatusCode = 'F';
-  let interpretation = 'FAAL';
+  const findCodeInText = (text: string): { code: DailyStatusCode, interpretation: string } | null => {
+    const t = text.toLocaleUpperCase('tr-TR');
+    if (!t) return null;
+    
+    // Normalize string for matching: replace dotted İ with dotless I for comparison
+    const n = t.replace(/İ/g, "I").replace(/ı/g, "I");
 
-  const isGayriFaalStatus = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('GF') || durumStr === 'G.FAAL' || durumStr === 'A' || durumStr === 'ARIZA';
+    // Exact Code Match (Highest Priority)
+    const exactMap: Record<string, { code: DailyStatusCode, interpretation: string }> = {
+      'B': { code: 'B', interpretation: 'BAKIM' },
+      'BB': { code: 'BB', interpretation: 'BAKIM BEKLER' },
+      'TBU': { code: 'TBU', interpretation: 'TEKNİK BÜLTEN UYGULAMASI' },
+      'KM': { code: 'KM', interpretation: 'KABUL MUAYENESİ' },
+      'A': { code: 'A', interpretation: 'ARIZA' },
+      'PB': { code: 'PB', interpretation: 'PARÇA BEKLER' },
+      'KK': { code: 'KK', interpretation: 'KAZA KIRIM' },
+      'X': { code: 'X', interpretation: 'OLMADIĞI GÜNLER' },
+      'TB': { code: 'TB', interpretation: 'TECRÜBE BEKLER' }
+    };
+
+    if (exactMap[t]) return exactMap[t];
+
+    // Keyword Match - Use Normalized version 'n'
+    if (n.includes('TEKNIK BULTEN') || n.includes('TBU')) return { code: 'TBU', interpretation: 'TEKNİK BÜLTEN UYGULAMASI' };
+    if (n.includes('BAKIM BEKLER') || n === 'BB') return { code: 'BB', interpretation: 'BAKIM BEKLER' };
+    if (n.includes('BAKIM')) return { code: 'B', interpretation: 'BAKIM' };
+    if (n.includes('PARCA BEKLER') || n === 'PB') return { code: 'PB', interpretation: 'PARÇA BEKLER' };
+    if (n.includes('TECRUBE BEKLER') || n === 'TB' || n.includes('TECRUBE') || n.includes('TEST')) return { code: 'TB', interpretation: 'TECRÜBE BEKLER' };
+    if (n.includes('KABUL MUAYENE') || n === 'KM') return { code: 'KM', interpretation: 'KABUL MUAYENESİ' };
+    if (n.includes('KAZA KIRIM') || n === 'KK') return { code: 'KK', interpretation: 'KAZA KIRIM' };
+    if (n.includes('OLMADIGI GUNLER') || n === 'X') return { code: 'X', interpretation: 'OLMADIĞI GÜNLER' };
+    if (n.includes('ARIZA') || n.includes('ARZ') || n === 'A' || n.includes('OVERSPEED') || n.includes('NG')) return { code: 'A', interpretation: 'ARIZA' };
+    
+    return null;
+  };
+
+  // Adım 1: Durum Ayrıntısı (DURUM_AYRINTISI) - ÖNCELİKLİ
+  const detailMatch = findCodeInText(detail);
+  if (detailMatch) return detailMatch;
+
+  // Adım 2: Durum (DURUM)
+  const durumMatch = findCodeInText(durumStr);
+  if (durumMatch) return durumMatch;
+
+  const isGayriFaalStatus = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('GF') || durumStr === 'G.FAAL' || durumStr.includes('ARIZA') || durumStr.includes('ARZ') || durumStr === 'A';
   if (isGayriFaalStatus) {
-    code = 'A';
-    interpretation = 'ARIZA';
+    return { code: 'A', interpretation: 'ARIZA' };
   }
 
-  // Hiyerarşi Adım 2: DURUM AYRINTISI (Detay Bilgisi)
-  // Eğer detay bilgisi varsa, ana durumu daha spesifik bir koda dönüştürür.
-  let detailCode: DailyStatusCode | null = null;
-  let detailInterp = '';
+  // Adım 3: Açıklama (ACIKLAMA)
+  const descMatch = findCodeInText(desc);
+  if (descMatch) return descMatch;
 
-  if (detailUpper.includes('PARÇA BEKLER') || detailUpper.includes('PARCA BEKLER') || detailUpper === 'PB') {
-    detailCode = 'PB'; detailInterp = 'PARÇA BEKLER';
-  } else if (detailUpper.includes('TECRÜBE BEKLER') || detailUpper.includes('TECRUBE BEKLER') || detailUpper === 'TB' || detailUpper.includes('TECRÜBE') || detailUpper.includes('TEST')) {
-    detailCode = 'TB'; detailInterp = 'TECRÜBE BEKLER';
-  } else if (detailUpper.includes('TBU') || detailUpper.includes('TEKNİK BÜLTEN')) {
-    detailCode = 'TBU'; detailInterp = 'TEKNİK BÜLTEN UYGULAMASI';
-  } else if (detailUpper.includes('BAKIM BEKLER') || detailUpper === 'BB') {
-    detailCode = 'BB'; detailInterp = 'BAKIM BEKLER';
-  } else if (detailUpper.includes('KABUL MUAYENE') || detailUpper === 'KM') {
-    detailCode = 'KM'; detailInterp = 'KABUL MUAYENESİ';
-  } else if (detailUpper.includes('KAZA KIRIM') || detailUpper === 'KK') {
-    detailCode = 'KK'; detailInterp = 'KAZA KIRIM';
-  } else if (detailUpper.includes('BAKIM') || detailUpper === 'B') {
-    detailCode = 'B'; detailInterp = 'BAKIM';
-  } else if (detailUpper.includes('ARIZA') || detailUpper === 'A' || detailUpper.includes('OVERSPEED') || detailUpper.includes('NG') || detailUpper.includes('MOTOR') || detailUpper.includes('ENGINE')) {
-    detailCode = 'A'; detailInterp = 'ARIZA';
-  } else if (detailUpper.includes('KARMA') || detailUpper.includes('HEM FAAL')) {
-    detailCode = 'K'; detailInterp = 'KARMA GÜN (BİRDEN FAZLA DURUM)';
-  } else if (detailUpper.includes('OLMADIĞI GÜNLER') || detailUpper.includes('OLMADIGI GUNLER') || detailUpper === 'X') {
-    detailCode = 'X'; detailInterp = 'OLMADIĞI GÜNLER';
+  // Adım 4: Karma Kontrolü
+  if (detailUpper.includes('KARMA') || detailUpper.includes('HEM FAAL') || descUpper.includes('KARMA') || descUpper.includes('HEM FAAL')) {
+    return { code: 'K', interpretation: 'KARMA GÜN' };
   }
 
-  if (detailCode) {
-    code = detailCode;
-    interpretation = detailInterp;
-  }
-
-  // Hiyerarşi Adım 3: AÇIKLAMA (Manuel Açıklama)
-  // Sadece kod genel ise (F veya A) veya açıklamada KRİTİK bir anahtar kelime varsa güncelle.
-  // Not: Eğer Adım 2'de spesifik bir kod belirlenmişse (örn: KM, PB, TBU, B), 
-  // açıklamadaki genel kelimelerin (faal, arıza vb.) bu spesifik durumu bozmasına izin vermiyoruz.
-  const isGenericCode = code === 'F' || code === 'A';
-  const hasMixedKeyword = descUpper.includes('KARMA') || descUpper.includes('HEM FAAL') || descUpper.includes('YARIM GÜN');
-  
-  if (hasMixedKeyword) {
-    code = 'K'; interpretation = 'KARMA GÜN';
-  } else if (isGenericCode) {
-    if (descUpper.includes('PARÇA BEKLER') || descUpper.includes('PARCA BEKLER') || (descUpper.includes('PARÇA') && (descUpper.includes('BEKLE') || descUpper.includes('SİPARİŞ')))) {
-      code = 'PB'; interpretation = 'PARÇA BEKLER';
-    } else if (descUpper.includes('TECRÜBE BEKLER') || descUpper.includes('TECRUBE BEKLER') || descUpper.includes('TEST UÇUŞU') || descUpper.includes('TEST UCUSU') || descUpper.includes('TECRÜBE')) {
-      code = 'TB'; interpretation = 'TECRÜBE BEKLER';
-    } else if (descUpper.includes('TBU') || descUpper.includes('TEKNİK BÜLTEN')) {
-      code = 'TBU'; interpretation = 'TEKNİK BÜLTEN UYGULAMASI';
-    } else if (descUpper.includes('BAKIM BEKLER') || (descUpper.includes('BAKIM') && (descUpper.includes('BEKLER') || descUpper.includes('SIYA')))) {
-      code = 'BB'; interpretation = 'BAKIM BEKLER';
-    } else if (descUpper.includes('KABUL MUAYENE')) {
-      code = 'KM'; interpretation = 'KABUL MUAYENESİ';
-    } else if (descUpper.includes('BAKIM') || descUpper.includes('PERİYODİK') || descUpper.includes('YILLIK') || /\b\d+H\b/.test(descUpper)) {
-      code = 'B'; interpretation = 'BAKIM';
-    } else if (descUpper.includes('ARIZA') || descUpper.includes('PROBLEM') || descUpper.includes('OVERSPEED') || descUpper.includes('NG')) {
-      code = 'A'; interpretation = 'ARIZA';
-    }
-  }
-
-  return { code, interpretation };
+  return { code: 'F', interpretation: 'FAAL' };
 };
 
 /**
@@ -203,7 +191,24 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
     let n = val;
     // AT-802 correction for numeric hours (days or hours)
     if (aircraftType === 'AT-802') {
-      if (n < 100) n = n * 24; // If it's days
+      // If it's a number like 73.3333333, it's definitely days (duration in Sheets)
+      // Most AT-802 flight hours are between 100 and 5000 hours.
+      // 10000 hours is ~416 days.
+      if (n < 500) {
+        // Additional heuristic: durations in Sheets almost always have decimals
+        if (n % 1 !== 0) {
+          n = n * 24;
+        } else if (n < 100) {
+          // Humans might enter 25 hours? But durations < 4 days (96 hours) are rare for total flight hours.
+          // However, if it's an integer < 100, we'll keep it as hours for now unless it's clearly a day count.
+          // But wait, the previous code was n < 100 -> multiply by 24.
+          // That would turn 73 hours into 1752 hours. 
+          // If the user meant 73 hours, then n < 100 was wrong.
+          // BUT if they meant 73 days (1752 hours), then n < 100 was correct.
+          // Given the user's data (1760 hours = 73.33 days), n < 100 seems to be for DAY interpretation.
+          n = n * 24; 
+        }
+      }
     }
     return n;
   }

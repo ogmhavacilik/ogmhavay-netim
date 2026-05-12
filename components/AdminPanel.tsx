@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { SheetConfig, Aircraft, AppNotification, DailyStatusCode } from '../types';
@@ -113,13 +112,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
     
     const customAttachments: { name: string, data: string, mimeType: string }[] = [];
     
-    // If recipient wants "ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU", generate it from current previewData
     if (recipient.attachments && (recipient.attachments.includes('ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU') || recipient.attachments.includes('ENVANTER RAPORU'))) {
       const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const html = generateFleetExcelHtml(previewData as Aircraft[], dateStr);
-      
-      // Convert HTML string to base64 for Apps Script
-      // We use btoa(unescape(encodeURIComponent(html))) as in App.tsx
       const base64Data = btoa(unescape(encodeURIComponent(html)));
       
       customAttachments.push({
@@ -249,7 +244,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
           setExcelHeaders(headers);
           setExcelRawData(rows);
           
-          // Auto-mapping attempt
           const newMapping = { ...mapping };
           const fieldKeywords: Record<string, string[]> = {
             kuyrukNo: ['KUYRUK', 'TAIL', 'K.NO', 'NO'],
@@ -319,6 +313,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
     }
   };
 
+  const [newAircraft, setNewAircraft] = useState({
+    tip: 'AT-802',
+    kuyrukNo: '',
+    durum: 'FAAL',
+    durumAyrintisi: '-',
+    govdeUcusSaati: '0:00',
+    faydaliSaat: '0:00',
+    assignedCode: 'F',
+    aciklama: ''
+  });
+
+  const handleAddNewAircraft = () => {
+    if (!newAircraft.kuyrukNo) {
+      alert('Lütfen kuyruk numarası giriniz.');
+      return;
+    }
+    const exists = previewData.find(a => a.kuyrukNo.toUpperCase() === newAircraft.kuyrukNo.toUpperCase());
+    if (exists) {
+      alert('Bu kuyruk numarası zaten mevcut.');
+      return;
+    }
+    setPreviewData(prev => [...prev, { ...newAircraft, kuyrukNo: newAircraft.kuyrukNo.toUpperCase() }]);
+    setNewAircraft({
+      tip: 'AT-802',
+      kuyrukNo: '',
+      durum: 'FAAL',
+      durumAyrintisi: '-',
+      govdeUcusSaati: '0:00',
+      faydaliSaat: '0:00',
+      assignedCode: 'F',
+      aciklama: ''
+    });
+  };
+
+  const handleDeleteAircraft = (kuyrukNo: string) => {
+    if (confirm(`${kuyrukNo} uçağını silmek istediğinize emin misiniz?`)) {
+      setPreviewData(prev => prev.filter(a => a.kuyrukNo !== kuyrukNo));
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4">
       <div className="bg-[#052e16] w-full max-w-[1700px] h-[95vh] rounded-[4rem] border border-green-800/40 flex overflow-hidden shadow-[0_0_100px_rgba(0,0,0,1)]">
@@ -365,43 +399,43 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                    {notifications.length === 0 ? (
                      <div className="h-full flex flex-col items-center justify-center text-gray-700 uppercase font-black tracking-[0.5em] italic opacity-30">Henüz bir değişiklik tespit edilmedi</div>
                    ) : (
-                    <div className="bg-white/5 rounded-[2.5rem] border border-green-900/30 overflow-hidden flex flex-col shadow-2xl h-full">
-                      <div className="overflow-y-auto custom-scrollbar">
-                        <table id="inbox-table" className="w-full text-left border-collapse">
-                          <thead className="sticky top-0 z-10">
-                            <tr className="bg-emerald-700 text-white">
-                              <th className="px-8 py-6 font-black text-[11px] uppercase tracking-widest border-r border-emerald-800">TARİH / SAAT</th>
-                              <th className="px-8 py-6 font-black text-[11px] uppercase tracking-widest border-r border-emerald-800">KUYRUK NO</th>
-                              <th className="px-8 py-6 font-black text-[11px] uppercase tracking-widest">GÜNCELLEME VE ANALİZ DETAYI (DÜZENLEMEK İÇİN ÇİFT TIKLA)</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/10">
-                            {notifications.map((n, idx) => {
-                              const isAssignment = n.kolon === 'ANALİZ / ÇİZELGE' || n.kolon === 'ATAMA KODU';
-                              return (
-                                <tr 
-                                  key={`${n.id}-${idx}`} 
-                                  className={`group border-b border-white/5 transition-all ${isAssignment ? 'bg-orange-600/20 hover:bg-orange-600/30 cursor-pointer' : 'hover:bg-white/5'}`}
-                                >
-                                  <td className="px-8 py-6 text-emerald-400 font-black text-xs">{n.tarih}</td>
-                                  <td className="px-8 py-6 text-white font-black text-lg italic tracking-tighter">
-                                     {n.kuyrukNo}
-                                     <div className={`text-[8px] uppercase mt-1 ${isAssignment ? 'text-orange-400 font-black' : 'text-gray-500'}`}>
-                                        {isAssignment ? `● ${n.platform} ANALİZ ATAMASI` : n.platform}
+                     <div className="bg-white/5 rounded-[2.5rem] border border-green-900/30 overflow-hidden flex flex-col shadow-2xl h-full">
+                       <div className="overflow-y-auto custom-scrollbar">
+                         <table id="inbox-table" className="w-full text-left border-collapse">
+                           <thead className="sticky top-0 z-10">
+                             <tr className="bg-emerald-700 text-white">
+                               <th className="px-8 py-6 font-black text-[11px] uppercase tracking-widest border-r border-emerald-800">TARİH / SAAT</th>
+                               <th className="px-8 py-6 font-black text-[11px] uppercase tracking-widest border-r border-emerald-800">KUYRUK NO</th>
+                               <th className="px-8 py-6 font-black text-[11px] uppercase tracking-widest">GÜNCELLEME VE ANALİZ DETAYI (DÜZENLEMEK İÇİN ÇİFT TIKLA)</th>
+                             </tr>
+                           </thead>
+                           <tbody className="divide-y divide-white/10">
+                             {notifications.map((n, idx) => {
+                               const isAssignment = n.kolon === 'ANALİZ / ÇİZELGE' || n.kolon === 'ATAMA KODU';
+                               return (
+                                 <tr 
+                                   key={`${n.id}-${idx}`} 
+                                   className={`group border-b border-white/5 transition-all ${isAssignment ? 'bg-orange-600/20 hover:bg-orange-600/30 cursor-pointer' : 'hover:bg-white/5'}`}
+                                 >
+                                   <td className="px-8 py-6 text-emerald-400 font-black text-xs">{n.tarih}</td>
+                                   <td className="px-8 py-6 text-white font-black text-lg italic tracking-tighter">
+                                      {n.kuyrukNo}
+                                      <div className={`text-[8px] uppercase mt-1 ${isAssignment ? 'text-orange-400 font-black' : 'text-gray-500'}`}>
+                                         {isAssignment ? `● ${n.platform} ANALİZ ATAMASI` : n.platform}
+                                      </div>
+                                   </td>
+                                   <td className="px-8 py-6">
+                                     <div className={`p-4 rounded-2xl text-white text-sm font-medium italic border transition-all ${isAssignment ? 'bg-orange-500/10 border-orange-500/20' : 'bg-black/20 border-white/5'}`}>
+                                        {n.mesaj}
                                      </div>
-                                  </td>
-                                  <td className="px-8 py-6">
-                                    <div className={`p-4 rounded-2xl text-white text-sm font-medium italic border transition-all ${isAssignment ? 'bg-orange-500/10 border-orange-500/20' : 'bg-black/20 border-white/5'}`}>
-                                       {n.mesaj}
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                                   </td>
+                                 </tr>
+                               );
+                             })}
+                           </tbody>
+                         </table>
+                       </div>
+                     </div>
                    )}
                 </div>
             </div>
@@ -440,17 +474,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                     </button>
                   </div>
                 </div>
-                <div className="bg-[#021a0c] p-10 flex-1 overflow-y-auto custom-scrollbar rounded-b-[3rem]">
+                <div className="bg-[#021a0c] p-4 flex-1 overflow-y-auto custom-scrollbar rounded-b-[3rem]">
                    {showMappingStep ? (
-                     <div className="bg-white/5 p-10 rounded-[2.5rem] border border-orange-500/30">
-                        <div className="flex justify-between items-center mb-10">
+                     <div className="bg-white/5 p-6 rounded-[2.5rem] border border-orange-500/30">
+                        <div className="flex justify-between items-center mb-8">
                            <h2 className="text-orange-500 font-black text-xl uppercase italic tracking-tighter">Hücre Okuyucu - Kolon Eşleştirme</h2>
                            <div className="flex space-x-3">
                               <button onClick={() => setShowMappingStep(false)} className="px-6 py-3 rounded-xl border border-white/10 text-white font-black text-[10px] uppercase">Vazgeç</button>
                               <button onClick={applyMapping} className="px-10 py-3 rounded-xl bg-orange-600 text-white font-black text-[10px] uppercase shadow-xl hover:bg-orange-500 transition-all">Veriyi İşle ve Aktar</button>
                            </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                            {[
                              { label: 'Kuyruk No', key: 'kuyrukNo' },
                              { label: 'Durum', key: 'durum' },
@@ -461,10 +495,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                              { label: 'Analiz Kodu', key: 'assignedCode' },
                              { label: 'Açıklama', key: 'aciklama' }
                            ].map(item => (
-                             <div key={item.key} className="bg-black/40 p-5 rounded-2xl border border-white/5">
-                                <label className="block text-[8px] font-black text-gray-500 uppercase tracking-widest mb-3">{item.label}</label>
+                             <div key={item.key} className="bg-black/40 p-4 rounded-2xl border border-white/5">
+                                <label className="block text-[8px] font-black text-gray-500 uppercase tracking-widest mb-2">{item.label}</label>
                                 <select 
-                                  className="w-full bg-emerald-950/50 text-white font-bold p-3 rounded-xl border border-emerald-900/40 text-xs outline-none focus:border-orange-500"
+                                  className="w-full bg-emerald-950/50 text-white font-bold p-2.5 rounded-xl border border-emerald-900/40 text-[10px] outline-none focus:border-orange-500"
                                   value={mapping[item.key]}
                                   onChange={(e) => setMapping({ ...mapping, [item.key]: e.target.value })}
                                 >
@@ -474,18 +508,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                              </div>
                            ))}
                         </div>
-                        <div className="mt-10 overflow-x-auto">
-                           <h3 className="text-gray-600 text-[10px] font-black uppercase mb-4 ml-2 italic underline">Excel Ham Veri Önizleme (İlk 5 Satır)</h3>
-                           <table className="w-full border-collapse text-[10px]">
+                        <div className="mt-8 overflow-x-auto">
+                           <h3 className="text-gray-600 text-[10px] font-black uppercase mb-3 ml-2 italic underline">Excel Ham Veri Önizleme (İlk 5 Satır)</h3>
+                           <table className="w-full border-collapse text-[9px]">
                               <thead>
                                  <tr className="bg-white/5">
-                                    {excelHeaders.map(h => <th key={h} className="p-3 border border-white/5 text-gray-400 font-black uppercase text-left">{h}</th>)}
+                                    {excelHeaders.map(h => <th key={h} className="p-2 border border-white/5 text-gray-400 font-black uppercase text-left">{h}</th>)}
                                  </tr>
                               </thead>
                               <tbody>
                                  {excelRawData.slice(0, 5).map((row, i) => (
                                    <tr key={i} className="border-b border-white/5">
-                                      {excelHeaders.map(h => <td key={h} className="p-3 border border-white/5 text-gray-500 italic">{row[h]}</td>)}
+                                      {excelHeaders.map(h => <td key={h} className="p-2 border border-white/5 text-gray-500 italic">{row[h]}</td>)}
                                    </tr>
                                  ))}
                               </tbody>
@@ -493,19 +527,103 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                         </div>
                      </div>
                    ) : (
-                    <table className="w-full text-left bg-white/5 rounded-3xl overflow-hidden border-collapse">
-                      <thead className="bg-emerald-800/40 text-emerald-400">
-                         <tr>
-                            <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Platform</th>
-                            <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Kuyruk</th>
-                            <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Durum</th>
-                            <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Gövde Saati</th>
-                            <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Faydalı Saat (MIN V:AI)</th>
-                            <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Analiz Kodu (DÜZELTMEK İÇİN ÇİFT TIKLA)</th>
-                            <th className="px-8 py-5 text-[10px] font-black uppercase border-b border-green-900/40">Açıklama</th>
-                         </tr>
-                      </thead>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left bg-white/5 rounded-3xl border-collapse">
+                        <thead className="bg-[#021a0c] sticky top-0 z-20">
+                           <tr className="border-b border-green-900/40">
+                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Platform</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Kuyruk</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Durum</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Gövde Saati</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Faydalı Saat (MIN V:AI)</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Analiz Kodu (DÜZELTMEK İÇİN ÇİFT TIKLA)</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">Açıklama</th>
+                              <th className="px-6 py-4 text-[9px] font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">İŞLEM</th>
+                           </tr>
+                        </thead>
                       <tbody>
+                        {/* Yeni Hava Aracı Ekleme Satırı */}
+                        <tr className="bg-emerald-950/30 border-b border-emerald-900/40">
+                          <td className="px-6 py-4">
+                            <select 
+                              className="bg-black/50 text-white p-2 rounded text-[10px] w-full outline-none border border-emerald-900/20"
+                              value={newAircraft.tip}
+                              onChange={(e) => setNewAircraft({...newAircraft, tip: e.target.value})}
+                            >
+                              <option value="AT-802">AT-802</option>
+                              <option value="Bell-429">Bell-429</option>
+                              <option value="T-70">T-70</option>
+                              <option value="B-360">B-360</option>
+                              <option value="C-650">C-650</option>
+                            </select>
+                          </td>
+                          <td className="px-6 py-4">
+                            <input 
+                              type="text" 
+                              placeholder="Kuyruk No"
+                              className="bg-black/50 text-white p-2 rounded text-[10px] w-full outline-none border border-emerald-900/20"
+                              value={newAircraft.kuyrukNo}
+                              onChange={(e) => setNewAircraft({...newAircraft, kuyrukNo: e.target.value.toUpperCase()})}
+                            />
+                          </td>
+                          <td className="px-6 py-4">
+                             <select 
+                               className="bg-black/50 text-white p-2 rounded text-[10px] w-full outline-none border border-emerald-900/20"
+                               value={newAircraft.durum}
+                               onChange={(e) => setNewAircraft({...newAircraft, durum: e.target.value})}
+                             >
+                                <option value="FAAL">FAAL</option>
+                                <option value="GAYRİ FAAL">GAYRİ FAAL</option>
+                             </select>
+                          </td>
+                          <td className="px-6 py-4">
+                            <input 
+                              type="text" 
+                              placeholder="0:00"
+                              className="bg-black/50 text-white p-2 rounded text-[10px] w-full outline-none border border-emerald-900/20"
+                              value={newAircraft.govdeUcusSaati}
+                              onChange={(e) => setNewAircraft({...newAircraft, govdeUcusSaati: e.target.value})}
+                            />
+                          </td>
+                          <td className="px-6 py-4">
+                            <input 
+                              type="text" 
+                              placeholder="0:00"
+                              className="bg-black/50 text-white p-2 rounded text-[10px] w-full outline-none border border-emerald-900/20"
+                              value={newAircraft.faydaliSaat}
+                              onChange={(e) => setNewAircraft({...newAircraft, faydaliSaat: e.target.value})}
+                            />
+                          </td>
+                          <td className="px-6 py-4">
+                            <select 
+                              className="bg-black/50 text-white p-2 rounded text-[10px] w-full outline-none border border-emerald-900/20"
+                              value={newAircraft.assignedCode}
+                              onChange={(e) => setNewAircraft({...newAircraft, assignedCode: e.target.value as DailyStatusCode})}
+                            >
+                               {['B', 'BB', 'TBU', 'KM', 'A', 'PB', 'KK', 'X', 'F'].map(c => (
+                                 <option key={c} value={c}>{c}</option>
+                               ))}
+                            </select>
+                          </td>
+                          <td className="px-6 py-4">
+                            <input 
+                              type="text" 
+                              className="bg-black/50 text-white p-2 rounded text-[10px] w-full outline-none border border-emerald-900/20"
+                              placeholder="Açıklama"
+                              value={newAircraft.aciklama}
+                              onChange={(e) => setNewAircraft({...newAircraft, aciklama: e.target.value})}
+                            />
+                          </td>
+                          <td className="px-6 py-4">
+                            <button 
+                              onClick={handleAddNewAircraft}
+                              className="bg-emerald-600 text-white px-4 py-2 rounded text-[9px] font-black uppercase whitespace-nowrap hover:bg-emerald-500 shadow-lg"
+                            >
+                              YÜKLE ↓
+                            </button>
+                          </td>
+                        </tr>
+
                         {previewData.map((row, i) => (
                           <tr key={i} className="border-b border-white/5 text-white text-sm font-medium hover:bg-white/5 transition-colors">
                             <td className="px-8 py-4"><span className="text-[10px] font-black bg-emerald-900/50 px-2 py-1 rounded text-emerald-400">{row.tip || "BELİRSİZ"}</span></td>
@@ -526,7 +644,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                                 ? formatToHHMM(typeof row.faydaliSaat === 'number' ? row.faydaliSaat : parseSingleCellToHour(row.faydaliSaat, row.tip)) 
                                 : row.faydaliSaat}
                             </td>
-                            <td className="px-8 py-4" onDoubleClick={() => setEditingCode({ kuyrukNo: row.kuyrukNo, code: row.assignedCode })}>
+                            <td className="px-8 py-4">
                                {editingCode?.kuyrukNo === row.kuyrukNo ? (
                                  <select 
                                    autoFocus
@@ -540,18 +658,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                                    ))}
                                  </select>
                                ) : (
-                                 <span className={`px-3 py-1 rounded-lg text-xs font-black cursor-pointer ${row.assignedCode === 'F' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-orange-500/20 text-orange-400'}`}>
-                                   {row.assignedCode}
-                                 </span>
+                                 <div 
+                                   className="flex items-center space-x-2 group cursor-pointer"
+                                   onClick={() => setEditingCode({ kuyrukNo: row.kuyrukNo, code: row.assignedCode })}
+                                 >
+                                   <span className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${row.assignedCode === 'F' ? 'bg-emerald-500/20 text-emerald-400 group-hover:bg-emerald-500/40' : 'bg-orange-500/20 text-orange-400 group-hover:bg-orange-500/40'}`}>
+                                     {row.assignedCode}
+                                   </span>
+                                   <svg className="w-3 h-3 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                   </svg>
+                                 </div>
                                )}
                             </td>
                             <td className="px-8 py-4 italic text-gray-400">
-                               <div className="text-xs truncate max-w-xs">"{row.aciklama}"</div>
+                               <div className="text-xs truncate max-w-xs text-wrap">"{row.aciklama}"</div>
+                            </td>
+                            <td className="px-8 py-4">
+                               <button 
+                                 onClick={() => handleDeleteAircraft(row.kuyrukNo)}
+                                 className="text-red-500 hover:text-red-400 font-black text-[9px] uppercase tracking-tighter"
+                               >
+                                 SİL
+                               </button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
-                   </table>
+                    </table>
+                    </div>
                    )}
                 </div>
             </div>
@@ -670,11 +805,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                                </div>
                             </div>
                             <button 
-                              type="button" 
-                              onClick={handleAddRecipient}
-                              className="w-full py-5 rounded-2xl bg-emerald-600 text-white font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-500 transition-all"
+                               type="button" 
+                               onClick={handleAddRecipient}
+                               className="w-full py-5 rounded-2xl bg-emerald-600 text-white font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-emerald-500 transition-all"
                             >
-                              ALICIYI KAYDET VE LOGLA
+                               ALICIYI KAYDET VE LOGLA
                             </button>
                          </form>
                       </div>

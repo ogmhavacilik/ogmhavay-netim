@@ -20,7 +20,7 @@ import {
   MAIL_LOG_SHEET_ID,
   getCallSignByTail
 } from './constants';
-import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM } from './services/sheetService';
+import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM, parseSingleCellToHour } from './services/sheetService';
 import { exportAT802DailyStatusToPDF, exportOPLToPDF, exportAT802CiktiPDF } from './services/pdfService';
 import { exportTableToMHTML } from './services/mhtmlService';
 import { MOCK_ACTIVITY_GRID } from './constants';
@@ -364,16 +364,12 @@ const App = () => {
             date: displayDateStr,
             newCode: newCode,
             tip: aircraft?.tip || '',
-            durum: aircraft?.durumAyrintisi || 'MANUEL GÜNCELLEME'
+            durum: aircraft?.durumAyrintisi || 'MANUEL GÜNCELLEME',
+            isManualOverride: true
           })
         });
         const result = await res.json();
         console.log("Update log response:", result);
-        if (result.success) {
-          console.log(`Log updated successfully for ${kuyrukNo}`);
-        } else {
-          console.error(`Log update failed: ${result.message}`);
-        }
       } catch (err) {
         console.error("Error updating log entry:", err);
       }
@@ -407,7 +403,7 @@ const App = () => {
         const existing = existingIdx !== -1 ? updatedFleet[existingIdx] : null;
         
         if (existing && initialSyncDone.current) {
-          ['durum', 'konum', 'durumAyrintisi', 'faydaliSaat', 'govdeUcusSaati'].forEach(col => {
+          ['durum', 'konum', 'durumAyrintisi', 'faydaliSaat', 'govdeUcusSaati', 'aciklama'].forEach(col => {
             const key = col as keyof Aircraft;
             const oldVal = String(existing[key] || '').trim();
             const newVal = String(incoming[key] || '').trim();
@@ -418,7 +414,8 @@ const App = () => {
                 'konum': 'KONUM',
                 'durumAyrintisi': 'DURUM AYRINTISI',
                 'faydaliSaat': 'FAYDALI SAAT',
-                'govdeUcusSaati': 'GÖVDE UÇUŞ SAATİ'
+                'govdeUcusSaati': 'GÖVDE UÇUŞ SAATİ',
+                'aciklama': 'AÇIKLAMA'
               };
               const colLabel = labelMap[col] || col.toUpperCase();
               
@@ -942,12 +939,14 @@ const App = () => {
 
     try {
       const fetchedFleet: Aircraft[] = [];
+      let totalChanges = 0;
 
       await Promise.all(SHEET_CONFIGS.map(async (config) => {
         try {
           const data = await fetchAircraftDataFromAppsScript(config.appsScriptUrl, config);
           if (data && data.length > 0) {
-            handleSyncFromExcel(data, config.aircraftType, true);
+            // handleSyncFromExcel will catch individual changes
+            handleSyncFromExcel(data, config.aircraftType, false); // Don't log individually
             fetchedFleet.push(...(data as Aircraft[]));
           }
         } catch (e) {
@@ -955,7 +954,8 @@ const App = () => {
         }
       }));
 
-      // 1-dakikalık senkronizasyon sırasında Envanter Log'u güncelle
+      // Toplu loglama işlemi - LOGKOMUT tarafında değişim kontrolü yapıldığı için güvenle çağrılabilir
+      // Ancak gereksiz trafik oluşturmamak için frontend tarafında da basit bir kontrol eklenebilir
       if (fetchedFleet.length > 0) {
         try {
           await fetch(LOG_SCRIPT_URL, {
@@ -967,13 +967,14 @@ const App = () => {
               sheetId: MAIL_LOG_SHEET_ID,
               fleetData: fetchedFleet.map(a => ({
                 kuyrukNo: a.kuyrukNo,
-                tip: a.tip,
+                tip: a.tip || '',
                 govdeUcusSaati: a.govdeUcusSaati,
                 faydaliSaat: a.faydaliSaat,
                 konum: a.konum,
                 durum: a.durum,
                 durumAyrintisi: a.durumAyrintisi,
-                aciklama: a.aciklama
+                aciklama: a.aciklama,
+                analizKodu: a.assignedCode
               }))
             })
           });
@@ -1202,7 +1203,7 @@ const App = () => {
 
         const historyFleet: Aircraft[] = filtered.map((row: any) => {
           const rowTip = row.tip || '';
-          const govdeSaat = parseHour(row.govdeUcusSaati, rowTip);
+          const govdeSaat = parseSingleCellToHour(row.govdeUcusSaati, rowTip);
           
           let govdeStr = '-';
           if (govdeSaat !== null) {
@@ -1226,7 +1227,7 @@ const App = () => {
             durum: row.durum || '',
             durumAyrintisi: row.durumAyrintisi || '',
             konum: row.konum || '',
-            faydaliSaat: parseHour(row.faydaliSaat, rowTip) || 0,
+            faydaliSaat: parseSingleCellToHour(row.faydaliSaat, rowTip) || 0,
             aciklama: row.aciklama || '',
             govdeUcusSaati: govdeStr,
             assignedCode: row.analizKodu as DailyStatusCode || 'F',

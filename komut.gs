@@ -1012,61 +1012,59 @@ function analyzeStatusGS(item) {
   if (!item) return 'F';
   
   var toUpperTR = function(s) {
-    return String(s || '').replace(/i/g, 'İ').replace(/ı/g, 'I').toUpperCase().trim();
+    if (!s) return "";
+    return String(s).replace(/i/g, 'İ').replace(/ı/g, 'I').toUpperCase().trim();
   };
   
   var durumUpper = toUpperTR(item.durum);
   var detailUpper = toUpperTR(item.durumAyrintisi);
   var descUpper = toUpperTR(item.aciklama);
   
-  // Hiyerarşi Adım 1: DURUM
-  var code = 'F';
-  var isGayriFaalStatus = durumUpper.indexOf('GAYRİ') !== -1 || durumUpper.indexOf('GAYRI') !== -1 || durumUpper.indexOf('GF') !== -1 || durumUpper === 'G.FAAL';
-  if (isGayriFaalStatus) {
-    code = 'A';
+  var findCodeInText = function(t) {
+    if (!t) return null;
+    
+    // Normalize string for matching: replace dotted İ with dotless I for comparison
+    var n = t.replace(/İ/g, "I").replace(/ı/g, "I");
+
+    // Exact Code Match (Highest Priority)
+    var exactCodes = ['B', 'BB', 'TBU', 'KM', 'A', 'PB', 'KK', 'X', 'TB'];
+    if (exactCodes.indexOf(t) !== -1) return t;
+
+    // Keyword Match - Use Normalized version 'n' for better matching
+    if (n.indexOf('TEKNIK BULTEN') !== -1 || n.indexOf('TBU') !== -1) return 'TBU';
+    if (n.indexOf('BAKIM BEKLER') !== -1 || n === 'BB') return 'BB';
+    if (n.indexOf('BAKIM') !== -1) return 'B';
+    if (n.indexOf('PARCA BEKLER') !== -1 || n === 'PB') return 'PB';
+    if (n.indexOf('TECRUBE BEKLER') !== -1 || n === 'TB' || n.indexOf('TECRUBE') !== -1 || n.indexOf('TEST') !== -1) return 'TB';
+    if (n.indexOf('KABUL MUAYENE') !== -1 || n === 'KM') return 'KM';
+    if (n.indexOf('KAZA KIRIM') !== -1 || n === 'KK') return 'KK';
+    if (n.indexOf('OLMADIGI GUNLER') !== -1 || n === 'X') return 'X';
+    if (n.indexOf('ARIZA') !== -1 || n.indexOf('ARZ') !== -1 || n === 'A' || n.indexOf('OVERSPEED') !== -1 || n.indexOf('NG') !== -1) return 'A';
+    
+    return null;
+  };
+
+  // Adım 1: Durum Ayrıntısı (DURUM_AYRINTISI) - ÖNCELİKLİ
+  var detailMatch = findCodeInText(detailUpper);
+  if (detailMatch) return detailMatch;
+
+  // Adım 2: Durum (DURUM)
+  var durumMatch = findCodeInText(durumUpper);
+  if (durumMatch) return durumMatch;
+  
+  var isGayriFaalStatus = durumUpper.indexOf('GAYRİ') !== -1 || durumUpper.indexOf('GAYRI') !== -1 || durumUpper.indexOf('GF') !== -1 || durumUpper === 'G.FAAL' || durumUpper.indexOf('ARIZA') !== -1 || durumUpper.indexOf('ARZ') !== -1 || durumUpper === 'A';
+  if (isGayriFaalStatus) return 'A';
+
+  // Adım 3: Açıklama (ACIKLAMA)
+  var descMatch = findCodeInText(descUpper);
+  if (descMatch) return descMatch;
+
+  // Adım 4: Karma Kontrolü
+  if (detailUpper.indexOf('KARMA') !== -1 || detailUpper.indexOf('HEM FAAL') !== -1 || descUpper.indexOf('KARMA') !== -1 || descUpper.indexOf('HEM FAAL') !== -1) {
+    return 'K';
   }
 
-  // Hiyerarşi Adım 2: DURUM AYRINTISI
-  if (detailUpper.indexOf('PARÇA BEKLER') !== -1 || detailUpper.indexOf('PARCA BEKLER') !== -1 || detailUpper === 'PB') {
-    code = 'PB';
-  } else if (detailUpper.indexOf('TECRÜBE BEKLER') !== -1 || detailUpper.indexOf('TECRUBE BEKLER') !== -1 || detailUpper === 'TB' || detailUpper.indexOf('TECRÜBE') !== -1 || detailUpper.indexOf('TEST') !== -1) {
-    code = 'TB';
-  } else if (detailUpper.indexOf('TBU') !== -1 || detailUpper.indexOf('TEKNİK BÜLTEN') !== -1) {
-    code = 'TBU';
-  } else if (detailUpper.indexOf('BAKIM BEKLER') !== -1 || detailUpper === 'BB') {
-    code = 'BB';
-  } else if (detailUpper.indexOf('KABUL MUAYENE') !== -1 || detailUpper === 'KM') {
-    code = 'KM';
-  } else if (detailUpper.indexOf('KAZA KIRIM') !== -1 || detailUpper === 'KK') {
-    code = 'KK';
-  } else if (detailUpper.indexOf('BAKIM') !== -1 || detailUpper === 'B') {
-    code = 'B';
-  } else if (detailUpper.indexOf('ARIZA') !== -1 || detailUpper === 'A') {
-    code = 'A';
-  } else if (detailUpper.indexOf('OLMADIĞI GÜNLER') !== -1 || detailUpper.indexOf('OLMADIGI GUNLER') !== -1 || detailUpper === 'X') {
-    code = 'X';
-  }
-
-  // Hiyerarşi Adım 3: AÇIKLAMA (Fallback if code is generic)
-  if (code === 'F' || code === 'A') {
-    if (descUpper.indexOf('PARÇA BEKLER') !== -1 || descUpper.indexOf('PARCA BEKLER') !== -1 || (descUpper.indexOf('PARÇA') !== -1 && (descUpper.indexOf('BEKLE') !== -1 || descUpper.indexOf('SİPARİŞ') !== -1))) {
-      code = 'PB';
-    } else if (descUpper.indexOf('TECRÜBE BEKLER') !== -1 || descUpper.indexOf('TECRUBE BEKLER') !== -1 || descUpper.indexOf('TEST UÇUŞU') !== -1 || descUpper.indexOf('TEST UCUSU') !== -1) {
-      code = 'TB';
-    } else if (descUpper.indexOf("TBU") !== -1 || descUpper.indexOf("TEKNİK BÜLTEN") !== -1 || descUpper.indexOf("TEKNIK BULTEN") !== -1) {
-      code = "TBU";
-    } else if (descUpper.indexOf('BAKIM BEKLER') !== -1 || (descUpper.indexOf('BAKIM') !== -1 && (descUpper.indexOf('BEKLER') !== -1 || descUpper.indexOf('SIYA') !== -1))) {
-      code = 'BB';
-    } else if (descUpper.indexOf('KABUL MUAYENE') !== -1) {
-      code = 'KM';
-    } else if (descUpper.indexOf('BAKIM') !== -1 || descUpper.indexOf('PERİYODİK') !== -1 || descUpper.indexOf('YILLIK') !== -1 || /\b\d+H\b/.test(descUpper)) {
-      code = 'B';
-    } else if (descUpper.indexOf('ARIZA') !== -1 || descUpper.indexOf('PROBLEM') !== -1) {
-      code = 'A';
-    }
-  }
-
-  return code;
+  return 'F';
 }
 
 
@@ -1092,19 +1090,25 @@ function saveLogsToSheets(ss, fleetData) {
   
   // Mevcut ID'leri ve satır numaralarını al (Hızlı güncelleme için)
   var lastRow = envLogSheet.getLastRow();
-  var envData = lastRow > 1 ? envLogSheet.getRange(2, 1, lastRow - 1, 3).getValues() : [];
+  var envFullData = lastRow > 1 ? envLogSheet.getRange(2, 1, lastRow - 1, 10).getValues() : [];
   var envIdMap = {};
-  for (var i = 0; i < envData.length; i++) {
-    var id = String(envData[i][0]);
-    envIdMap[id] = i + 2; // ID -> Row Index
+  for (var i = 0; i < envFullData.length; i++) {
+    var id = String(envFullData[i][0]);
+    envIdMap[id] = {
+      row: i + 2,
+      data: envFullData[i]
+    }; 
   }
 
   var faalLastRow = faalLogSheet.getLastRow();
-  var faalData = faalLastRow > 1 ? faalLogSheet.getRange(2, 1, faalLastRow - 1, 1).getValues() : [];
+  var faalFullData = faalLastRow > 1 ? faalLogSheet.getRange(2, 1, faalLastRow - 1, 6).getValues() : [];
   var faalIdMap = {};
-  for (var i = 0; i < faalData.length; i++) {
-    var id = String(faalData[i][0]);
-    faalIdMap[id] = i + 2;
+  for (var i = 0; i < faalFullData.length; i++) {
+    var id = String(faalFullData[i][0]);
+    faalIdMap[id] = {
+      row: i + 2,
+      data: faalFullData[i]
+    };
   }
   
   fleetData.forEach(function(aircraft) {
@@ -1114,35 +1118,75 @@ function saveLogsToSheets(ss, fleetData) {
     var envKey = tarihStr + "_" + kNo;
     var assignedCode = aircraft.assignedCode || analyzeStatusGS(aircraft);
     
+    // Values to write
+    var newEnvValues = [
+      aircraft.tip || "", aircraft.govdeUcusSaati || "", 
+      aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
+      aircraft.durumAyrintisi || "", aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
+    ];
+
     // ENVANTER LOG GÜNCELLE VEYA EKLE
     if (envIdMap[envKey]) {
-      var row = envIdMap[envKey];
-      envLogSheet.getRange(row, 4, 1, 7).setValues([[
-        aircraft.tip || "", aircraft.govdeUcusSaati || "", 
-        aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
-        aircraft.durumAyrintisi || "", aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
-      ]]);
+      var entry = envIdMap[envKey];
+      var row = entry.row;
+      var existingData = entry.data; // col 0 to 9
+      
+      // Compare current values (cols index 3 to 9)
+      var hasChanged = false;
+      for (var j = 0; j < newEnvValues.length; j++) {
+        var existingVal = String(existingData[j + 3] || "");
+        var newVal = String(newEnvValues[j] || "");
+        // Strip single quote for aciklama comparison if needed
+        if (j === 6 && newVal.indexOf("'") === 0) newVal = newVal.substring(1);
+        if (j === 6 && existingVal.indexOf("'") === 0) existingVal = existingVal.substring(1);
+
+        if (existingVal !== newVal) {
+          hasChanged = true;
+          break;
+        }
+      }
+
+      if (hasChanged) {
+        envLogSheet.getRange(row, 4, 1, 7).setValues([newEnvValues]);
+      }
     } else {
       envLogSheet.appendRow([
-        envKey, tarihStr, kNo, aircraft.tip || "", aircraft.govdeUcusSaati || "", 
-        aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
-        aircraft.durumAyrintisi || "", aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
+        envKey, tarihStr, kNo, 
+        newEnvValues[0], newEnvValues[1], newEnvValues[2], 
+        newEnvValues[3], newEnvValues[4], newEnvValues[5], newEnvValues[6]
       ]);
       // Update map so we don't append again in the same batch
-      envIdMap[envKey] = envLogSheet.getLastRow();
+      envIdMap[envKey] = { row: envLogSheet.getLastRow(), data: [envKey, tarihStr, kNo].concat(newEnvValues) };
     }
+
+    // Values for Faaliyet
+    var newFaalValues = [
+      aircraft.tip || "", aircraft.durumAyrintisi || "", assignedCode
+    ];
 
     // FAALİYET LOG GÜNCELLE VEYA EKLE
     if (faalIdMap[envKey]) {
-      var row = faalIdMap[envKey];
-      faalLogSheet.getRange(row, 4, 1, 3).setValues([[
-        aircraft.tip || "", aircraft.durumAyrintisi || "", assignedCode
-      ]]);
+      var entry = faalIdMap[envKey];
+      var row = entry.row;
+      var existingData = entry.data; // cols 0 to 5
+
+      var hasChanged = false;
+      for (var j = 0; j < newFaalValues.length; j++) {
+        if (String(existingData[j + 3] || "") !== String(newFaalValues[j] || "")) {
+          hasChanged = true;
+          break;
+        }
+      }
+
+      if (hasChanged) {
+        faalLogSheet.getRange(row, 4, 1, 3).setValues([newFaalValues]);
+      }
     } else {
       faalLogSheet.appendRow([
-        envKey, tarihStr, kNo, aircraft.tip || "", aircraft.durumAyrintisi || "", assignedCode
+        envKey, tarihStr, kNo, 
+        newFaalValues[0], newFaalValues[1], newFaalValues[2]
       ]);
-      faalIdMap[envKey] = faalLogSheet.getLastRow();
+      faalIdMap[envKey] = { row: faalLogSheet.getLastRow(), data: [envKey, tarihStr, kNo].concat(newFaalValues) };
     }
   });
 }

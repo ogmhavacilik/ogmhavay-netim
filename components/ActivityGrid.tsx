@@ -387,7 +387,13 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                             }
 
                             const isCompletedToday = act.intraDayCompletions?.[dateStrKey];
-                            const isKarma = status === 'K' || isCompletedToday;
+                            const hourlyData = act.hourlyStatuses?.[dateStrKey] || {};
+                            const hasHourlyData = Object.keys(hourlyData).length > 0;
+                            
+                            // Bir günün "Karma" (Yıldızlı) olması için ya durum kodu 'K' (Karma) olmalı
+                            // ya da saatlik verisi olup gün içinde durum değişikliği yaşanmış olmalı.
+                            // Sadece "isCompletedToday" olması yetmez, saatlik verisi yoksa yıldız koymuyoruz.
+                            const isKarma = status === 'K' || (isCompletedToday && hasHourlyData);
 
                             return (
                               <td 
@@ -602,10 +608,9 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                NOT: AYNI GÜN İÇİNDE HEM FAAL HEM GAYRİ FAAL OLAN GÜNLER KÖŞEGENLİ VE TURUNCU YILDIZLI GÖSTERİLİR.
              </p>
           </div>
-          <div className="bg-slate-200/50 border-l-4 border-slate-400 p-4 rounded-r-xl flex items-center">
-             <div className="w-4 h-4 bg-gray-200 border border-gray-300 mr-3 inline-block shadow-sm"></div>
-             <p className="text-[11px] font-black text-slate-600 uppercase tracking-tight">
-               Soluk alanlar veri tabanında bulunmamaktadır.
+          <div className="bg-emerald-200/50 border-l-4 border-emerald-600 p-4 rounded-r-xl">
+             <p className="text-[11px] font-black text-emerald-950 leading-relaxed uppercase tracking-tight">
+               * FAALİYET % HESAPLAMA NOTU: Üst üste 3 gün (veya daha fazla) OLMADIĞI GÜNLER (X) durumunda olan hava araçları, bu süre zarfında hesaplamaya dahil edilmez. Farklı tarihlerde gerçekleşen toplam OLMADIĞI GÜNLER süresi ise hesaplamaya dahil edilir.
              </p>
           </div>
         </div>

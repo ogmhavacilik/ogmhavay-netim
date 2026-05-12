@@ -897,7 +897,7 @@ function doPost(e) {
         logSheet = ss.insertSheet("Envanter Log");
         logSheet.appendRow([
           "ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", 
-          "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Açıklama"
+          "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Analiz Kodu", "Açıklama"
         ]);
       }
 
@@ -918,29 +918,44 @@ function doPost(e) {
         }
       }
 
-      // Cache IDs for both sheets
-      var logValues = logSheet.getRange("A:A").getValues();
+      // Cache IDs and Current Values for change detection
+      var logFullRange = logSheet.getDataRange();
+      var logValues = logFullRange.getValues();
       var logIdMap = {};
       for (var i = 0; i < logValues.length; i++) {
         var id = String(logValues[i][0]).trim();
-        if (id) logIdMap[id] = i + 1;
+        if (id) logIdMap[id] = { row: i + 1, data: logValues[i] };
       }
 
-      var faalValues = faalLogSheet.getRange("A:A").getValues();
+      var faalFullRange = faalLogSheet.getDataRange();
+      var faalValues = faalFullRange.getValues();
       var faalIdMap = {};
       for (var j = 0; j < faalValues.length; j++) {
         var id = String(faalValues[j][0]).trim();
-        if (id) faalIdMap[id] = j + 1;
+        if (id) faalIdMap[id] = { row: j + 1, data: faalValues[j] };
       }
+      
+      var updatedCount = 0;
       
       fleetData.forEach(function(data) {
         var kuyrukNo = String(data.kuyrukNo || "").trim();
         if (!kuyrukNo) return;
         var logId = dateStr + "_" + kuyrukNo;
+        var newAyrinti = String(data.durumAyrintisi || "").trim().toUpperCase();
+
+        var calculatedAnaliz = analyzeStatusGS({
+          durum: data.durum,
+          durumAyrintisi: data.durumAyrintisi,
+          aciklama: data.aciklama
+        });
+        var finalAnaliz = data.analizKodu || calculatedAnaliz;
+
+        // --- 1. Envanter Log Güncelleme & Değişiklik Kontrolü ---
+        var logEntry = logIdMap[logId];
+        var needsLogUpdate = false;
         
-        // Update Envanter Log
-        var targetRow = logIdMap[logId];
-        if (!targetRow) {
+        if (!logEntry) {
+          needsLogUpdate = true;
           logSheet.appendRow([
             logId, 
             dateStr, 
@@ -951,48 +966,88 @@ function doPost(e) {
             data.konum,
             data.durum,
             data.durumAyrintisi,
+            finalAnaliz, // Ekleme
             data.aciklama ? "'" + String(data.aciklama) : ""
           ]);
-          targetRow = logSheet.getLastRow();
-          logIdMap[logId] = targetRow; // Update cache for same-day multiple calls if any
+          var newRow = logSheet.getLastRow();
+          setLogTimeValue(logSheet, newRow, 5, data.govdeUcusSaati, data.tip);
+          logSheet.getRange(newRow, 11).setNumberFormat("@"); // Açıklama kolonu 11 oldu
+          updatedCount++;
         } else {
-          logSheet.getRange(targetRow, 1, 1, 4).setValues([[logId, dateStr, kuyrukNo, data.tip]]);
-          logSheet.getRange(targetRow, 6, 1, 5).setValues([[
-            data.faydaliSaat || 0,
-            data.konum,
-            data.durum,
-            data.durumAyrintisi,
-            data.aciklama ? "'" + String(data.aciklama) : ""
-          ]]);
-        }
-        setLogTimeValue(logSheet, targetRow, 5, data.govdeUcusSaati, data.tip);
-        logSheet.getRange(targetRow, 10).setNumberFormat("@");
+          // Değişiklik kontrolü (Faydalı Saat, Konum, Durum, Ayrinti, Açıklama, Gövde Saati)
+          var oldRow = logEntry.data;
+          var oldFaydali = String(oldRow[5]).trim();
+          var newFaydali = String(data.faydaliSaat || 0).trim();
+          
+          var oldKonum = String(oldRow[6]).trim().toUpperCase();
+          var newKonum = String(data.konum || "").trim().toUpperCase();
+          
+          var oldDurum = String(oldRow[7]).trim().toUpperCase();
+          var newDurum = String(data.durum || "").trim().toUpperCase();
+          
+          var oldAyrinti = String(oldRow[8]).trim().toUpperCase();
+          
+          var oldAnaliz = String(oldRow[9] || "").trim().toUpperCase();
+          var newAnaliz = String(finalAnaliz || "").trim().toUpperCase();
+          
+          var oldAciklama = String(oldRow[10] || "").trim();
+          if (oldAciklama.indexOf("'") === 0) oldAciklama = oldAciklama.substring(1);
+          var newAciklama = String(data.aciklama || "").trim();
+          
+          // Gövde saati kontrolü biraz daha karmaşık (formatToHHMM kullanıyoruz)
+          var oldGovde = formatToHHMM(oldRow[4]);
+          var newGovde = formatToHHMM(data.govdeUcusSaati);
 
-        // Update Faaliyet Log
-        var faalRow = faalIdMap[logId];
-        if (!faalRow) {
+          if (oldFaydali !== newFaydali || oldKonum !== newKonum || oldDurum !== newDurum || 
+              oldAyrinti !== newAyrinti || oldAnaliz !== newAnaliz || oldAciklama !== newAciklama || oldGovde !== newGovde) {
+            
+            logSheet.getRange(logEntry.row, 1, 1, 4).setValues([[logId, dateStr, kuyrukNo, data.tip]]);
+            logSheet.getRange(logEntry.row, 6, 1, 6).setValues([[
+              data.faydaliSaat || 0,
+              data.konum,
+              data.durum,
+              data.durumAyrintisi,
+              newAnaliz,
+              data.aciklama ? "'" + String(data.aciklama) : ""
+            ]]);
+            setLogTimeValue(logSheet, logEntry.row, 5, data.govdeUcusSaati, data.tip);
+            logSheet.getRange(logEntry.row, 11).setNumberFormat("@");
+            updatedCount++;
+          }
+        }
+
+        // --- 2. Faaliyet Log Güncelleme & Değişiklik Kontrolü ---
+        var faalEntry = faalIdMap[logId];
+        
+        if (!faalEntry) {
           faalLogSheet.appendRow([
             logId,
             dateStr,
             kuyrukNo,
             data.tip,
             data.durumAyrintisi,
-            data.analizKodu || "F"
+            finalAnaliz
           ]);
-          faalIdMap[logId] = faalLogSheet.getLastRow();
         } else {
-          faalLogSheet.getRange(faalRow, 1, 1, 6).setValues([[
-            logId, 
-            dateStr, 
-            kuyrukNo, 
-            data.tip, 
-            data.durumAyrintisi, 
-            data.analizKodu || "F"
-          ]]);
+          var oldFaalRow = faalEntry.data;
+          var oldAyrintiLog = String(oldFaalRow[4]).trim().toUpperCase();
+          var oldAnalizLog = String(oldFaalRow[5]).trim().toUpperCase();
+          
+          // Eğer durum ayrıntısı değiştiyse veya analiz kodu farklıysa güncelle
+          if (oldAyrintiLog !== newAyrinti || oldAnalizLog !== finalAnaliz) {
+             faalLogSheet.getRange(faalEntry.row, 1, 1, 6).setValues([[
+              logId, 
+              dateStr, 
+              kuyrukNo, 
+              data.tip, 
+              data.durumAyrintisi, 
+              finalAnaliz
+            ]]);
+          }
         }
       });
       
-      return jsonSuccess("Filo logları başarıyla güncellendi.");
+      return jsonSuccess("Filo logları işlendi. Güncellenen kayıt sayısı: " + updatedCount);
     }
 
     if (action === "logSingleAircraftActivity") {
@@ -1029,27 +1084,36 @@ function doPost(e) {
           "Konum",
           "Durum",
           "Durum Ayrıntısı",
+          "Analiz Kodu",
           "Açıklama",
         ]);
       }
+      var calculatedAnaliz = analyzeStatusGS({
+        durum: data.durum,
+        durumAyrintisi: data.durumAyrintisi,
+        aciklama: data.aciklama
+      });
+      var finalAnaliz = (data.analizKodu && data.analizKodu !== 'F') ? data.analizKodu : (data.analizKodu || calculatedAnaliz);
+
       var logData = logSheet.getRange("A:A").getValues();
       var foundLog = false;
       for (var i = 1; i < logData.length; i++) {
         if (String(logData[i][0]).trim() === id) {
           setLogTimeValue(logSheet, i + 1, 5, data.govdeUcusSaati, data.tip);
           logSheet
-            .getRange(i + 1, 6, 1, 5)
+            .getRange(i + 1, 6, 1, 6)
             .setValues([
               [
                 data.faydaliSaat || 0,
                 data.konum,
                 data.durum,
                 data.durumAyrintisi,
+                finalAnaliz,
                 data.aciklama ? "'" + String(data.aciklama) : "",
               ],
             ]);
-          // Açıklama sütununu (10. kolon) metin formatına zorla
-          logSheet.getRange(i + 1, 10).setNumberFormat("@");
+          // Açıklama sütununu (11. kolon) metin formatına zorla
+          logSheet.getRange(i + 1, 11).setNumberFormat("@");
           foundLog = true;
           break;
         }
@@ -1065,11 +1129,13 @@ function doPost(e) {
           data.konum,
           data.durum,
           data.durumAyrintisi,
+          finalAnaliz,
           data.aciklama ? "'" + String(data.aciklama) : "",
         ]);
-        setLogTimeValue(logSheet, logSheet.getLastRow(), 5, data.govdeUcusSaati, data.tip);
-        // Yeni eklenen satırın açıklama hücresini metin yap
-        logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");
+        var lastRowIdx = logSheet.getLastRow();
+        setLogTimeValue(logSheet, lastRowIdx, 5, data.govdeUcusSaati, data.tip);
+        // Yeni eklenen satırın açıklama hücresini metin yap (11. kolon)
+        logSheet.getRange(lastRowIdx, 11).setNumberFormat("@");
       }
 
       var faalLogSheet = findSheet(ss, "Faaliyet Log");
@@ -1510,7 +1576,8 @@ function analyzeStatusGS(item) {
   if (!item) return "F";
 
   var toUpperTR = function (s) {
-    return String(s || "")
+    if (!s) return "";
+    return String(s)
       .replace(/i/g, "İ")
       .replace(/ı/g, "I")
       .toUpperCase()
@@ -1521,73 +1588,59 @@ function analyzeStatusGS(item) {
   var descUpper = toUpperTR(item.aciklama);
   var durumUpper = toUpperTR(item.durum);
 
-  // Hiyerarşi Adım 1: DURUM
-  var code = "F";
-  var isGayriFaal = DURUM_IS_GAYRI_FAAL(durumUpper);
-  if (isGayriFaal) {
-    code = "A";
-  }
+  var findCodeInText = function(t) {
+    if (!t) return null;
+    
+    // Normalize string for matching: replace dotted İ with dotless I for comparison
+    var n = t.replace(/İ/g, "I").replace(/ı/g, "I");
 
-  // Hiyerarşi Adım 2: DURUM AYRINTISI
-  // Bu adımda daha spesifik kodlar belirlenir. 
-  // Eğer detayda spesifik bir durum varsa, kod o olur.
-  var detailCode = null;
-  if (detailUpper.indexOf("PARÇA BEKLER") !== -1 || detailUpper.indexOf("PARCA BEKLER") !== -1 || detailUpper === "PB") {
-    detailCode = "PB";
-  } else if (detailUpper.indexOf("TECRÜBE BEKLER") !== -1 || detailUpper.indexOf("TECRUBE BEKLER") !== -1 || detailUpper === "TB" || detailUpper.indexOf("TECRÜBE") !== -1 || detailUpper.indexOf("TEST") !== -1) {
-    detailCode = "TB";
-  } else if (detailUpper.indexOf("TBU") !== -1 || detailUpper.indexOf("TEKNİK BÜLTEN") !== -1) {
-    detailCode = "TBU";
-  } else if (detailUpper.indexOf("BAKIM BEKLER") !== -1 || detailUpper === "BB") {
-    detailCode = "BB";
-  } else if (detailUpper.indexOf("KABUL MUAYENE") !== -1 || detailUpper === "KM") {
-    detailCode = "KM";
-  } else if (detailUpper.indexOf("KAZA KIRIM") !== -1 || detailUpper === "KK") {
-    detailCode = "KK";
-  } else if (detailUpper.indexOf("BAKIM") !== -1 || detailUpper === "B") {
-    detailCode = "B";
-  } else if (detailUpper.indexOf("ARIZA") !== -1 || detailUpper === "A" || detailUpper.indexOf("OVERSPEED") !== -1 || detailUpper.indexOf("NG") !== -1 || detailUpper.indexOf("MOTOR") !== -1) {
-    detailCode = "A";
-  } else if (detailUpper.indexOf("KARMA") !== -1 || detailUpper.indexOf("HEM FAAL") !== -1) {
-    detailCode = "K";
-  } else if (detailUpper === "OLMADIĞI GÜNLER" || detailUpper.indexOf("OLMADIGI GUNLER") !== -1 || detailUpper === "X") {
-    detailCode = "X";
-  }
+    // Exact Code Match (Highest Priority)
+    var exactCodes = ['B', 'BB', 'TBU', 'KM', 'A', 'PB', 'KK', 'X', 'TB'];
+    if (exactCodes.indexOf(t) !== -1) return t;
 
-  if (detailCode) {
-    code = detailCode;
-  }
+    // Keyword Match - Use Normalized version 'n' for better matching
+    // ÖNCE ARIZA KONTROLÜ (Kullanıcı Talebi: Arıza = A diyemiyor sorunu için)
+    if (n.indexOf('ARIZA') !== -1 || n.indexOf('ARZ') !== -1 || n === 'A' || n.indexOf('OVERSPEED') !== -1 || n.indexOf('NG') !== -1) return 'A';
+    
+    if (n.indexOf('TEKNİK BÜLTEN') !== -1 || n.indexOf('TEKNIK BULTEN') !== -1 || n.indexOf('TBU') !== -1) return 'TBU';
+    if (n.indexOf('BAKIM BEKLER') !== -1 || n === 'BB') return 'BB';
+    if (n.indexOf('BAKIM') !== -1) return 'B';
+    if (n.indexOf('PARÇA BEKLER') !== -1 || n.indexOf('PARCA BEKLER') !== -1 || n === 'PB') return 'PB';
+    if (n.indexOf('TECRÜBE BEKLER') !== -1 || n.indexOf('TECRUBE BEKLER') !== -1 || n === 'TB' || n.indexOf('TECRÜBE') !== -1 || n.indexOf('TECRUBE') !== -1 || n.indexOf('TEST') !== -1) return 'TB';
+    if (n.indexOf('KABUL MUAYENE') !== -1 || n === 'KM') return 'KM';
+    if (n.indexOf('KAZA KIRIM') !== -1 || n === 'KK') return 'KK';
+    if (n.indexOf('OLMADIĞI GÜNLER') !== -1 || n.indexOf('OLMADIGI GUNLER') !== -1 || n === 'X') return 'X';
+    
+    return null;
+  };
 
-  // Hiyerarşi Adım 3: AÇIKLAMA
-  // Sadece kod genel ise (F veya A) veya açıklamada KRİTİK bir anahtar kelime varsa güncelle.
-  var isGeneric = (code === "F" || code === "A");
-  var hasKarma = (descUpper.indexOf("KARMA") !== -1 || descUpper.indexOf("HEM FAAL") !== -1 || descUpper.indexOf("YARIM GÜN") !== -1);
+  // Adım 1: Durum Ayrıntısı (DURUM_AYRINTISI) - ÖNCELİKLİ (Kullanıcı Talebi)
+  var detailMatch = findCodeInText(detailUpper);
+  if (detailMatch) return detailMatch;
+
+  // Adım 2: Durum (DURUM)
+  var durumMatch = findCodeInText(durumUpper);
+  if (durumMatch) return durumMatch;
   
-  if (hasKarma) {
-    code = "K";
-  } else if (isGeneric) {
-    if (descUpper.indexOf("PARÇA BEKLER") !== -1 || descUpper.indexOf("PARCA BEKLER") !== -1 || (descUpper.indexOf("PARÇA") !== -1 && (descUpper.indexOf("BEKLE") !== -1 || descUpper.indexOf("SİPARİŞ") !== -1))) {
-      code = "PB";
-    } else if (descUpper.indexOf("TECRÜBE BEKLER") !== -1 || descUpper.indexOf("TECRUBE BEKLER") !== -1 || descUpper.indexOf("TEST UÇUŞU") !== -1 || descUpper.indexOf("TEST UCUSU") !== -1 || descUpper.indexOf("TECRÜBE") !== -1) {
-      code = "TB";
-    } else if (descUpper.indexOf("TBU") !== -1 || descUpper.indexOf("TEKNİK BÜLTEN") !== -1) {
-      code = "TBU";
-    } else if (descUpper.indexOf("BAKIM BEKLER") !== -1 || (descUpper.indexOf("BAKIM") !== -1 && (descUpper.indexOf("BEKLER") !== -1 || descUpper.indexOf("SIYA") !== -1))) {
-      code = "BB";
-    } else if (descUpper.indexOf("KABUL MUAYENE") !== -1) {
-      code = "KM";
-    } else if (descUpper.indexOf("BAKIM") !== -1 || descUpper.indexOf("PERİYODİK") !== -1 || descUpper.indexOf("YILLIK") !== -1 || /\b\d+H\b/.test(descUpper)) {
-      code = "B";
-    } else if (descUpper.indexOf("ARIZA") !== -1 || descUpper.indexOf("PROBLEM") !== -1 || descUpper.indexOf("OVERSPEED") !== -1 || descUpper.indexOf("NG") !== -1) {
-      code = "A";
-    }
+  // Eğer Durumda GAYRİ FAAL yazıyorsa ve ayrıntıda bir şey bulunamadıysa A (Arıza) dönelim
+  if (DURUM_IS_GAYRI_FAAL(durumUpper)) return 'A';
+
+  // Adım 3: Açıklama (ACIKLAMA) - KULLANICI TALEBİ ÜZERİNE İPTAL EDİLDİ
+  // var descMatch = findCodeInText(descUpper);
+  // if (descMatch) return descMatch;
+
+  // Adım 4: Karma Kontrolü (Hepsini kapsayabilir)
+  if (detailUpper.indexOf('KARMA') !== -1 || detailUpper.indexOf('HEM FAAL') !== -1 || descUpper.indexOf('KARMA') !== -1 || descUpper.indexOf('HEM FAAL') !== -1) {
+    return 'K';
   }
 
-  return code;
+  return 'F';
 }
 
 function DURUM_IS_GAYRI_FAAL(s) {
-  return s.indexOf("GAYRİ") !== -1 || s.indexOf("GAYRI") !== -1 || s.indexOf("GF") !== -1 || s === "G.FAAL" || s === "A" || s === "ARIZA";
+  if (!s) return false;
+  var n = s.toLocaleUpperCase('tr-TR').replace(/İ/g, "I").replace(/ı/g, "I");
+  return n.indexOf("GAYRI") !== -1 || n.indexOf("GF") !== -1 || n === "G.FAAL" || n.indexOf("ARIZA") !== -1 || n.indexOf("ARZ") !== -1 || n === "A";
 }
 
 function formatToHHMM(val) {
@@ -1828,68 +1881,121 @@ function performDailyMidnightLogging() {
     "dd.MM.yyyy",
   );
 
-  // Cache IDs for de-duplication
-  var logIds = logSheet.getRange("A:A").getValues().map(function(r){ return String(r[0]).trim(); });
-  var faalIds = faalLogSheet.getRange("A:A").getValues().map(function(r){ return String(r[0]).trim(); });
+  // Cache full data for de-duplication and change detection
+  var lastRowLog = logSheet.getLastRow();
+  var logFullData = lastRowLog > 1 ? logSheet.getRange(1, 1, lastRowLog, 10).getValues() : [];
+  var logMap = {};
+  logFullData.forEach(function(row, idx) {
+    logMap[String(row[0]).trim()] = { row: idx + 1, data: row };
+  });
+
+  var lastRowFaal = faalLogSheet.getLastRow();
+  var faalFullData = lastRowFaal > 1 ? faalLogSheet.getRange(1, 1, lastRowFaal, 6).getValues() : [];
+  var faalMap = {};
+  faalFullData.forEach(function(row, idx) {
+    faalMap[String(row[0]).trim()] = { row: idx + 1, data: row };
+  });
 
   fleetData.forEach(function (item) {
     var id = dateStr + "_" + item.kuyrukNo;
     
+    // Values for Log
+    var newLogValues = [
+      id,
+      dateStr,
+      item.kuyrukNo,
+      item.tip,
+      item.govdeUcusSaati || 0,
+      item.faydaliSaat || 0,
+      item.konum,
+      item.durum,
+      item.durumAyrintisi,
+      item.aciklama ? "'" + String(item.aciklama) : "",
+    ];
+
     // De-duplicate Envanter Log
-    var logIndex = logIds.indexOf(id);
-    if (logIndex === -1) {
-      logSheet.appendRow([
-        id,
-        dateStr,
-        item.kuyrukNo,
-        item.tip,
-        item.govdeUcusSaati || 0,
-        item.faydaliSaat || 0,
-        item.konum,
-        item.durum,
-        item.durumAyrintisi,
-        item.aciklama ? "'" + String(item.aciklama) : "",
-      ]);
+    if (!logMap[id]) {
+      logSheet.appendRow(newLogValues);
       logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");
+      logMap[id] = { row: logSheet.getLastRow(), data: newLogValues };
     } else {
-      // Update existing if exists (shouldn't happen in normal midnight run, but good for safety)
-      var targetRow = logIndex + 1;
-      logSheet.getRange(targetRow, 1, 1, 10).setValues([[
-        id,
-        dateStr,
-        item.kuyrukNo,
-        item.tip,
-        item.govdeUcusSaati || 0,
-        item.faydaliSaat || 0,
-        item.konum,
-        item.durum,
-        item.durumAyrintisi,
-        item.aciklama ? "'" + String(item.aciklama) : "",
-      ]]);
-      logSheet.getRange(targetRow, 10).setNumberFormat("@");
+      var entry = logMap[id];
+      var targetRow = entry.row;
+      var existingData = entry.data;
+
+      var hasChanged = false;
+      for (var i = 3; i < 10; i++) { // Check from Tip onwards
+         var existingVal = String(existingData[i] || "");
+         var newVal = String(newLogValues[i] || "");
+         if (i === 9 && newVal.indexOf("'") === 0) newVal = newVal.substring(1);
+         if (i === 9 && existingVal.indexOf("'") === 0) existingVal = existingVal.substring(1);
+
+         if (existingVal !== newVal) {
+           hasChanged = true;
+           break;
+         }
+      }
+
+      if (hasChanged) {
+        logSheet.getRange(targetRow, 1, 1, 10).setValues([newLogValues]);
+        logSheet.getRange(targetRow, 10).setNumberFormat("@");
+      }
     }
 
     // De-duplicate Faaliyet Log
-    var faalIndex = faalIds.indexOf(id);
+    var targetFaalEntry = faalMap[id];
     var analysisCode = analyzeStatusGS(item);
-    if (faalIndex === -1) {
-      faalLogSheet.appendRow([
-        id,
-        dateStr,
-        item.kuyrukNo,
-        item.tip,
-        item.durumAyrintisi,
-        analysisCode,
-      ]);
+    
+    // YÖNETİCİ PANELİNDEKİ MANUEL KODU KORUMA (Carry-over logic)
+    // Eğer bugün için henüz log yoksa, dünün loguna bakıp manuel bir kod var mı ve durum aynı mı kontrol edelim
+    if (!targetFaalEntry) {
+      var yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      var yesterdayStr = Utilities.formatDate(yesterday, Session.getScriptTimeZone(), "dd.MM.yyyy");
+      var yesterdayId = yesterdayStr + "_" + item.kuyrukNo;
+      
+      // Dünün verisini arayalım (Map'te yoksa sheetten bakmaya gerek yok, performans için sadece dünün mapini kursak iyi olurdu ama faalMap tüm sheet'i kapsıyor)
+      var prevEntry = faalMap[yesterdayId];
+      if (prevEntry) {
+        var prevAyrinti = String(prevEntry.data[4]).trim().toUpperCase();
+        var prevCode = String(prevEntry.data[5]).trim().toUpperCase();
+        var currentAyrinti = String(item.durumAyrintisi || "").trim().toUpperCase();
+        
+        // Eğer ayrıntı değişmediyse ve dünkü kod 'F' değilse (manueldir), o kodu bugün için de kullanalım
+        if (prevAyrinti === currentAyrinti && prevCode !== 'F') {
+          analysisCode = prevCode;
+        }
+      }
+    }
+
+    var newFaalValues = [
+      id,
+      dateStr,
+      item.kuyrukNo,
+      item.tip,
+      item.durumAyrintisi,
+      analysisCode,
+    ];
+
+    if (!targetFaalEntry) {
+      faalLogSheet.appendRow(newFaalValues);
+      faalMap[id] = { row: faalLogSheet.getLastRow(), data: newFaalValues };
     } else {
-      faalLogSheet.getRange(faalIndex + 1, 1, 1, 6).setValues([[
-        id,
-        dateStr,
-        item.kuyrukNo,
-        item.tip,
-        item.durumAyrintisi,
-        analysisCode,
-      ]]);
+      var entry = targetFaalEntry;
+      var targetRow = entry.row;
+      var existingData = entry.data;
+
+      var hasChanged = false;
+      for (var i = 3; i < 6; i++) {
+        if (String(existingData[i] || "").trim().toUpperCase() !== String(newFaalValues[i] || "").trim().toUpperCase()) {
+          hasChanged = true;
+          break;
+        }
+      }
+
+      if (hasChanged) {
+        faalLogSheet.getRange(targetRow, 1, 1, 6).setValues([newFaalValues]);
+      }
     }
   });
 }
