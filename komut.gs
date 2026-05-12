@@ -265,6 +265,17 @@ function doPost(e) {
       return jsonError("Güncellenecek log kaydı bulunamadı: " + id);
     }
 
+    // 🔵 AKSİYON: TEKİL HAVA ARACI LOGLAMA
+    if (action === "logSingleAircraftActivity") {
+      var logSs = SpreadsheetApp.openById(logSsId);
+      var aircraftData = params.data || {};
+      if (!aircraftData.kuyrukNo) return jsonError("Kuyruk no eksik.");
+      
+      // saveLogsToSheets expects an array of aircraft objects
+      saveLogsToSheets(logSs, [aircraftData]);
+      return jsonSuccess("Log başarıyla kaydedildi.");
+    }
+
     // 🔵 AKSİYON: SİSTEM LOGLARI (ENVANTER VE FAALİYET) - GERÇEK ZAMANLI GÜNCELLEME
     // BU BLOK KULLANICI İSTEĞİ ÜZERİNE KALDIRILDI. LOGLAR SADECE GECE YARISI VEYA GÜN İÇİ FAALİYET İLE KAYDEDİLECEK.
 
@@ -712,10 +723,13 @@ function doPost(e) {
         aciklama: rowValues[getColIdx(mapping.aciklama)] || "",
         konum: rowValues[getColIdx(mapping.konum)] || "",
         govdeUcusSaati: rowValues[getColIdx(mapping.govdeUcusSaati)] || "",
-        faydaliSaat: rowValues[getColIdx(mapping.faydaliSaat)] || ""
+        faydaliSaat: rowValues[getColIdx(mapping.faydaliSaat)] || "",
+        assignedCode: updates.assignedCode || updates.analizKodu // Honor manual override from caller if present
       };
       
-      aircraft.assignedCode = analyzeStatusGS(aircraft);
+      if (!aircraft.assignedCode) {
+        aircraft.assignedCode = analyzeStatusGS(aircraft);
+      }
       saveLogsToSheets(logSs, [aircraft]);
     } catch (logErr) {
       console.error("Real-time logging error: " + logErr.toString());
@@ -1116,7 +1130,21 @@ function saveLogsToSheets(ss, fleetData) {
     if (!kNo) return;
 
     var envKey = tarihStr + "_" + kNo;
-    var assignedCode = aircraft.assignedCode || analyzeStatusGS(aircraft);
+    
+    // Check if there's an existing manually overridden code in the sheet
+    var existingFaalCode = (faalIdMap[envKey] && faalIdMap[envKey].data) ? String(faalIdMap[envKey].data[5] || "") : "";
+    var isManualOverride = aircraft.isManualOverride || (aircraft.assignedCode && !aircraft._autoAnalyzed);
+    
+    var assignedCode = aircraft.assignedCode || aircraft.analizKodu;
+    if (!assignedCode) {
+      // If we don't have a code from caller, only re-analyze if existing code is empty or 'F' 
+      // or if we really want to force it.
+      if (!existingFaalCode || existingFaalCode === 'F') {
+        assignedCode = analyzeStatusGS(aircraft);
+      } else {
+        assignedCode = existingFaalCode;
+      }
+    }
     
     // Values to write
     var newEnvValues = [

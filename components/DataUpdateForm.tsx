@@ -593,11 +593,21 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
 
       // 2. ANA DOSYA GÜNCELLEME (HER ZAMAN)
       // Kullanıcı isteği: İşlem tarihi ne olursa olsun ilgili hava aracının dosyasında güncelleme yapılır.
+      const statusToAnalyze = {
+        durum: formData.durum,
+        durumAyrintisi: formData.durumAyrintisi,
+        aciklama: formData.aciklama
+      };
+      const analysis = analyzeStatus(statusToAnalyze);
+
       const mainUpdateResult = await updateAircraftData(
         selectedAircraft.appsScriptUrl || '',
         selectedAircraft.sheetId || '',
         selectedAircraft.kuyrukNo,
-        finalData,
+        { 
+          ...finalData, 
+          assignedCode: analysis.code // Send assignedCode to prevent auto-reanalysis on server
+        },
         selectedAircraft.mapping,
         selectedAircraft.sheetName,
         selectedAircraft.tip
@@ -654,6 +664,13 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
             if (decimalTypes.includes(selectedAircraft.tip)) {
               const parsed = parseSingleCellToHour(val, selectedAircraft.tip);
               return parsed !== null ? parsed.toFixed(1).replace('.', ',') : val;
+            }
+            // For T-70 and AT-802, use HH:mm format in the log
+            const parsed = parseSingleCellToHour(val, selectedAircraft.tip);
+            if (parsed !== null) {
+              const h = Math.floor(Math.abs(parsed));
+              const m = Math.round((Math.abs(parsed) - h) * 60);
+              return `${parsed < 0 ? '-' : ''}${h}:${m.toString().padStart(2, '0')}`;
             }
             return val;
           };

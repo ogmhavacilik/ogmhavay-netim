@@ -399,7 +399,12 @@ const App = () => {
       const updatedFleet = [...prevFleet];
       
       incomingData.forEach(incoming => {
-        const existingIdx = updatedFleet.findIndex(a => a.kuyrukNo === incoming.kuyrukNo);
+        if (!incoming.kuyrukNo) return;
+        const incomingKNo = String(incoming.kuyrukNo).trim().toUpperCase();
+        
+        const existingIdx = updatedFleet.findIndex(a => 
+          String(a.kuyrukNo).trim().toUpperCase() === incomingKNo
+        );
         const existing = existingIdx !== -1 ? updatedFleet[existingIdx] : null;
         
         if (existing && initialSyncDone.current) {
@@ -436,7 +441,11 @@ const App = () => {
         if (existingIdx !== -1) {
           updatedFleet[existingIdx] = { ...updatedFleet[existingIdx], ...incoming } as Aircraft;
         } else {
-          updatedFleet.push(incoming as Aircraft);
+          // Yeni Ekle - Sadece kuyruk no geçerli görünüyorsa (T-70 junk koruması)
+          const isJunkT70 = incoming.tip === 'T-70' && !incomingKNo.includes('OR-') && !incomingKNo.includes('10');
+          if (!isJunkT70) {
+            updatedFleet.push(incoming as Aircraft);
+          }
         }
 
         setActivities(prevActivities => {
@@ -628,6 +637,12 @@ const App = () => {
           try {
             const kuyrukNo = String(logEntry.kuyrukNo || logEntry['Kuyruk No'] || logEntry.tailNumber || '').trim();
             if (!kuyrukNo) return;
+
+            // Junk T-70 filter: Ignore rows that don't match standard T-70 kuyruk numbers
+            const kNoUpper = kuyrukNo.toUpperCase();
+            if ((logEntry.tip === 'T-70' || logEntry.Platform === 'T-70') && !kNoUpper.includes('OR-') && !kNoUpper.includes('10')) {
+               return;
+            }
 
             const tarihStr = String(logEntry.tarih || logEntry.Tarih || '').trim();
             const durumAyrintisi = String(logEntry.durum || logEntry.Durum || '').trim().toUpperCase();
@@ -1378,16 +1393,25 @@ const App = () => {
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: 'sync' })
       });
-      const result = await response.json();
+      
+      const text = await response.text();
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        throw new Error(`Sunucu geçersiz yanıt verdi: ${text.substring(0, 50)}...`);
+      }
+
       if (result.success) {
         alert('Log senkronizasyonu başarıyla tamamlandı.');
         runGlobalSync(); // Refresh data
       } else {
-        alert('Senkronizasyon hatası: ' + (result.message || 'Bilinmeyen hata'));
+        alert('Senkronizasyon hatası: ' + (result.message || result.error || 'Bilinmeyen hata'));
       }
     } catch (error) {
       console.error('Sync log error:', error);
-      alert(`Senkronizasyon sırasında bir hata oluştu: ${error instanceof Error ? error.message : String(error)}`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      alert(`Senkronizasyon sırasında bir hata oluştu: ${errorMsg}\n\nİpucu: Bu hata genellikle internet bağlantısı veya Google Apps Script izinlerinden (Anyone erişimi) kaynaklanır.`);
     } finally {
       setIsSyncing(false);
     }
