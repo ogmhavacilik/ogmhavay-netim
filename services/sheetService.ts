@@ -215,16 +215,33 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
       s = s.replace(/\./g, '').replace(',', '.');
     } 
     // Case 2: "1.687" -> Only dots, but looks like thousand separator (3 digits after last dot)
+    // Be careful not to match simple decimals if dot is used for decimal (though rarer in TR)
     else if (s.includes('.') && /\.\d{3}$/.test(s)) {
       s = s.replace(/\./g, '');
     }
-    // Case 3: "1687,5" -> Only comma
+    // Case 3: "1.687,50" or similar with comma as decimal
     else if (s.includes(',')) {
       s = s.replace(',', '.');
     }
     
     const n = parseFloat(s);
     if (!isNaN(n)) {
+      // Heuristic for Google Sheets durations (Days vs Hours)
+      // If it's a small number from a cell that likely contains a duration.
+      // Total flight hours are usually > 100.
+      // If the number is < 150 and has decimals, it's very likely days (e.g. 70.3 = 1687h)
+      // However, Faydali Saat can be small (e.g. 25).
+      // If it's < 5 and has decimals, it's definitely days (e.g. 1.04 = 25h).
+      if (n > 0 && n < 300) {
+        // If it's likely a day count (common for durations in Sheets)
+        // We only apply this if it seems appropriate. 
+        // For total flight hours (Gövde Saati), values < 300 are rare unless aircraft is new.
+        // But the multiplier was removed and caused issues. Let's restore it with a check.
+        const isLikelyDays = (n % 1 !== 0) || (n < 20); 
+        if (isLikelyDays) {
+          return n * 24;
+        }
+      }
       return n;
     }
   }
@@ -245,10 +262,7 @@ export const formatGovdeHour = (val: any, aircraftType: string): string => {
 
   const parsed = parseSingleCellToHour(raw, aircraftType);
   if (parsed !== null) {
-    if (aircraftType === 'AT-802' || aircraftType === 'Bell-429' || aircraftType === 'B-360' || aircraftType === 'C-650') {
-      return parsed.toFixed(1).replace('.', ',');
-    }
-    // Revert back to HH:mm for all except specific decimal-preferred types.
+    // Always use HH:mm for flight hours as requested by user
     return formatToHHMM(parsed, aircraftType);
   }
   return s;

@@ -1017,25 +1017,15 @@ function syncFleetToLogs() {
             item.assignedCode = existingFaalCode;
           }
           
-          // Improved Hour Parsing for Midnight Sync
+          // Improved Hour Parsing for Midnight Sync - Always use HH:mm
           var parsedGovde = parseSingleCellToHourGS(item.govdeUcusSaati, item.tip);
           if (parsedGovde !== null) {
-            var isDecimalType = ['BELL-429', 'B-360', 'C-650', 'AT-802'].includes(String(item.tip).toUpperCase().replace(/[\s-]/g, ''));
-            if (isDecimalType) {
-              item.govdeUcusSaati = parsedGovde.toFixed(1).replace('.', ',');
-            } else {
-              item.govdeUcusSaati = formatToHHMMGS(parsedGovde);
-            }
+            item.govdeUcusSaati = formatToHHMMGS(parsedGovde);
           }
           
           var parsedFaydali = parseSingleCellToHourGS(item.faydaliSaat, item.tip);
           if (parsedFaydali !== null) {
-             var isDecimalType = ['BELL-429', 'B-360', 'C-650', 'AT-802'].includes(String(item.tip).toUpperCase().replace(/[\s-]/g, ''));
-             if (isDecimalType) {
-               item.faydaliSaat = parsedFaydali.toFixed(1).replace('.', ',');
-             } else {
-               item.faydaliSaat = formatToHHMMGS(parsedFaydali);
-             }
+            item.faydaliSaat = formatToHHMMGS(parsedFaydali);
           }
           
           fleetData.push(item);
@@ -1066,27 +1056,41 @@ function parseSingleCellToHourGS(val, tip) {
   if (val instanceof Date) {
     var base = new Date(Date.UTC(1899, 11, 30));
     var diffHours = (val.getTime() - base.getTime()) / (1000 * 60 * 60);
-    // 1900 leap bug or timezone offset might add ~2 hours for very early dates
-    if (val.getFullYear() < 1905 && diffHours > 0) {
-       // Heuristic adjustment if needed, but for now just returning diff
-    }
     return diffHours;
   }
   if (typeof val === 'number') {
+    // Heuristic for days-to-hours conversion (Sheet durations are often days)
+    if (val > 0 && val < 400) {
+       // If it's a small number with decimals, it's likely days (e.g. 70.3125 = 1687.5h)
+       // Or if it's very small (e.g. 1.5 = 36h)
+       var isLikelyDays = (val % 1 !== 0) || (val < 20);
+       if (isLikelyDays) return val * 24;
+    }
     return val;
   }
   var s = String(val).trim();
   if (s.includes(':')) {
     var p = s.split(':').map(Number);
-    return (p[0] || 0) + (p[1] || 0) / 60;
+    var h = p[0] || 0;
+    var m = p[1] || 0;
+    var sec = p[2] || 0;
+    return h + m / 60 + sec / 3600;
   }
-  // Thousand separators
+  
+  // Robust Turkish/English number cleaning
   if (s.includes('.') && s.includes(',')) s = s.replace(/\./g, "").replace(",", ".");
-  else if (s.includes('.') && /\.\d{3}$/.test(s)) s = s.replace(/\./g, "");
-  else if (s.includes(',')) s = s.replace(',', '.');
+  else if (s.includes('.') && /\.\d{3}$/.test(s)) s = s.replace(/\./g, ""); // Thousand separator
+  else if (s.includes(',')) s = s.replace(',', '.'); // Decimal separator
   
   var n = parseFloat(s);
-  return isNaN(n) ? null : n;
+  if (isNaN(n)) return null;
+  
+  // Apply same heuristic to numeric strings
+  if (n > 0 && n < 400) {
+    var isLikelyDays = (n % 1 !== 0) || (n < 20);
+    if (isLikelyDays) return n * 24;
+  }
+  return n;
 }
 
 function analyzeStatusGS(item) {
