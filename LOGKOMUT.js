@@ -2307,57 +2307,76 @@ function setLogTimeValue(sheet, row, col, value, tip) {
     return;
   }
   var valStr = String(value).trim();
-  var tipUpper = (tip || "").toUpperCase().replace(/[\s-]/g, "");
+  var tipUpper = (tip || "").toUpperCase();
   
-  var isDecimalType = tipUpper.indexOf("B360") !== -1 || 
-                      tipUpper.indexOf("C650") !== -1 || 
-                      tipUpper.indexOf("BELL429") !== -1 ||
-                      tipUpper.indexOf("AT802") !== -1;
+  // B-360, C-650, BELL-429 ve diğer ondalık tercih edenler
+  var cleanTip = tipUpper.replace(/[\s-]/g, "");
+  var isDecimalType = cleanTip.indexOf("B360") !== -1 || 
+                      cleanTip.indexOf("C650") !== -1 || 
+                      cleanTip.indexOf("BELL429") !== -1;
 
-  // 1. Durations (HH:MM:SS)
-  if (valStr.includes(":")) {
-    var p = valStr.split(":").map(Number);
-    var h = p[0] || 0;
-    var m = p[1] || 0;
-    var s = p[2] || 0;
-    var totalHours = h + m / 60 + s / 3600;
-    
-    // Always write as time format [h]:mm for durations as per user request
-    range.setValue(totalHours / 24); // Sheets store time as fraction of day
-    range.setNumberFormat("[h]:mm");
-    return;
-  }
-
-  // 2. Numbers (Decimal or Thousand Separators)
-  var cleanStr = valStr;
-  if (cleanStr.includes(".") && cleanStr.includes(",")) {
-    cleanStr = cleanStr.replace(/\./g, "").replace(",", ".");
-  } else if (cleanStr.includes(",") ) {
-    cleanStr = cleanStr.replace(",", ".");
-  } else if (cleanStr.includes(".") && /\.\d{3}$/.test(cleanStr)) {
-    cleanStr = cleanStr.replace(/\./g, "");
-  }
-
-  var n = parseFloat(cleanStr);
-  if (!isNaN(n)) {
-    // Heuristic: If it's a small number from 1025 logic (e.g. 70.3), it might be days if we are not careful.
-    // But usually here it's already converted to hours by the caller.
-    // However, if the caller sent days, we convert.
-    if (n > 0 && n < 400 && (n % 1 !== 0 || n < 20)) {
-       // Suspect days if it came from a cell value directly
-       // But logAllAircraftActivity usually sends hours.
-       // Let's assume it's hours if it's > 500, else we check.
-       // For safety, we trust the caller mostly but add formatting.
+  // EXTREME PRECISION: Eğer değerde virgül varsa ve saat formatında değilse (HH:MM), 
+  // direk ondalık sayı olarak yazalım.
+  if (!valStr.includes(":") && (valStr.includes(",") || valStr.includes("."))) {
+    var n = parseFloat(valStr.replace(",", "."));
+    if (!isNaN(n)) {
+      range.setValue(n);
+      range.setNumberFormat("#,##0.0#"); // En az 1, opsiyonel 2 basamak
+      return;
     }
-    
-    range.setValue(n);
-    if (isDecimalType) {
-      range.setNumberFormat("#,##0.0#");
+  }
+
+  if (isDecimalType) {
+    // Robust decimal parsing for Turkish context:
+    // If it has a comma and a dot, assume dot is thousand separator.
+    // If it only has a dot, we need to decide if it's decimal or thousand.
+    // In many cases, 1732.5 is intended as decimal if it's small.
+    var n;
+    if (valStr.includes(',') && valStr.includes('.')) {
+      n = parseFloat(valStr.replace(/\./g, "").replace(',', '.'));
+    } else if (valStr.includes(',')) {
+      n = parseFloat(valStr.replace(',', '.'));
     } else {
-      range.setNumberFormat("#,##0");
+      n = parseFloat(valStr);
     }
-    return;
+    
+    if (!isNaN(n)) {
+      range.setValue(n);
+      range.setNumberFormat("#,##0.0");
+      return;
+    }
   }
 
-  range.setValue(value);
+  // Time based parsing
+  if (/^\d+$/.test(valStr)) {
+    valStr = valStr + ':00';
+  } else if (/^\d+[.,]\d+$/.test(valStr)) {
+    // If they typed 1732.5 -> treat as 1732:30 or just use decimal if it's a number
+    var n = parseFloat(valStr.replace(',', '.'));
+    if (!isNaN(n)) {
+      range.setValue(n / 24);
+      range.setNumberFormat("[h]:mm");
+      return;
+    }
+  }
+
+  if (/^\d+:\d{2}(:\d{2})?$/.test(valStr) || (/^\d+:\d{1}$/.test(valStr))) {
+    var parts = valStr.split(':');
+    var hours = parseInt(parts[0], 10);
+    var mins = parseInt(parts[1], 10);
+    if (parts[1].length === 1) mins = mins * 10;
+    
+    var secs = parts.length > 2 ? parseInt(parts[2], 10) : 0;
+    var decimalValue = (hours + (mins / 60) + (secs / 3600)) / 24;
+    range.setValue(decimalValue);
+    range.setNumberFormat("[h]:mm");
+  } else {
+    var n = parseFloat(String(value).replace(',', '.'));
+    if (!isNaN(n)) {
+      range.setValue(n / 24);
+      range.setNumberFormat("[h]:mm");
+    } else {
+      range.setValue(value);
+    }
+  }
 }

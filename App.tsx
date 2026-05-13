@@ -390,151 +390,129 @@ const App = () => {
   const handleSyncFromExcel = useCallback((incomingData: Partial<Aircraft>[], platform: string, shouldLog: boolean = false) => {
     if (!incomingData || incomingData.length === 0) return;
     
-    // We'll define a merge function to use both here and in runGlobalSync
-    setFleet(prevFleet => {
-      const { updatedFleet, notifications } = mergeFleetData(prevFleet, incomingData, platform);
-      
-      if (notifications.length > 0) {
-        setNotifications(prev => [...notifications, ...prev].slice(0, 100));
-      }
+    const now = new Date();
+    const timestamp = now.toLocaleDateString('tr-TR') + ' ' + now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const formattedDate = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()}`;
+    let discoveredChanges: AppNotification[] = [];
 
-      // Log to central log if requested
-      if (shouldLog && LOG_SCRIPT_URL && incomingData.length > 0) {
-         logFleetDataBatch(incomingData, platform);
-      }
+    setFleet(prevFleet => {
+      const updatedFleet = [...prevFleet];
+      
+      incomingData.forEach(incoming => {
+        if (!incoming.kuyrukNo) return;
+        const incomingKNo = String(incoming.kuyrukNo).trim().toUpperCase();
+        
+        const existingIdx = updatedFleet.findIndex(a => 
+          String(a.kuyrukNo).trim().toUpperCase() === incomingKNo
+        );
+        const existing = existingIdx !== -1 ? updatedFleet[existingIdx] : null;
+        
+        if (existing && initialSyncDone.current) {
+          ['durum', 'konum', 'durumAyrintisi', 'faydaliSaat', 'govdeUcusSaati', 'aciklama'].forEach(col => {
+            const key = col as keyof Aircraft;
+            const oldVal = String(existing[key] || '').trim();
+            const newVal = String(incoming[key] || '').trim();
+
+            if (oldVal !== newVal) {
+              const labelMap: Record<string, string> = {
+                'durum': 'DURUM',
+                'konum': 'KONUM',
+                'durumAyrintisi': 'DURUM AYRINTISI',
+                'faydaliSaat': 'FAYDALI SAAT',
+                'govdeUcusSaati': 'GÖVDE UÇUŞ SAATİ',
+                'aciklama': 'AÇIKLAMA'
+              };
+              const colLabel = labelMap[col] || col.toUpperCase();
+              
+              discoveredChanges.push({
+                id: Math.random().toString(36).substr(2, 9),
+                platform: platform,
+                kuyrukNo: existing.kuyrukNo,
+                kolon: colLabel,
+                oncekiDeger: oldVal, 
+                yeniDeger: newVal,
+                mesaj: `${existing.kuyrukNo} uçağı için ${colLabel} verisi ${oldVal} → ${newVal} olarak değiştirilmiştir.`,
+                tarih: timestamp
+              });
+            }
+          });
+        }
+
+        if (existingIdx !== -1) {
+          updatedFleet[existingIdx] = { ...updatedFleet[existingIdx], ...incoming } as Aircraft;
+        } else {
+          // Yeni Ekle - Sadece kuyruk no geçerli görünüyorsa (T-70 junk koruması)
+          const isJunkT70 = incoming.tip === 'T-70' && !incomingKNo.includes('OR-') && !incomingKNo.includes('10');
+          if (!isJunkT70) {
+            updatedFleet.push(incoming as Aircraft);
+          }
+        }
+
+        setActivities(prevActivities => {
+          let newActivities = [...prevActivities];
+          const existsIdx = newActivities.findIndex(act => act.kuyrukNo === incoming.kuyrukNo);
+          const now = new Date();
+          const currentDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+          const newCode = (incoming.assignedCode || 'F') as DailyStatusCode;
+
+          if (existsIdx !== -1) {
+            newActivities[existsIdx] = {
+              ...newActivities[existsIdx],
+              dailyStatuses: { ...(newActivities[existsIdx].dailyStatuses || {}), [currentDateStr]: newCode },
+              hourlyStatuses: newActivities[existsIdx].hourlyStatuses || {},
+              intraDayCompletions: newActivities[existsIdx].intraDayCompletions || {},
+              intraDayDurations: newActivities[existsIdx].intraDayDurations || {}
+            };
+          } else {
+            newActivities.push({
+              kuyrukNo: incoming.kuyrukNo || '',
+              cagriKodu: incoming.cagriKodu || getCallSignByTail(incoming.kuyrukNo || ''),
+              tip: incoming.tip || platform,
+              dailyStatuses: { [currentDateStr]: newCode },
+              hourlyStatuses: {},
+              intraDayCompletions: {},
+              intraDayDurations: {}
+            });
+          }
+          return newActivities;
+        });
+      });
 
       return updatedFleet;
     });
+
+    // Log to central log if requested - Batching all aircraft in one request
+    if (shouldLog && LOG_SCRIPT_URL && incomingData.length > 0) {
+      const fleetToLog = incomingData.map(incoming => ({
+        kuyrukNo: incoming.kuyrukNo,
+        tip: incoming.tip || platform,
+        govdeUcusSaati: incoming.govdeUcusSaati || 0,
+        faydaliSaat: incoming.faydaliSaat || 0,
+        konum: incoming.konum || 'ANKARA',
+        durum: incoming.durum || Status.FAAL,
+        durumAyrintisi: incoming.durumAyrintisi || '-',
+        aciklama: incoming.aciklama || '',
+        analizKodu: incoming.assignedCode || 'F'
+      }));
+
+      fetch(LOG_SCRIPT_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: 'logAllAircraftActivity',
+          sheetId: MAIL_LOG_SHEET_ID,
+          fleetData: fleetToLog
+        })
+      }).catch(err => {
+        console.error("Batch sync log error:", err);
+      });
+    }
+
+    if (discoveredChanges.length > 0) {
+      setNotifications(prev => [...discoveredChanges, ...prev].slice(0, 100));
+    }
   }, []);
-
-  const mergeFleetData = (prevFleet: Aircraft[], incomingData: Partial<Aircraft>[], platform: string) => {
-    const updatedFleet = [...prevFleet];
-    const notifications: AppNotification[] = [];
-    const now = new Date();
-    const timestamp = now.toLocaleDateString('tr-TR') + ' ' + now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-
-    incomingData.forEach(incoming => {
-      if (!incoming.kuyrukNo) return;
-      const incomingKNo = String(incoming.kuyrukNo).trim().toUpperCase();
-      
-      const existingIdx = updatedFleet.findIndex(a => 
-        String(a.kuyrukNo).trim().toUpperCase() === incomingKNo
-      );
-      const existing = existingIdx !== -1 ? updatedFleet[existingIdx] : null;
-      
-      // Source Authority: If existing aircraft has a different tip, and it's NOT a manual update, ignore.
-      // This prevents junk data from other sheets (e.g. T-70 templates) from overwriting valid data.
-      if (existing && existing.tip && platform !== 'MANUEL' && existing.tip !== platform) {
-         return;
-      }
-
-      if (existing && initialSyncDone.current) {
-        ['durum', 'konum', 'durumAyrintisi', 'faydaliSaat', 'govdeUcusSaati', 'aciklama'].forEach(col => {
-          const key = col as keyof Aircraft;
-          const oldVal = String(existing[key] || '').trim();
-          const newVal = String(incoming[key] || '').trim();
-
-          // Monotonically Increasing Rule for Govde Ucus Saati
-          if (key === 'govdeUcusSaati' && existing.govdeUcusSaatiRaw !== undefined && incoming.govdeUcusSaatiRaw !== undefined) {
-             if ((incoming.govdeUcusSaatiRaw || 0) < (existing.govdeUcusSaatiRaw || 0)) {
-                // Ignore decreasing hours
-                return;
-             }
-          }
-
-          if (oldVal !== newVal) {
-            const labelMap: Record<string, string> = {
-              'durum': 'DURUM',
-              'konum': 'KONUM',
-              'durumAyrintisi': 'DURUM AYRINTISI',
-              'faydaliSaat': 'FAYDALI SAAT',
-              'govdeUcusSaati': 'GÖVDE UÇUŞ SAATİ',
-              'aciklama': 'AÇIKLAMA'
-            };
-            const colLabel = labelMap[col] || col.toUpperCase();
-            
-            notifications.push({
-              id: Math.random().toString(36).substr(2, 9),
-              platform: platform,
-              kuyrukNo: existing.kuyrukNo,
-              kolon: colLabel,
-              oncekiDeger: oldVal, 
-              yeniDeger: newVal,
-              mesaj: `${existing.kuyrukNo} uçağı için ${colLabel} verisi ${oldVal} → ${newVal} olarak değiştirilmiştir.`,
-              tarih: timestamp
-            });
-          }
-        });
-      }
-
-      if (existingIdx !== -1) {
-        const existing = updatedFleet[existingIdx];
-        let finalIncomingCode = incoming.assignedCode;
-        
-        if (existing.assignedCode) {
-          const hasStatusChange = 
-            String(existing.durum) !== String(incoming.durum) ||
-            String(existing.durumAyrintisi) !== String(incoming.durumAyrintisi) ||
-            String(existing.aciklama) !== String(incoming.aciklama);
-          
-          if (!hasStatusChange) {
-            finalIncomingCode = existing.assignedCode;
-          }
-        }
-
-        // Monotonically Increasing Rule Check again for the actual merge
-        const isDecreasing = (incoming.govdeUcusSaatiRaw !== undefined && 
-                              existing.govdeUcusSaatiRaw !== undefined && 
-                              (incoming.govdeUcusSaatiRaw || 0) < (existing.govdeUcusSaatiRaw || 0));
-
-        const mergeData = { ...incoming };
-        if (isDecreasing) {
-           delete mergeData.govdeUcusSaati;
-           delete mergeData.govdeUcusSaatiRaw;
-        }
-
-        updatedFleet[existingIdx] = { 
-          ...existing, 
-          ...mergeData,
-          assignedCode: finalIncomingCode
-        } as Aircraft;
-      } else {
-        const isJunkT70 = incoming.tip === 'T-70' && !incomingKNo.includes('OR-') && !incomingKNo.includes('10');
-        if (!isJunkT70) {
-          updatedFleet.push(incoming as Aircraft);
-        }
-      }
-    });
-
-    return { updatedFleet, notifications };
-  };
-
-  const logFleetDataBatch = (incomingData: any[], platform: string) => {
-    if (!LOG_SCRIPT_URL) return;
-    const fleetToLog = incomingData.map(incoming => ({
-      kuyrukNo: incoming.kuyrukNo,
-      tip: incoming.tip || platform,
-      govdeUcusSaati: incoming.govdeUcusSaati || 0,
-      faydaliSaat: incoming.faydaliSaat || 0,
-      konum: incoming.konum || 'ANKARA',
-      durum: incoming.durum || Status.FAAL,
-      durumAyrintisi: incoming.durumAyrintisi || '-',
-      aciklama: incoming.aciklama || '',
-      analizKodu: incoming.assignedCode || 'F'
-    }));
-
-    fetch(LOG_SCRIPT_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        action: 'logAllAircraftActivity',
-        sheetId: MAIL_LOG_SHEET_ID,
-        fleetData: fleetToLog
-      })
-    }).catch(err => console.error("Batch sync log error:", err));
-  };
 
   const fetchPastLogs = async () => {
     if (!LOG_SCRIPT_URL) return Promise.resolve();
@@ -722,14 +700,6 @@ const App = () => {
                 if (dateStrKey === todayStr) {
                   if (analizKodu) {
                     act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
-                    
-                    // UPDATE FLEET WITH CODE FROM LOG (STICKINESS)
-                    setFleet(prev => prev.map(f => {
-                       if (f.kuyrukNo === kuyrukNo) {
-                         return { ...f, assignedCode: code };
-                       }
-                       return f;
-                    }));
                   }
                 } else {
                   act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
@@ -971,78 +941,64 @@ const App = () => {
 
   const runGlobalSync = useCallback(async () => {
     setIsSyncing(true);
+    
+    // Geçmiş logları beklemeden hemen çekmeye başla
     fetchPastLogs();
 
     try {
-      const allFetchedData: { data: Partial<Aircraft>[], type: string }[] = [];
+      const fetchedFleet: Aircraft[] = [];
+      let totalChanges = 0;
 
       await Promise.all(SHEET_CONFIGS.map(async (config) => {
         try {
           const data = await fetchAircraftDataFromAppsScript(config.appsScriptUrl, config);
           if (data && data.length > 0) {
-            allFetchedData.push({ data: data as Partial<Aircraft>[], type: config.aircraftType });
+            // handleSyncFromExcel will catch individual changes
+            handleSyncFromExcel(data, config.aircraftType, false); // Don't log individually
+            fetchedFleet.push(...(data as Aircraft[]));
           }
         } catch (e) {
           console.error(`Sync error for ${config.aircraftType}:`, e);
         }
       }));
 
-      if (allFetchedData.length > 0) {
-        setFleet(prevFleet => {
-          let currentFleet = [...prevFleet];
-          let allNotifications: AppNotification[] = [];
-          let someChangeHappened = false;
-
-          allFetchedData.forEach(entry => {
-            const { updatedFleet, notifications } = mergeFleetData(currentFleet, entry.data, entry.type);
-            currentFleet = updatedFleet;
-            if (notifications.length > 0) {
-               allNotifications = [...allNotifications, ...notifications];
-               someChangeHappened = true;
-            }
+      // Toplu loglama işlemi - LOGKOMUT tarafında değişim kontrolü yapıldığı için güvenle çağrılabilir
+      // Ancak gereksiz trafik oluşturmamak için frontend tarafında da basit bir kontrol eklenebilir
+      if (fetchedFleet.length > 0) {
+        try {
+          await fetch(LOG_SCRIPT_URL, {
+            method: 'POST',
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+              action: 'logAllAircraftActivity',
+              sheetId: MAIL_LOG_SHEET_ID,
+              fleetData: fetchedFleet.map(a => ({
+                kuyrukNo: a.kuyrukNo,
+                tip: a.tip || '',
+                govdeUcusSaati: a.govdeUcusSaati,
+                faydaliSaat: a.faydaliSaat,
+                konum: a.konum,
+                durum: a.durum,
+                durumAyrintisi: a.durumAyrintisi,
+                aciklama: a.aciklama,
+                analizKodu: a.assignedCode
+              }))
+            })
           });
-
-          if (allNotifications.length > 0) {
-            setNotifications(prev => [...allNotifications, ...prev].slice(0, 100));
-          }
-
-          if (someChangeHappened) {
-             // For batch logging, we need to log the WHOLE fleet with correct types
-             logFleetDataBatch(currentFleet, 'SYNC');
-          }
-
-          return currentFleet;
-        });
-
-        // Update activities grid state once too
-        setActivities(prevActivities => {
-          let nextActivities = [...prevActivities];
-          const now = new Date();
-          const currentDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-
-          allFetchedData.forEach(entry => {
-            entry.data.forEach(incoming => {
-              const existsIdx = nextActivities.findIndex(act => act.kuyrukNo === incoming.kuyrukNo);
-              const newCode = (incoming.assignedCode || 'F') as DailyStatusCode;
-              
-              if (existsIdx !== -1) {
-                nextActivities[existsIdx] = {
-                  ...nextActivities[existsIdx],
-                  dailyStatuses: { ...(nextActivities[existsIdx].dailyStatuses || {}), [currentDateStr]: newCode }
-                };
-              }
-            });
-          });
-          return nextActivities;
-        });
+        } catch (logError) {
+          console.error("Otomatik log güncelleme hatası:", logError);
+        }
       }
-    } catch (error) {
-      console.error("Global sync failed:", error);
+
+      // Log saving removed from frontend to prevent duplicate logs on refresh.
+      // Now handled by server-side trigger at midnight.
+
     } finally {
-      setIsSyncing(false);
       initialSyncDone.current = true;
+      setIsSyncing(false);
     }
-  }, [fetchPastLogs]);
+  }, [handleSyncFromExcel]);
 
   const checkOPLAlerts = useCallback(async (aircraft: Aircraft) => {
     if (!aircraft.appsScriptUrl || !aircraft.sheetId || aircraft.tip === 'Bell-429' || aircraft.tip === 'T-70' || aircraft.tip === 'B-360' || aircraft.tip === 'C-650') return;
@@ -1218,14 +1174,40 @@ const App = () => {
 
         const filtered = data.filter((row: any) => {
           if (!row.tarih) return false;
-          const kNo = String(row.kuyrukNo || "").trim();
-          if (!kNo || kNo === '-' || kNo === '0' || kNo === 'null' || kNo.length < 3) return false;
-          
           const rowDate = new Date(row.tarih);
           return rowDate.getDate() === targetDay && 
                  rowDate.getMonth() === targetMonth && 
                  rowDate.getFullYear() === targetYear;
         });
+
+        const parseHour = (val: any, aircraftType?: string): number | null => {
+          if (val === null || val === undefined || String(val).trim() === "" || String(val).toUpperCase() === "N/A") return null;
+          
+          if (typeof val === 'string' && val.includes('T') && val.includes('Z')) {
+            const d = new Date(val);
+            const epoch = new Date(Date.UTC(1899, 11, 30));
+            return (d.getTime() - epoch.getTime()) / (1000 * 60 * 60);
+          }
+          
+          let s = String(val).trim();
+          
+          // Handle Turkish format: dots for thousands, comma for decimal (e.g. 1.736,6)
+          if (s.includes('.') && s.includes(',')) {
+            s = s.replace(/\./g, '').replace(',', '.');
+          } else if (s.includes(',')) {
+            s = s.replace(',', '.');
+          }
+          
+          if (s.includes(':')) {
+            const parts = s.split(':').map(Number);
+            if (parts.length >= 2) return (parts[0] || 0) + (parts[1] || 0) / 60;
+          }
+          
+          const n = parseFloat(s);
+          if (isNaN(n)) return null;
+
+          return n;
+        };
 
         const historyFleet: Aircraft[] = filtered.map((row: any) => {
           const rowTip = row.tip || '';
@@ -1233,7 +1215,17 @@ const App = () => {
           
           let govdeStr = '-';
           if (govdeSaat !== null) {
-            govdeStr = formatToHHMM(govdeSaat);
+            if (rowTip === 'Bell-429' || rowTip === 'B-360' || rowTip === 'C-650') {
+              govdeStr = govdeSaat.toFixed(1).replace('.', ',');
+            } else {
+              let h = Math.floor(govdeSaat);
+              let m = Math.round((govdeSaat - h) * 60);
+              if (m === 60) {
+                h += 1;
+                m = 0;
+              }
+              govdeStr = `${h}:${m.toString().padStart(2, '0')}`;
+            }
           }
 
           return {
@@ -1687,9 +1679,7 @@ const App = () => {
                         <td className={`border border-black px-3 py-2.5 text-center font-black ${isFaal ? 'bg-[#e8f5e9] text-[#2e7d32]' : 'bg-[#ffebee] text-[#c62828]'}`}>{a.durum.toUpperCase()}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-gray-900 uppercase">{a.durumAyrintisi !== '-' ? a.durumAyrintisi : ''}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900 uppercase">{a.konum}</td>
-                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">
-                          {formatToHHMM(a.faydaliSaat)}
-                        </td>
+                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">{formatToHHMM(a.faydaliSaat)}</td>
                         <td className="border border-black px-4 py-2 text-left text-[11px] leading-tight text-gray-600 italic whitespace-pre-wrap">{a.aciklama}</td>
                       </tr>
                     );

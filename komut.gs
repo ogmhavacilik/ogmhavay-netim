@@ -1005,29 +1005,7 @@ function syncFleetToLogs() {
             govdeUcusSaati: row[config.map.gHour],
             faydaliSaat: row[config.map.fHour]
           };
-          // --- ANALİZ KODU SABİTLEME (STAY STICKY) ---
-          // Gece yarısı loglarken eğer o gün için zaten bir kod varsa (veya güncelleniyorsa),
-          // ve status değişmediyse mevcut kodu koru.
-          var envKey = dateStr + "_" + tail;
-          var existingFaalCode = (faalMap[envKey] && faalMap[envKey].data) ? String(faalMap[envKey].data[5] || "") : "";
-          
           item.assignedCode = analyzeStatusGS(item);
-          if (existingFaalCode && existingFaalCode !== 'F' && existingFaalCode !== '?') {
-            // Priority to existing manual codes or sticky codes from log
-            item.assignedCode = existingFaalCode;
-          }
-          
-          // Improved Hour Parsing for Midnight Sync - Always use HH:mm
-          var parsedGovde = parseSingleCellToHourGS(item.govdeUcusSaati, item.tip);
-          if (parsedGovde !== null) {
-            item.govdeUcusSaati = formatToHHMMGS(parsedGovde);
-          }
-          
-          var parsedFaydali = parseSingleCellToHourGS(item.faydaliSaat, item.tip);
-          if (parsedFaydali !== null) {
-            item.faydaliSaat = formatToHHMMGS(parsedFaydali);
-          }
-          
           fleetData.push(item);
         }
       });
@@ -1042,55 +1020,6 @@ function syncFleetToLogs() {
     saveLogsToSheets(logSs, fleetData);
     console.log("Fleet logs synced successfully to central sheet. Total aircraft: " + fleetData.length);
   }
-}
-
-function formatToHHMMGS(totalHours) {
-  if (totalHours === null || totalHours === undefined) return "";
-  var h = Math.floor(Math.abs(totalHours));
-  var m = Math.round((Math.abs(totalHours) - h) * 60);
-  return h + ":" + (m < 10 ? "0" + m : m);
-}
-
-function parseSingleCellToHourGS(val, tip) {
-  if (val === null || val === undefined || val === "") return null;
-  if (val instanceof Date) {
-    var base = new Date(Date.UTC(1899, 11, 30));
-    var diffHours = (val.getTime() - base.getTime()) / (1000 * 60 * 60);
-    return diffHours;
-  }
-  if (typeof val === 'number') {
-    // Heuristic for days-to-hours conversion (Sheet durations are often days)
-    if (val > 0 && val < 400) {
-       // If it's a small number with decimals, it's likely days (e.g. 70.3125 = 1687.5h)
-       // Or if it's very small (e.g. 1.5 = 36h)
-       var isLikelyDays = (val % 1 !== 0) || (val < 20);
-       if (isLikelyDays) return val * 24;
-    }
-    return val;
-  }
-  var s = String(val).trim();
-  if (s.includes(':')) {
-    var p = s.split(':').map(Number);
-    var h = p[0] || 0;
-    var m = p[1] || 0;
-    var sec = p[2] || 0;
-    return h + m / 60 + sec / 3600;
-  }
-  
-  // Robust Turkish/English number cleaning
-  if (s.includes('.') && s.includes(',')) s = s.replace(/\./g, "").replace(",", ".");
-  else if (s.includes('.') && /\.\d{3}$/.test(s)) s = s.replace(/\./g, ""); // Thousand separator
-  else if (s.includes(',')) s = s.replace(',', '.'); // Decimal separator
-  
-  var n = parseFloat(s);
-  if (isNaN(n)) return null;
-  
-  // Apply same heuristic to numeric strings
-  if (n > 0 && n < 400) {
-    var isLikelyDays = (n % 1 !== 0) || (n < 20);
-    if (isLikelyDays) return n * 24;
-  }
-  return n;
 }
 
 function analyzeStatusGS(item) {
