@@ -1178,17 +1178,7 @@ const App = () => {
           
           let govdeStr = '-';
           if (govdeSaat !== null) {
-            if (rowTip === 'Bell-429' || rowTip === 'B-360' || rowTip === 'C-650') {
-              govdeStr = govdeSaat.toFixed(1).replace('.', ',');
-            } else {
-              let h = Math.floor(govdeSaat);
-              let m = Math.round((govdeSaat - h) * 60);
-              if (m === 60) {
-                h += 1;
-                m = 0;
-              }
-              govdeStr = `${h}:${m.toString().padStart(2, '0')}`;
-            }
+            govdeStr = formatToHHMM(govdeSaat, rowTip);
           }
 
           return {

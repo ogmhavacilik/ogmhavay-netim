@@ -89,12 +89,15 @@ export const formatToHHMM = (totalHours: number | null, aircraftType?: string): 
   
   // Specific types should remain as decimal (with comma) for both Useful Hours and Airframe Hours
   if (aircraftType === 'B-360' || aircraftType === 'C-650' || aircraftType === 'Bell-429') {
-    // Use at least 1, up to 2 decimal places to respect "ham veri" (raw data) as requested
-    return totalHours.toLocaleString('tr-TR', { 
-      minimumFractionDigits: 1, 
-      maximumFractionDigits: 2,
-      useGrouping: false 
-    });
+    // Preserve at least 1, up to 2 decimal places to respect "ham veri" (raw data) as requested.
+    // Use fixed precision to catch floating point errors, then trim excess zeros.
+    let s = totalHours.toFixed(2);
+    if (s.endsWith('.00')) {
+      s = totalHours.toFixed(1);
+    } else if (s.endsWith('0')) {
+      s = totalHours.toFixed(1);
+    }
+    return s.replace('.', ',');
   }
   
   // Standard conversion for others: convert decimals (e.g. 1692.5) to HH:mm format (1692:30)
