@@ -14,71 +14,81 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
     return '';
   };
 
-  const durumStr = (getVal(['durum', 'Durum', 'DURUM', 'N', 'n', 'B', 'b']) || '').toLocaleUpperCase('tr-TR').trim();
+  const durumStr = (getVal(['durum', 'Durum', 'DURUM', 'N', 'n', 'B', 'b', 'durum']) || '').toLocaleUpperCase('tr-TR').trim();
   const detail = (getVal(['durumAyrintisi', 'Durum Ayrıntısı', 'DURUM AYRINTISI', 'O', 'o', 'C', 'c', 'durum_ayrintisi']) || '').trim();
   const detailUpper = detail.toLocaleUpperCase('tr-TR');
   const desc = (getVal(['aciklama', 'Açıklama', 'AÇIKLAMA', 'P', 'p', 'D', 'd', 'aciklama']) || '').trim();
   const descUpper = desc.toLocaleUpperCase('tr-TR');
 
-  const findCodeInText = (text: string): { code: DailyStatusCode, interpretation: string } | null => {
+  // Hiyerarşi Adım 1: DURUM (Ana Durum)
+  let code: DailyStatusCode = 'F';
+  let interpretation = 'FAAL';
+
+  const isGayriFaalStatus = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('GF') || durumStr === 'G.FAAL' || durumStr === 'A' || durumStr === 'ARIZA';
+  if (isGayriFaalStatus) {
+    code = 'A';
+    interpretation = 'ARIZA';
+  }
+
+  // Hiyerarşi Adım 2: DURUM AYRINTISI (Detay Bilgisi - ÖNCELİKLİ)
+  const findCodeInText = (text: string): { code: DailyStatusCode, interp: string } | null => {
     const t = text.toLocaleUpperCase('tr-TR');
-    if (!t) return null;
     
-    // Normalize string for matching: replace dotted İ with dotless I for comparison
-    const n = t.replace(/İ/g, "I").replace(/ı/g, "I");
-
     // Exact Code Match (Highest Priority)
-    const exactMap: Record<string, { code: DailyStatusCode, interpretation: string }> = {
-      'B': { code: 'B', interpretation: 'BAKIM' },
-      'BB': { code: 'BB', interpretation: 'BAKIM BEKLER' },
-      'TBU': { code: 'TBU', interpretation: 'TEKNİK BÜLTEN UYGULAMASI' },
-      'KM': { code: 'KM', interpretation: 'KABUL MUAYENESİ' },
-      'A': { code: 'A', interpretation: 'ARIZA' },
-      'PB': { code: 'PB', interpretation: 'PARÇA BEKLER' },
-      'KK': { code: 'KK', interpretation: 'KAZA KIRIM' },
-      'X': { code: 'X', interpretation: 'OLMADIĞI GÜNLER' },
-      'TB': { code: 'TB', interpretation: 'TECRÜBE BEKLER' }
-    };
+    if (t === 'B') return { code: 'B', interp: 'BAKIM' };
+    if (t === 'BB') return { code: 'BB', interp: 'BAKIM BEKLER' };
+    if (t === 'TBU') return { code: 'TBU', interp: 'TEKNİK BÜLTEN UYGULAMASI' };
+    if (t === 'KM') return { code: 'KM', interp: 'KABUL MUAYENESİ' };
+    if (t === 'A') return { code: 'A', interp: 'ARIZA' };
+    if (t === 'PB') return { code: 'PB', interp: 'PARÇA BEKLER' };
+    if (t === 'KK') return { code: 'KK', interp: 'KAZA KIRIM' };
+    if (t === 'X') return { code: 'X', interp: 'OLMADIĞI GÜNLER' };
+    if (t === 'TB') return { code: 'TB', interp: 'TECRÜBE BEKLER' };
 
-    if (exactMap[t]) return exactMap[t];
-
-    // Keyword Match - Use Normalized version 'n'
-    if (n.includes('TEKNIK BULTEN') || n.includes('TBU')) return { code: 'TBU', interpretation: 'TEKNİK BÜLTEN UYGULAMASI' };
-    if (n.includes('BAKIM BEKLER') || n === 'BB') return { code: 'BB', interpretation: 'BAKIM BEKLER' };
-    if (n.includes('BAKIM')) return { code: 'B', interpretation: 'BAKIM' };
-    if (n.includes('PARCA BEKLER') || n === 'PB') return { code: 'PB', interpretation: 'PARÇA BEKLER' };
-    if (n.includes('TECRUBE BEKLER') || n === 'TB' || n.includes('TECRUBE') || n.includes('TEST')) return { code: 'TB', interpretation: 'TECRÜBE BEKLER' };
-    if (n.includes('KABUL MUAYENE') || n === 'KM') return { code: 'KM', interpretation: 'KABUL MUAYENESİ' };
-    if (n.includes('KAZA KIRIM') || n === 'KK') return { code: 'KK', interpretation: 'KAZA KIRIM' };
-    if (n.includes('OLMADIGI GUNLER') || n === 'X') return { code: 'X', interpretation: 'OLMADIĞI GÜNLER' };
-    if (n.includes('ARIZA') || n.includes('ARZ') || n === 'A' || n.includes('OVERSPEED') || n.includes('NG')) return { code: 'A', interpretation: 'ARIZA' };
+    // Keyword Match
+    if (t.includes('TEKNİK BÜLTEN') || t.includes('TBU')) return { code: 'TBU', interp: 'TEKNİK BÜLTEN UYGULAMASI' };
+    if (t.includes('BAKIM BEKLER') || t === 'BB') return { code: 'BB', interp: 'BAKIM BEKLER' };
+    if (t.includes('BAKIM')) return { code: 'B', interp: 'BAKIM' };
+    if (t.includes('PARÇA BEKLER') || t.includes('PARCA BEKLER') || t === 'PB') return { code: 'PB', interp: 'PARÇA BEKLER' };
+    if (t.includes('TECRÜBE BEKLER') || t.includes('TECRUBE BEKLER') || t === 'TB' || t.includes('TECRÜBE') || t.includes('TEST')) return { code: 'TB', interp: 'TECRÜBE BEKLER' };
+    if (t.includes('KABUL MUAYENE') || t === 'KM') return { code: 'KM', interp: 'KABUL MUAYENESİ' };
+    if (t.includes('KAZA KIRIM') || t === 'KK') return { code: 'KK', interp: 'KAZA KIRIM' };
+    if (t.includes('OLMADIĞI GÜNLER') || t.includes('OLMADIGI GUNLER') || t === 'X') return { code: 'X', interp: 'OLMADIĞI GÜNLER' };
+    if (t.includes('ARIZA') || t === 'A' || t.includes('OVERSPEED') || t.includes('NG')) return { code: 'A', interp: 'ARIZA' };
     
     return null;
   };
 
-  // Adım 1: Durum Ayrıntısı (DURUM_AYRINTISI) - ÖNCELİKLİ
   const detailMatch = findCodeInText(detail);
-  if (detailMatch) return detailMatch;
-
-  // Adım 2: Durum (DURUM)
-  const durumMatch = findCodeInText(durumStr);
-  if (durumMatch) return durumMatch;
-
-  const isGayriFaalStatus = durumStr.includes('GAYRİ') || durumStr.includes('GAYRI') || durumStr.includes('GF') || durumStr === 'G.FAAL' || durumStr.includes('ARIZA') || durumStr.includes('ARZ') || durumStr === 'A';
-  if (isGayriFaalStatus) {
-    return { code: 'A', interpretation: 'ARIZA' };
+  if (detailMatch) {
+    code = detailMatch.code;
+    interpretation = detailMatch.interp;
+  } else {
+    // Check if detail is "FAAL" or "-" to avoid mapping them to something else
+    if (detailUpper !== 'FAAL' && detailUpper !== '-' && detailUpper !== '') {
+       // If it has something else, maybe check description
+       const descMatch = findCodeInText(desc);
+       if (descMatch) {
+         code = descMatch.code;
+         interpretation = descMatch.interp;
+       }
+    } else {
+       // detail is empty or faal, check description for flags
+       const descMatch = findCodeInText(desc);
+       if (descMatch) {
+         code = descMatch.code;
+         interpretation = descMatch.interp;
+       }
+    }
   }
 
-  // Adım 3: Açıklama (ACIKLAMA)
-  const descMatch = findCodeInText(desc);
-  if (descMatch) return descMatch;
-
-  // Adım 4: Karma Kontrolü
+  // Final check for Karma Status
   if (detailUpper.includes('KARMA') || detailUpper.includes('HEM FAAL') || descUpper.includes('KARMA') || descUpper.includes('HEM FAAL')) {
-    return { code: 'K', interpretation: 'KARMA GÜN' };
+    code = 'K';
+    interpretation = 'KARMA GÜN';
   }
 
-  return { code: 'F', interpretation: 'FAAL' };
+  return { code, interpretation };
 };
 
 /**
@@ -87,25 +97,14 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
 export const formatToHHMM = (totalHours: number | null, aircraftType?: string): string => {
   if (totalHours === null) return '-';
   
-  // Specific types should remain as decimal (with comma) for both Useful Hours and Airframe Hours
-  if (aircraftType === 'B-360' || aircraftType === 'C-650' || aircraftType === 'Bell-429') {
-    // Preserve at least 1, up to 2 decimal places to respect "ham veri" (raw data) as requested.
-    // Use fixed precision to catch floating point errors, then trim excess zeros.
-    let s = totalHours.toFixed(2);
-    if (s.endsWith('.00')) {
-      s = totalHours.toFixed(1);
-    } else if (s.endsWith('0')) {
-      s = totalHours.toFixed(1);
-    }
-    return s.replace('.', ',');
-  }
-  
-  // Standard conversion for others: convert decimals (e.g. 1692.5) to HH:mm format (1692:30)
+  // Standard conversion for all types now, as per user's latest request to convert decimals (e.g. 1692.5) to HH:mm format (1692:30)
   const hours = Math.floor(Math.abs(totalHours));
   const minutes = Math.round((Math.abs(totalHours) - hours) * 60);
   const sign = totalHours < 0 ? '-' : '';
   
-  return `${sign}${hours}:${minutes.toString().padStart(2, '0')}`;
+  const result = `${sign}${hours}:${minutes.toString().padStart(2, '0')}`;
+  
+  return result;
 };
 
 /**
@@ -234,13 +233,6 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
     } else if (s.includes(',')) {
       // Only comma exists: treat as decimal
       s = s.replace(',', '.');
-    } else if (s.match(/^\d{1,3}(\.\d{3})+$/)) {
-      // If it matches pattern like 1.728 with NO comma, it's likely a Turkish thousands separator
-      // Especially if it's for the decimal aircraft types where hours are high
-      const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
-      if (decimalTypes.includes(aircraftType) || parseFloat(s.replace(/\./g, '')) > 500) {
-        s = s.replace(/\./g, '');
-      }
     }
     
     if (s.includes(':')) {
@@ -365,28 +357,6 @@ const formatDateIfISO = (val: any): string => {
   return s;
 };
 
-export const proxyFetch = async (url: string, body: any) => {
-  try {
-    const response = await fetch('/api/proxy', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url, body }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const result = await response.json();
-    return result.data;
-  } catch (error) {
-    console.error('proxyFetch Error:', error);
-    throw error;
-  }
-};
-
 export const fetchAircraftDataFromAppsScript = async (url: string, config: SheetConfig): Promise<Partial<Aircraft>[]> => {
   const cleanUrl = url?.trim();
   if (!cleanUrl || !cleanUrl.startsWith('http')) {
@@ -398,13 +368,29 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
     return [];
   }
   try {
-    const result = await proxyFetch(cleanUrl, {
-      sheetId: config.sheetId,
-      sheetName: config.sheetName || '',
-      mapping: config.mapping,
-      action: 'getAircraftData',
-      fetchTechnicalDetails: config.aircraftType === 'AT-802'
+    const response = await fetch(cleanUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        sheetId: config.sheetId,
+        sheetName: config.sheetName || '',
+        mapping: config.mapping,
+        action: 'getAircraftData',
+        fetchTechnicalDetails: config.aircraftType === 'AT-802'
+      })
     });
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    let result;
+    const text = await response.text();
+    try {
+      result = JSON.parse(text);
+    } catch (e) {
+      console.error(`fetchAircraftDataFromAppsScript JSON Parse Error (${config.aircraftType}):`, e, "Raw response:", text.substring(0, 200));
+      return [];
+    }
     
     const data = (result && (result.success || result.status === 'success') && Array.isArray(result.data)) 
       ? result.data 
@@ -473,16 +459,13 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
           .filter((h): h is number => h !== null);
         finalMinHour = validFaydaliHours.length > 0 ? Math.min(...validFaydaliHours) : null;
         
-        // Use decimal for specific types, floor for others (like T-70 if not specified otherwise)
-        const isDecimalType = config.aircraftType === 'B-360' || config.aircraftType === 'C-650' || config.aircraftType === 'Bell-429';
-        const displayHour = (isDecimalType && finalMinHour !== null) 
-          ? finalMinHour 
+        const hourInt = (config.aircraftType === 'C-650' && finalMinHour !== null) 
+          ? Math.floor(finalMinHour) 
           : (finalMinHour !== null ? Math.floor(finalMinHour) : null);
           
-        maintenanceHours = [{ bakimTuru: 'KALAN', kalanSaat: displayHour || 0 }];
+        maintenanceHours = [{ bakimTuru: 'KALAN', kalanSaat: hourInt || 0 }];
       }
 
-      const parsedGovde = parseSingleCellToHour(item.govdeUcusSaati ?? item.E ?? item.e ?? item[4], config.aircraftType);
       const govdeStr = formatGovdeHour(item.govdeUcusSaati ?? item.E ?? item.e ?? item[4], config.aircraftType);
 
       const aircraft: Partial<Aircraft> = {
@@ -495,7 +478,6 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         konum: String(item.konum || 'ANKARA'),
         faydaliSaat: finalMinHour, 
         govdeUcusSaati: govdeStr,
-        govdeUcusSaatiRaw: parsedGovde,
         aciklama: String(item.aciklama || ''),
         guncellemeTarihi: timestamp,
         durumBaslangic: new Date().toISOString().split('T')[0],
@@ -681,12 +663,25 @@ export const fetchOPLData = async (
     return [];
   }
   try {
-    const result = await proxyFetch(cleanUrl, {
-      action: "getOPLData",
-      sheetId,
-      kuyrukNo
+    const response = await fetch(cleanUrl, {
+      method: "POST",
+      redirect: 'follow',
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify({
+        action: "getOPLData",
+        sheetId,
+        kuyrukNo
+      })
     });
 
+    if (!response.ok) {
+      console.warn(`fetchOPLData: HTTP Hatası ${response.status} - ${scriptUrl}`);
+      return [];
+    }
+
+    const result = await response.json();
     if (!result || !result.success || !Array.isArray(result.data)) {
       console.warn("fetchOPLData: Geçersiz veri yapısı", result);
       return [];
@@ -711,11 +706,20 @@ export const fetchAircraftSpecificData = async (
   if (!cleanUrl || !cleanUrl.startsWith('http')) return { success: false };
   if (!cleanUrl.includes('script.google.com/macros/')) return { success: false };
   try {
-    return await proxyFetch(cleanUrl, {
-      action: 'getAircraftSpecificData',
-      sheetId,
-      kuyrukNo
+    const response = await fetch(cleanUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify({
+        action: 'getAircraftSpecificData',
+        sheetId,
+        kuyrukNo
+      })
     });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
   } catch (error) {
     console.error("fetchAircraftSpecificData error:", error);
     return { success: false };
@@ -734,15 +738,22 @@ export const updateAircraftData = async (
   const cleanUrl = url?.trim();
   if (!cleanUrl || !cleanUrl.includes('script.google.com/macros/')) return { success: false, message: 'Geçersiz URL formatı.' };
   try {
-    const result = await proxyFetch(cleanUrl, {
-      action: 'updateAircraftData',
-      sheetId,
-      sheetName,
-      kuyrukNo,
-      updates,
-      mapping,
-      aircraftType
+    const response = await fetch(cleanUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: 'updateAircraftData',
+        sheetId,
+        sheetName,
+        kuyrukNo,
+        updates,
+        mapping,
+        aircraftType
+      })
     });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
     const message = typeof result.data === 'string' ? result.data : (result.data?.message || result.message || result.error);
     return {
       success: result.success || result.status === 'success' || false,
@@ -765,14 +776,21 @@ export const updatePastEnvanterLog = async (
   const cleanUrl = url?.trim();
   if (!cleanUrl || !cleanUrl.includes('script.google.com/macros/')) return { success: false, message: 'Geçersiz URL formatı.' };
   try {
-    const result = await proxyFetch(cleanUrl, {
-      action: 'updatePastEnvanterLog',
-      sheetId,
-      kuyrukNo,
-      date,
-      newHours,
-      tip
+    const response = await fetch(cleanUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: 'updatePastEnvanterLog',
+        sheetId,
+        kuyrukNo,
+        date,
+        newHours,
+        tip
+      })
     });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
     const message = typeof result.data === 'string' ? result.data : (result.data?.message || result.message || result.error);
     return {
       success: result.success || result.status === 'success' || false,

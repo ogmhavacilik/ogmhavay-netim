@@ -34,7 +34,6 @@ export interface Aircraft {
   konum: string;
   faydaliSaat: number | null;
   govdeUcusSaati?: string;
-  govdeUcusSaatiRaw?: number | null;
   durumBaslangic: string;
   durumBitis?: string;
   aciklama: string;
@@ -86,7 +85,7 @@ export interface Aircraft {
   bakim200H?: string;
 }
 
-export type DailyStatusCode = 'B' | 'BB' | 'TBU' | 'KM' | 'A' | 'PB' | 'KK' | 'X' | 'F' | 'TB' | 'K' | '?' | '';
+export type DailyStatusCode = 'B' | 'BB' | 'TBU' | 'KM' | 'A' | 'PB' | 'KK' | 'X' | 'F' | 'TB' | 'K' | '';
 
 export interface LogEvent {
   hour: number;

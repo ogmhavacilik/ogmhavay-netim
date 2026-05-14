@@ -265,17 +265,6 @@ function doPost(e) {
       return jsonError("Güncellenecek log kaydı bulunamadı: " + id);
     }
 
-    // 🔵 AKSİYON: TEKİL HAVA ARACI LOGLAMA
-    if (action === "logSingleAircraftActivity") {
-      var logSs = SpreadsheetApp.openById(logSsId);
-      var aircraftData = params.data || {};
-      if (!aircraftData.kuyrukNo) return jsonError("Kuyruk no eksik.");
-      
-      // saveLogsToSheets expects an array of aircraft objects
-      saveLogsToSheets(logSs, [aircraftData]);
-      return jsonSuccess("Log başarıyla kaydedildi.");
-    }
-
     // 🔵 AKSİYON: SİSTEM LOGLARI (ENVANTER VE FAALİYET) - GERÇEK ZAMANLI GÜNCELLEME
     // BU BLOK KULLANICI İSTEĞİ ÜZERİNE KALDIRILDI. LOGLAR SADECE GECE YARISI VEYA GÜN İÇİ FAALİYET İLE KAYDEDİLECEK.
 
@@ -723,13 +712,10 @@ function doPost(e) {
         aciklama: rowValues[getColIdx(mapping.aciklama)] || "",
         konum: rowValues[getColIdx(mapping.konum)] || "",
         govdeUcusSaati: rowValues[getColIdx(mapping.govdeUcusSaati)] || "",
-        faydaliSaat: rowValues[getColIdx(mapping.faydaliSaat)] || "",
-        assignedCode: updates.assignedCode || updates.analizKodu // Honor manual override from caller if present
+        faydaliSaat: rowValues[getColIdx(mapping.faydaliSaat)] || ""
       };
       
-      if (!aircraft.assignedCode) {
-        aircraft.assignedCode = analyzeStatusGS(aircraft);
-      }
+      aircraft.assignedCode = analyzeStatusGS(aircraft);
       saveLogsToSheets(logSs, [aircraft]);
     } catch (logErr) {
       console.error("Real-time logging error: " + logErr.toString());
@@ -1034,51 +1020,60 @@ function analyzeStatusGS(item) {
   var detailUpper = toUpperTR(item.durumAyrintisi);
   var descUpper = toUpperTR(item.aciklama);
   
+  // Hiyerarşi Adım 1: DURUM
+  var code = 'F';
+  var isGayriFaalStatus = durumUpper.indexOf('GAYRİ') !== -1 || durumUpper.indexOf('GAYRI') !== -1 || durumUpper.indexOf('GF') !== -1 || durumUpper === 'G.FAAL' || durumUpper === 'A' || durumUpper === 'ARIZA';
+  if (isGayriFaalStatus) {
+    code = 'A';
+  }
+
   var findCodeInText = function(t) {
-    if (!t) return null;
-    
-    // Normalize string for matching: replace dotted İ with dotless I for comparison
-    var n = t.replace(/İ/g, "I").replace(/ı/g, "I");
-
     // Exact Code Match (Highest Priority)
-    var exactCodes = ['B', 'BB', 'TBU', 'KM', 'A', 'PB', 'KK', 'X', 'TB'];
-    if (exactCodes.indexOf(t) !== -1) return t;
+    if (t === 'B') return 'B';
+    if (t === 'BB') return 'BB';
+    if (t === 'TBU') return 'TBU';
+    if (t === 'KM') return 'KM';
+    if (t === 'A') return 'A';
+    if (t === 'PB') return 'PB';
+    if (t === 'KK') return 'KK';
+    if (t === 'X') return 'X';
+    if (t === 'TB') return 'TB';
 
-    // Keyword Match - Use Normalized version 'n' for better matching
-    if (n.indexOf('TEKNIK BULTEN') !== -1 || n.indexOf('TBU') !== -1) return 'TBU';
-    if (n.indexOf('BAKIM BEKLER') !== -1 || n === 'BB') return 'BB';
-    if (n.indexOf('BAKIM') !== -1) return 'B';
-    if (n.indexOf('PARCA BEKLER') !== -1 || n === 'PB') return 'PB';
-    if (n.indexOf('TECRUBE BEKLER') !== -1 || n === 'TB' || n.indexOf('TECRUBE') !== -1 || n.indexOf('TEST') !== -1) return 'TB';
-    if (n.indexOf('KABUL MUAYENE') !== -1 || n === 'KM') return 'KM';
-    if (n.indexOf('KAZA KIRIM') !== -1 || n === 'KK') return 'KK';
-    if (n.indexOf('OLMADIGI GUNLER') !== -1 || n === 'X') return 'X';
-    if (n.indexOf('ARIZA') !== -1 || n.indexOf('ARZ') !== -1 || n === 'A' || n.indexOf('OVERSPEED') !== -1 || n.indexOf('NG') !== -1) return 'A';
+    // Keyword Match
+    if (t.indexOf('TEKNİK BÜLTEN') !== -1 || t.indexOf('TBU') !== -1) return 'TBU';
+    if (t.indexOf('BAKIM BEKLER') !== -1 || t === 'BB') return 'BB';
+    if (t.indexOf('BAKIM') !== -1) return 'B';
+    if (t.indexOf('PARÇA BEKLER') !== -1 || t.indexOf('PARCA BEKLER') !== -1 || t === 'PB') return 'PB';
+    if (t.indexOf('TECRÜBE BEKLER') !== -1 || t.indexOf('TECRUBE BEKLER') !== -1 || t === 'TB' || t.indexOf('TECRÜBE') !== -1 || t.indexOf('TEST') !== -1) return 'TB';
+    if (t.indexOf('KABUL MUAYENE') !== -1 || t === 'KM') return 'KM';
+    if (t.indexOf('KAZA KIRIM') !== -1 || t === 'KK') return 'KK';
+    if (t.indexOf('OLMADIĞI GÜNLER') !== -1 || t.indexOf('OLMADIGI GUNLER') !== -1 || t === 'X') return 'X';
+    if (t.indexOf('ARIZA') !== -1 || t === 'A' || t.indexOf('OVERSPEED') !== -1 || t.indexOf('NG') !== -1) return 'A';
     
     return null;
   };
 
-  // Adım 1: Durum Ayrıntısı (DURUM_AYRINTISI) - ÖNCELİKLİ
+  // Step 2: Check Detail
   var detailMatch = findCodeInText(detailUpper);
-  if (detailMatch) return detailMatch;
-
-  // Adım 2: Durum (DURUM)
-  var durumMatch = findCodeInText(durumUpper);
-  if (durumMatch) return durumMatch;
-  
-  var isGayriFaalStatus = durumUpper.indexOf('GAYRİ') !== -1 || durumUpper.indexOf('GAYRI') !== -1 || durumUpper.indexOf('GF') !== -1 || durumUpper === 'G.FAAL' || durumUpper.indexOf('ARIZA') !== -1 || durumUpper.indexOf('ARZ') !== -1 || durumUpper === 'A';
-  if (isGayriFaalStatus) return 'A';
-
-  // Adım 3: Açıklama (ACIKLAMA)
-  var descMatch = findCodeInText(descUpper);
-  if (descMatch) return descMatch;
-
-  // Adım 4: Karma Kontrolü
-  if (detailUpper.indexOf('KARMA') !== -1 || detailUpper.indexOf('HEM FAAL') !== -1 || descUpper.indexOf('KARMA') !== -1 || descUpper.indexOf('HEM FAAL') !== -1) {
-    return 'K';
+  if (detailMatch) {
+    code = detailMatch;
+  } else {
+    // Step 3: Check Description
+    if (detailUpper !== 'FAAL' && detailUpper !== '-' && detailUpper !== '') {
+       var descMatch = findCodeInText(descUpper);
+       if (descMatch) code = descMatch;
+    } else {
+       var descMatch = findCodeInText(descUpper);
+       if (descMatch) code = descMatch;
+    }
   }
 
-  return 'F';
+  // Step 4: Karma Check
+  if (detailUpper.indexOf('KARMA') !== -1 || detailUpper.indexOf('HEM FAAL') !== -1 || descUpper.indexOf('KARMA') !== -1 || descUpper.indexOf('HEM FAAL') !== -1) {
+    code = 'K';
+  }
+
+  return code;
 }
 
 
@@ -1104,25 +1099,19 @@ function saveLogsToSheets(ss, fleetData) {
   
   // Mevcut ID'leri ve satır numaralarını al (Hızlı güncelleme için)
   var lastRow = envLogSheet.getLastRow();
-  var envFullData = lastRow > 1 ? envLogSheet.getRange(2, 1, lastRow - 1, 10).getValues() : [];
+  var envData = lastRow > 1 ? envLogSheet.getRange(2, 1, lastRow - 1, 3).getValues() : [];
   var envIdMap = {};
-  for (var i = 0; i < envFullData.length; i++) {
-    var id = String(envFullData[i][0]);
-    envIdMap[id] = {
-      row: i + 2,
-      data: envFullData[i]
-    }; 
+  for (var i = 0; i < envData.length; i++) {
+    var id = String(envData[i][0]);
+    envIdMap[id] = i + 2; // ID -> Row Index
   }
 
   var faalLastRow = faalLogSheet.getLastRow();
-  var faalFullData = faalLastRow > 1 ? faalLogSheet.getRange(2, 1, faalLastRow - 1, 6).getValues() : [];
+  var faalData = faalLastRow > 1 ? faalLogSheet.getRange(2, 1, faalLastRow - 1, 1).getValues() : [];
   var faalIdMap = {};
-  for (var i = 0; i < faalFullData.length; i++) {
-    var id = String(faalFullData[i][0]);
-    faalIdMap[id] = {
-      row: i + 2,
-      data: faalFullData[i]
-    };
+  for (var i = 0; i < faalData.length; i++) {
+    var id = String(faalData[i][0]);
+    faalIdMap[id] = i + 2;
   }
   
   fleetData.forEach(function(aircraft) {
@@ -1130,91 +1119,37 @@ function saveLogsToSheets(ss, fleetData) {
     if (!kNo) return;
 
     var envKey = tarihStr + "_" + kNo;
+    var assignedCode = aircraft.assignedCode || analyzeStatusGS(aircraft);
     
-    // Check if there's an existing manually overridden code in the sheet
-    var existingFaalCode = (faalIdMap[envKey] && faalIdMap[envKey].data) ? String(faalIdMap[envKey].data[5] || "") : "";
-    var isManualOverride = aircraft.isManualOverride || (aircraft.assignedCode && !aircraft._autoAnalyzed);
-    
-    var assignedCode = aircraft.assignedCode || aircraft.analizKodu;
-    if (!assignedCode) {
-      // If we don't have a code from caller, only re-analyze if existing code is empty or 'F' 
-      // or if we really want to force it.
-      if (!existingFaalCode || existingFaalCode === 'F') {
-        assignedCode = analyzeStatusGS(aircraft);
-      } else {
-        assignedCode = existingFaalCode;
-      }
-    }
-    
-    // Values to write
-    var newEnvValues = [
-      aircraft.tip || "", aircraft.govdeUcusSaati || "", 
-      aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
-      aircraft.durumAyrintisi || "", aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
-    ];
-
     // ENVANTER LOG GÜNCELLE VEYA EKLE
     if (envIdMap[envKey]) {
-      var entry = envIdMap[envKey];
-      var row = entry.row;
-      var existingData = entry.data; // col 0 to 9
-      
-      // Compare current values (cols index 3 to 9)
-      var hasChanged = false;
-      for (var j = 0; j < newEnvValues.length; j++) {
-        var existingVal = String(existingData[j + 3] || "");
-        var newVal = String(newEnvValues[j] || "");
-        // Strip single quote for aciklama comparison if needed
-        if (j === 6 && newVal.indexOf("'") === 0) newVal = newVal.substring(1);
-        if (j === 6 && existingVal.indexOf("'") === 0) existingVal = existingVal.substring(1);
-
-        if (existingVal !== newVal) {
-          hasChanged = true;
-          break;
-        }
-      }
-
-      if (hasChanged) {
-        envLogSheet.getRange(row, 4, 1, 7).setValues([newEnvValues]);
-      }
+      var row = envIdMap[envKey];
+      envLogSheet.getRange(row, 4, 1, 7).setValues([[
+        aircraft.tip || "", aircraft.govdeUcusSaati || "", 
+        aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
+        aircraft.durumAyrintisi || "", aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
+      ]]);
     } else {
       envLogSheet.appendRow([
-        envKey, tarihStr, kNo, 
-        newEnvValues[0], newEnvValues[1], newEnvValues[2], 
-        newEnvValues[3], newEnvValues[4], newEnvValues[5], newEnvValues[6]
+        envKey, tarihStr, kNo, aircraft.tip || "", aircraft.govdeUcusSaati || "", 
+        aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
+        aircraft.durumAyrintisi || "", aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
       ]);
       // Update map so we don't append again in the same batch
-      envIdMap[envKey] = { row: envLogSheet.getLastRow(), data: [envKey, tarihStr, kNo].concat(newEnvValues) };
+      envIdMap[envKey] = envLogSheet.getLastRow();
     }
-
-    // Values for Faaliyet
-    var newFaalValues = [
-      aircraft.tip || "", aircraft.durumAyrintisi || "", assignedCode
-    ];
 
     // FAALİYET LOG GÜNCELLE VEYA EKLE
     if (faalIdMap[envKey]) {
-      var entry = faalIdMap[envKey];
-      var row = entry.row;
-      var existingData = entry.data; // cols 0 to 5
-
-      var hasChanged = false;
-      for (var j = 0; j < newFaalValues.length; j++) {
-        if (String(existingData[j + 3] || "") !== String(newFaalValues[j] || "")) {
-          hasChanged = true;
-          break;
-        }
-      }
-
-      if (hasChanged) {
-        faalLogSheet.getRange(row, 4, 1, 3).setValues([newFaalValues]);
-      }
+      var row = faalIdMap[envKey];
+      faalLogSheet.getRange(row, 4, 1, 3).setValues([[
+        aircraft.tip || "", aircraft.durumAyrintisi || "", assignedCode
+      ]]);
     } else {
       faalLogSheet.appendRow([
-        envKey, tarihStr, kNo, 
-        newFaalValues[0], newFaalValues[1], newFaalValues[2]
+        envKey, tarihStr, kNo, aircraft.tip || "", aircraft.durumAyrintisi || "", assignedCode
       ]);
-      faalIdMap[envKey] = { row: faalLogSheet.getLastRow(), data: [envKey, tarihStr, kNo].concat(newFaalValues) };
+      faalIdMap[envKey] = faalLogSheet.getLastRow();
     }
   });
 }

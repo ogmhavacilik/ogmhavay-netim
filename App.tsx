@@ -20,7 +20,7 @@ import {
   MAIL_LOG_SHEET_ID,
   getCallSignByTail
 } from './constants';
-import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM, parseSingleCellToHour, proxyFetch } from './services/sheetService';
+import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM, parseSingleCellToHour } from './services/sheetService';
 import { exportAT802DailyStatusToPDF, exportOPLToPDF, exportAT802CiktiPDF } from './services/pdfService';
 import { exportTableToMHTML } from './services/mhtmlService';
 import { MOCK_ACTIVITY_GRID } from './constants';
@@ -101,20 +101,25 @@ const App = () => {
   }) => {
     setIsSavingIntraDay(true);
     try {
-      const result = await proxyFetch(LOG_SCRIPT_URL, {
-        action: 'saveIntraDayActivity',
-        sheetId: MAIL_LOG_SHEET_ID,
-        data: {
-          ...data,
-          date: data.date || new Date().toISOString().split('T')[0]
-        }
+      const response = await fetch(LOG_SCRIPT_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: 'saveIntraDayActivity',
+          sheetId: MAIL_LOG_SHEET_ID,
+          data: {
+            ...data,
+            date: data.date || new Date().toISOString().split('T')[0]
+          }
+        })
       });
       
-      if (result && result.success) {
+      if (response.ok) {
         fetchPastLogs(); // Refresh activity data
         return true;
       } else {
-        console.error("Kayıt sırasında bir hata oluştu.", result);
+        console.error("Kayıt sırasında bir hata oluştu.");
         return false;
       }
     } catch (error) {
@@ -348,17 +353,27 @@ const App = () => {
     if (LOG_SCRIPT_URL) {
       try {
         console.log(`Sending updateLogEntry for ${kuyrukNo} with code ${newCode} on ${displayDateStr}`);
-        const result = await proxyFetch(LOG_SCRIPT_URL, {
-          action: 'updateLogEntry',
-          sheetId: MAIL_LOG_SHEET_ID,
-          kuyrukNo: kuyrukNo,
-          date: displayDateStr,
-          newCode: newCode,
-          tip: aircraft?.tip || '',
-          durum: aircraft?.durumAyrintisi || 'MANUEL GÜNCELLEME',
-          isManualOverride: true
+        const res = await fetch(LOG_SCRIPT_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: 'updateLogEntry',
+            sheetId: MAIL_LOG_SHEET_ID,
+            kuyrukNo: kuyrukNo,
+            date: displayDateStr,
+            newCode: newCode,
+            tip: aircraft?.tip || '',
+            durum: aircraft?.durumAyrintisi || 'MANUEL GÜNCELLEME'
+          })
         });
+        const result = await res.json();
         console.log("Update log response:", result);
+        if (result.success) {
+          console.log(`Log updated successfully for ${kuyrukNo}`);
+        } else {
+          console.error(`Log update failed: ${result.message}`);
+        }
       } catch (err) {
         console.error("Error updating log entry:", err);
       }
@@ -388,16 +403,11 @@ const App = () => {
       const updatedFleet = [...prevFleet];
       
       incomingData.forEach(incoming => {
-        if (!incoming.kuyrukNo) return;
-        const incomingKNo = String(incoming.kuyrukNo).trim().toUpperCase();
-        
-        const existingIdx = updatedFleet.findIndex(a => 
-          String(a.kuyrukNo).trim().toUpperCase() === incomingKNo
-        );
+        const existingIdx = updatedFleet.findIndex(a => a.kuyrukNo === incoming.kuyrukNo);
         const existing = existingIdx !== -1 ? updatedFleet[existingIdx] : null;
         
         if (existing && initialSyncDone.current) {
-          ['durum', 'konum', 'durumAyrintisi', 'faydaliSaat', 'govdeUcusSaati', 'aciklama'].forEach(col => {
+          ['durum', 'konum', 'durumAyrintisi', 'faydaliSaat', 'govdeUcusSaati'].forEach(col => {
             const key = col as keyof Aircraft;
             const oldVal = String(existing[key] || '').trim();
             const newVal = String(incoming[key] || '').trim();
@@ -408,8 +418,7 @@ const App = () => {
                 'konum': 'KONUM',
                 'durumAyrintisi': 'DURUM AYRINTISI',
                 'faydaliSaat': 'FAYDALI SAAT',
-                'govdeUcusSaati': 'GÖVDE UÇUŞ SAATİ',
-                'aciklama': 'AÇIKLAMA'
+                'govdeUcusSaati': 'GÖVDE UÇUŞ SAATİ'
               };
               const colLabel = labelMap[col] || col.toUpperCase();
               
@@ -428,27 +437,9 @@ const App = () => {
         }
 
         if (existingIdx !== -1) {
-          const oldRaw = updatedFleet[existingIdx].govdeUcusSaatiRaw;
-          const newRaw = incoming.govdeUcusSaatiRaw;
-          
-          // Monotonically Increasing Rule: 
-          // If the new raw value is smaller than existing, ignore the hour update to prevent 5-second flickering
-          const isDecreasing = (oldRaw !== undefined && oldRaw !== null && newRaw !== undefined && newRaw !== null && newRaw < oldRaw - 0.05); // Allow some jitter?
-          
-          const mergeData = { ...incoming };
-          if (isDecreasing) {
-            console.warn(`[STABILITY] Blocked decreasing hours for ${incomingKNo}: ${oldRaw} -> ${newRaw}`);
-            delete mergeData.govdeUcusSaati;
-            delete mergeData.govdeUcusSaatiRaw;
-          }
-
-          updatedFleet[existingIdx] = { ...updatedFleet[existingIdx], ...mergeData } as Aircraft;
+          updatedFleet[existingIdx] = { ...updatedFleet[existingIdx], ...incoming } as Aircraft;
         } else {
-          // Yeni Ekle - Sadece kuyruk no geçerli görünüyorsa (T-70 junk koruması)
-          const isJunkT70 = incoming.tip === 'T-70' && !incomingKNo.includes('OR-') && !incomingKNo.includes('10');
-          if (!isJunkT70) {
-            updatedFleet.push(incoming as Aircraft);
-          }
+          updatedFleet.push(incoming as Aircraft);
         }
 
         setActivities(prevActivities => {
@@ -498,10 +489,15 @@ const App = () => {
         analizKodu: incoming.assignedCode || 'F'
       }));
 
-      proxyFetch(LOG_SCRIPT_URL, {
-        action: 'logAllAircraftActivity',
-        sheetId: MAIL_LOG_SHEET_ID,
-        fleetData: fleetToLog
+      fetch(LOG_SCRIPT_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: 'logAllAircraftActivity',
+          sheetId: MAIL_LOG_SHEET_ID,
+          fleetData: fleetToLog
+        })
       }).catch(err => {
         console.error("Batch sync log error:", err);
       });
@@ -516,13 +512,23 @@ const App = () => {
     if (!LOG_SCRIPT_URL) return Promise.resolve();
     
     try {
-      const result = await proxyFetch(LOG_SCRIPT_URL, { 
-        action: 'getFaaliyetLog',
-        sheetId: MAIL_LOG_SHEET_ID,
-        intraDaySheetName: 'Saatlik Faaliyet Günlüğü',
-        dailySheetName: 'Envanter Log'
+      const res = await fetch(LOG_SCRIPT_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+        body: JSON.stringify({ 
+          action: 'getFaaliyetLog',
+          sheetId: MAIL_LOG_SHEET_ID,
+          intraDaySheetName: 'Saatlik Faaliyet Günlüğü',
+          dailySheetName: 'Envanter Log'
+        })
       });
       
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      
+      const result = await res.json();
       console.log("Past logs result:", result);
       
       // Handle different response structures
@@ -594,12 +600,15 @@ const App = () => {
         const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
         fleet.forEach(a => {
-          let code: DailyStatusCode = '?';
+          let code: DailyStatusCode = 'F';
           if (a.assignedCode) {
             code = a.assignedCode as DailyStatusCode;
           } else {
             const upperDurum = String(a.durum || '').trim().toUpperCase();
-            if (upperDurum === 'FAAL') code = 'F';
+            const upperAyrinti = String(a.durumAyrintisi || '').trim().toUpperCase();
+            if (upperDurum.includes('BAKIM') || upperAyrinti.includes('BAKIM')) code = 'B';
+            else if (upperDurum.includes('ARIZA') || upperAyrinti.includes('ARIZA') || upperAyrinti.includes('OVERSPEED') || upperAyrinti.includes('NG')) code = 'A';
+            else if (upperDurum.includes('OLMADIĞI') || upperAyrinti.includes('OLMADIĞI')) code = 'X';
           }
 
           if (!activityMap.has(a.kuyrukNo)) {
@@ -625,12 +634,6 @@ const App = () => {
           try {
             const kuyrukNo = String(logEntry.kuyrukNo || logEntry['Kuyruk No'] || logEntry.tailNumber || '').trim();
             if (!kuyrukNo) return;
-
-            // Junk T-70 filter: Ignore rows that don't match standard T-70 kuyruk numbers
-            const kNoUpper = kuyrukNo.toUpperCase();
-            if ((logEntry.tip === 'T-70' || logEntry.Platform === 'T-70') && !kNoUpper.includes('OR-') && !kNoUpper.includes('10')) {
-               return;
-            }
 
             const tarihStr = String(logEntry.tarih || logEntry.Tarih || '').trim();
             const durumAyrintisi = String(logEntry.durum || logEntry.Durum || '').trim().toUpperCase();
@@ -673,9 +676,13 @@ const App = () => {
                 tarih: dateStrKey
               });
 
-              // Bugünün verisini logdan değil, canlı veriden alıyoruz
-              let code: DailyStatusCode = '?';
-              if (String(durumAyrintisi).toUpperCase() === 'FAAL') code = 'F';
+              // Bugünün verisini logdan değil, canlı veriden alıyoruz (ancak logda varsa ve canlıda yoksa eklenebilir)
+              let code: DailyStatusCode = 'F';
+              const upperAyrinti = durumAyrintisi.toUpperCase();
+              if (upperAyrinti.includes('BAKIM')) code = 'B';
+              else if (upperAyrinti.includes('ARIZA') || upperAyrinti.includes('PARÇA BEKLER') || upperAyrinti.includes('KAZA KIRIM') || upperAyrinti.includes('OVERSPEED') || upperAyrinti.includes('NG')) code = 'A';
+              else if (upperAyrinti.includes('OLMADIĞI GÜNLER')) code = 'X';
+              else if (durumAyrintisi !== '-' && durumAyrintisi !== '' && durumAyrintisi !== 'FAAL') code = 'B';
               
               if (analizKodu) {
                 code = analizKodu as DailyStatusCode;
@@ -935,14 +942,12 @@ const App = () => {
 
     try {
       const fetchedFleet: Aircraft[] = [];
-      let totalChanges = 0;
 
       await Promise.all(SHEET_CONFIGS.map(async (config) => {
         try {
           const data = await fetchAircraftDataFromAppsScript(config.appsScriptUrl, config);
           if (data && data.length > 0) {
-            // handleSyncFromExcel will catch individual changes
-            handleSyncFromExcel(data, config.aircraftType, false); // Don't log individually
+            handleSyncFromExcel(data, config.aircraftType, true);
             fetchedFleet.push(...(data as Aircraft[]));
           }
         } catch (e) {
@@ -950,24 +955,27 @@ const App = () => {
         }
       }));
 
-      // Toplu loglama işlemi - LOGKOMUT tarafında değişim kontrolü yapıldığı için güvenle çağrılabilir
-      // Ancak gereksiz trafik oluşturmamak için frontend tarafında da basit bir kontrol eklenebilir
+      // 1-dakikalık senkronizasyon sırasında Envanter Log'u güncelle
       if (fetchedFleet.length > 0) {
         try {
-          await proxyFetch(LOG_SCRIPT_URL, {
-            action: 'logAllAircraftActivity',
-            sheetId: MAIL_LOG_SHEET_ID,
-            fleetData: fetchedFleet.map(a => ({
-              kuyrukNo: a.kuyrukNo,
-              tip: a.tip || '',
-              govdeUcusSaati: a.govdeUcusSaati,
-              faydaliSaat: a.faydaliSaat,
-              konum: a.konum,
-              durum: a.durum,
-              durumAyrintisi: a.durumAyrintisi,
-              aciklama: a.aciklama,
-              analizKodu: a.assignedCode
-            }))
+          await fetch(LOG_SCRIPT_URL, {
+            method: 'POST',
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+              action: 'logAllAircraftActivity',
+              sheetId: MAIL_LOG_SHEET_ID,
+              fleetData: fetchedFleet.map(a => ({
+                kuyrukNo: a.kuyrukNo,
+                tip: a.tip,
+                govdeUcusSaati: a.govdeUcusSaati,
+                faydaliSaat: a.faydaliSaat,
+                konum: a.konum,
+                durum: a.durum,
+                durumAyrintisi: a.durumAyrintisi,
+                aciklama: a.aciklama
+              }))
+            })
           });
         } catch (logError) {
           console.error("Otomatik log güncelleme hatası:", logError);
@@ -1122,23 +1130,29 @@ const App = () => {
     const fetchHistory = async () => {
       setIsFetchingHistory(true);
       try {
-        const result = await proxyFetch(LOG_SCRIPT_URL, {
-          action: 'getAircraftData',
-          sheetId: MAIL_LOG_SHEET_ID,
-          sheetName: 'Envanter Log',
-          mapping: {
-            id: 'A2:A10000',
-            tarih: 'B2:B10000',
-            kuyrukNo: 'C2:C10000',
-            tip: 'D2:D10000',
-            govdeUcusSaati: 'E2:E10000',
-            faydaliSaat: 'F2:F10000',
-            konum: 'G2:G10000',
-            durum: 'H2:H10000',
-            durumAyrintisi: 'I2:I10000',
-            aciklama: 'J2:J10000'
-          }
+        const res = await fetch(LOG_SCRIPT_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: 'getAircraftData',
+            sheetId: MAIL_LOG_SHEET_ID,
+            sheetName: 'Envanter Log',
+            mapping: {
+              id: 'A2:A10000',
+              tarih: 'B2:B10000',
+              kuyrukNo: 'C2:C10000',
+              tip: 'D2:D10000',
+              govdeUcusSaati: 'E2:E10000',
+              faydaliSaat: 'F2:F10000',
+              konum: 'G2:G10000',
+              durum: 'H2:H10000',
+              durumAyrintisi: 'I2:I10000',
+              aciklama: 'J2:J10000'
+            }
+          })
         });
+        const result = await res.json();
         
         const data = (result && (result.success || result.status === 'success') && Array.isArray(result.data)) 
           ? result.data 
@@ -1192,7 +1206,17 @@ const App = () => {
           
           let govdeStr = '-';
           if (govdeSaat !== null) {
-            govdeStr = formatToHHMM(govdeSaat, rowTip);
+            if (rowTip === 'Bell-429' || rowTip === 'B-360' || rowTip === 'C-650') {
+              govdeStr = govdeSaat.toFixed(1).replace('.', ',');
+            } else {
+              let h = Math.floor(govdeSaat);
+              let m = Math.round((govdeSaat - h) * 60);
+              if (m === 60) {
+                h += 1;
+                m = 0;
+              }
+              govdeStr = `${h}:${m.toString().padStart(2, '0')}`;
+            }
           }
 
           return {
@@ -1332,6 +1356,14 @@ const App = () => {
     setExpandedNotes(prev => ({ ...prev, [kuyrukNo]: !prev[kuyrukNo] }));
   };
 
+  const handleAdminClick = () => {
+    if (isAdminAuthenticated) {
+      setIsAdminOpen(true);
+    } else {
+      setIsAuthModalOpen(true);
+    }
+  };
+
   const handleLogin = (user: string, pass: string) => {
     const validPasswords = ['802', '429', '70', '650', '360', '1839'];
     if (user === 'ogm' && validPasswords.includes(pass)) {
@@ -1343,29 +1375,25 @@ const App = () => {
     }
   };
 
-  const handleAdminClick = () => {
-    if (isAdminAuthenticated) {
-      setIsAdminOpen(true);
-    } else {
-      setIsAuthModalOpen(true);
-    }
-  };
-
   const syncLogs = async () => {
     setIsSyncing(true);
     try {
-      const result = await proxyFetch(AT802_SCRIPT_URL, { action: 'sync' });
-      
-      if (result && result.success) {
+      const response = await fetch(`${AT802_SCRIPT_URL}`, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: 'sync' })
+      });
+      const result = await response.json();
+      if (result.success) {
         alert('Log senkronizasyonu başarıyla tamamlandı.');
         runGlobalSync(); // Refresh data
       } else {
-        alert('Senkronizasyon hatası: ' + (result?.message || result?.error || 'Bilinmeyen hata'));
+        alert('Senkronizasyon hatası: ' + (result.message || 'Bilinmeyen hata'));
       }
     } catch (error) {
       console.error('Sync log error:', error);
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      alert(`Senkronizasyon sırasında bir hata oluştu: ${errorMsg}\n\nİpucu: Bu hata genellikle internet bağlantısı veya Google Apps Script izinlerinden (Anyone erişimi) kaynaklanır.`);
+      alert(`Senkronizasyon sırasında bir hata oluştu: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsSyncing(false);
     }
@@ -1633,7 +1661,7 @@ const App = () => {
                         <td className={`border border-black px-3 py-2.5 text-center font-black ${isFaal ? 'bg-[#e8f5e9] text-[#2e7d32]' : 'bg-[#ffebee] text-[#c62828]'}`}>{a.durum.toUpperCase()}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-gray-900 uppercase">{a.durumAyrintisi !== '-' ? a.durumAyrintisi : ''}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900 uppercase">{a.konum}</td>
-                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">{formatToHHMM(a.faydaliSaat, a.tip)}</td>
+                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">{formatToHHMM(a.faydaliSaat)}</td>
                         <td className="border border-black px-4 py-2 text-left text-[11px] leading-tight text-gray-600 italic whitespace-pre-wrap">{a.aciklama}</td>
                       </tr>
                     );
