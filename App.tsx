@@ -428,7 +428,21 @@ const App = () => {
         }
 
         if (existingIdx !== -1) {
-          updatedFleet[existingIdx] = { ...updatedFleet[existingIdx], ...incoming } as Aircraft;
+          const oldRaw = updatedFleet[existingIdx].govdeUcusSaatiRaw;
+          const newRaw = incoming.govdeUcusSaatiRaw;
+          
+          // Monotonically Increasing Rule: 
+          // If the new raw value is smaller than existing, ignore the hour update to prevent 5-second flickering
+          const isDecreasing = (oldRaw !== undefined && oldRaw !== null && newRaw !== undefined && newRaw !== null && newRaw < oldRaw - 0.05); // Allow some jitter?
+          
+          const mergeData = { ...incoming };
+          if (isDecreasing) {
+            console.warn(`[STABILITY] Blocked decreasing hours for ${incomingKNo}: ${oldRaw} -> ${newRaw}`);
+            delete mergeData.govdeUcusSaati;
+            delete mergeData.govdeUcusSaatiRaw;
+          }
+
+          updatedFleet[existingIdx] = { ...updatedFleet[existingIdx], ...mergeData } as Aircraft;
         } else {
           // Yeni Ekle - Sadece kuyruk no geçerli görünüyorsa (T-70 junk koruması)
           const isJunkT70 = incoming.tip === 'T-70' && !incomingKNo.includes('OR-') && !incomingKNo.includes('10');
@@ -1178,17 +1192,7 @@ const App = () => {
           
           let govdeStr = '-';
           if (govdeSaat !== null) {
-            if (rowTip === 'Bell-429' || rowTip === 'B-360' || rowTip === 'C-650') {
-              govdeStr = govdeSaat.toFixed(1).replace('.', ',');
-            } else {
-              let h = Math.floor(govdeSaat);
-              let m = Math.round((govdeSaat - h) * 60);
-              if (m === 60) {
-                h += 1;
-                m = 0;
-              }
-              govdeStr = `${h}:${m.toString().padStart(2, '0')}`;
-            }
+            govdeStr = formatToHHMM(govdeSaat, rowTip);
           }
 
           return {

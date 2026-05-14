@@ -43,9 +43,12 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
 
   const formatAsDecimal = (val: number | null, aircraftType?: string) => {
     if (val === null) return '-';
-    // Special case for Bell-429: if it was parsed from HH.MM format, we might want to show it as decimal or as it was.
-    // But usually we just show the numeric value.
-    return val.toFixed(1).replace('.', ',');
+    // Use Turkish locale formatting to stay consistent across the app
+    return val.toLocaleString('tr-TR', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 2,
+      useGrouping: false
+    });
   };
 
   const handleSorgula = async () => {

@@ -89,7 +89,15 @@ export const formatToHHMM = (totalHours: number | null, aircraftType?: string): 
   
   // Specific types should remain as decimal (with comma) for both Useful Hours and Airframe Hours
   if (aircraftType === 'B-360' || aircraftType === 'C-650' || aircraftType === 'Bell-429') {
-    return totalHours.toFixed(1).replace('.', ',');
+    // Preserve at least 1, up to 2 decimal places to respect "ham veri" (raw data) as requested.
+    // Use fixed precision to catch floating point errors, then trim excess zeros.
+    let s = totalHours.toFixed(2);
+    if (s.endsWith('.00')) {
+      s = totalHours.toFixed(1);
+    } else if (s.endsWith('0')) {
+      s = totalHours.toFixed(1);
+    }
+    return s.replace('.', ',');
   }
   
   // Standard conversion for others: convert decimals (e.g. 1692.5) to HH:mm format (1692:30)
@@ -226,6 +234,13 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
     } else if (s.includes(',')) {
       // Only comma exists: treat as decimal
       s = s.replace(',', '.');
+    } else if (s.match(/^\d{1,3}(\.\d{3})+$/)) {
+      // If it matches pattern like 1.728 with NO comma, it's likely a Turkish thousands separator
+      // Especially if it's for the decimal aircraft types where hours are high
+      const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
+      if (decimalTypes.includes(aircraftType) || parseFloat(s.replace(/\./g, '')) > 500) {
+        s = s.replace(/\./g, '');
+      }
     }
     
     if (s.includes(':')) {
@@ -467,6 +482,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         maintenanceHours = [{ bakimTuru: 'KALAN', kalanSaat: displayHour || 0 }];
       }
 
+      const parsedGovde = parseSingleCellToHour(item.govdeUcusSaati ?? item.E ?? item.e ?? item[4], config.aircraftType);
       const govdeStr = formatGovdeHour(item.govdeUcusSaati ?? item.E ?? item.e ?? item[4], config.aircraftType);
 
       const aircraft: Partial<Aircraft> = {
@@ -479,6 +495,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
         konum: String(item.konum || 'ANKARA'),
         faydaliSaat: finalMinHour, 
         govdeUcusSaati: govdeStr,
+        govdeUcusSaatiRaw: parsedGovde,
         aciklama: String(item.aciklama || ''),
         guncellemeTarihi: timestamp,
         durumBaslangic: new Date().toISOString().split('T')[0],
