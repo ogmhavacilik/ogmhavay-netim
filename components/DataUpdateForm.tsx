@@ -481,7 +481,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         if (decimalTypes.includes(selectedAircraft.tip) && finalData.govdeUcusSaati) {
           const parsedHours = parseSingleCellToHour(finalData.govdeUcusSaati, selectedAircraft.tip);
           if (parsedHours !== null) {
-            finalData.govdeUcusSaati = parsedHours;
+            finalData.govdeUcusSaati = parsedHours.toFixed(1).replace('.', ',');
           }
         }
       } else {
@@ -516,15 +516,25 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           if (finalData.govdeUcusSaati) {
             const parsedHours = parseSingleCellToHour(finalData.govdeUcusSaati, selectedAircraft.tip);
             if (parsedHours !== null) {
-              // Send as number to prevent rounding issues during parsing on the server (Apps Script)
-              finalData.govdeUcusSaati = parsedHours;
+              // Preserve decimal precision (use more decimals or just ensure it's not rounded to whole)
+              // User said "virgülden sonraki hanesiyle birlikte aynen yazılacaktır"
+              // If they entered 1790,54 we should keep .54. toFixed(1) would lose the 4.
+              // Let's use up to 2 decimal places if they exist, or just 1 as standard.
+              // Actually, keeping exactly what they typed is better if it's already a string.
+              // But we need to normalize to comma.
+              const s = String(finalData.govdeUcusSaati).replace('.', ',');
+              if (!s.includes(',')) {
+                finalData.govdeUcusSaati = parsedHours.toFixed(1).replace('.', ',');
+              } else {
+                finalData.govdeUcusSaati = s;
+              }
             }
           }
           
           if (finalData.faydaliSaat) {
             const parsedFaydali = parseSingleCellToHour(finalData.faydaliSaat, selectedAircraft.tip);
             if (parsedFaydali !== null) {
-              finalData.faydaliSaat = parsedFaydali;
+              finalData.faydaliSaat = parsedFaydali.toFixed(1).replace('.', ',');
             }
           }
           
@@ -535,7 +545,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
               if (finalData[field]) {
                 const parsed = parseSingleCellToHour(finalData[field], selectedAircraft.tip);
                 if (parsed !== null) {
-                  finalData[field] = parsed;
+                  finalData[field] = parsed.toFixed(1).replace('.', ',');
                 }
               }
             });
@@ -653,8 +663,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
             const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
             if (decimalTypes.includes(selectedAircraft.tip)) {
               const parsed = parseSingleCellToHour(val, selectedAircraft.tip);
-              // Send as number for decimal types to prevent string parsing issues on sever
-              return parsed !== null ? parsed : val;
+              return parsed !== null ? parsed.toFixed(1).replace('.', ',') : val;
             }
             // For T-70 and AT-802, use HH:mm format in the log
             const parsed = parseSingleCellToHour(val, selectedAircraft.tip);
