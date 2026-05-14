@@ -918,17 +918,58 @@ function doPost(e) {
         }
       }
 
-      // Cache IDs and Current Values for change detection
-      var logFullRange = logSheet.getDataRange();
-      var logValues = logFullRange.getValues();
+      // --- DUPLICATE REMOVAL START ---
+      // Scan and remove any existing duplicates for this specific date before logging
+      var logDataForCleanup = logSheet.getDataRange().getValues();
+      var rowsToDelete = [];
+      var seenIds = {};
+      
+      // We go backwards to delete safely
+      for (var d = logDataForCleanup.length - 1; d >= 1; d--) {
+        var rowDate = logDataForCleanup[d][1];
+        if (rowDate instanceof Date) rowDate = Utilities.formatDate(rowDate, ss.getSpreadsheetTimeZone(), "dd.MM.yyyy");
+        
+        if (rowDate === dateStr) {
+          var rowKNo = String(logDataForCleanup[d][2]).trim().toUpperCase();
+          var uniqueKey = rowDate + "_" + rowKNo;
+          if (seenIds[uniqueKey]) {
+            rowsToDelete.push(d + 1);
+          } else {
+            seenIds[uniqueKey] = true;
+          }
+        }
+      }
+      rowsToDelete.forEach(function(rowIdx) { logSheet.deleteRow(rowIdx); });
+
+      var faalDataForCleanup = faalLogSheet.getDataRange().getValues();
+      var faalRowsToDelete = [];
+      var seenFaalIds = {};
+      for (var f = faalDataForCleanup.length - 1; f >= 1; f--) {
+        var rowDate = faalDataForCleanup[f][1];
+        if (rowDate instanceof Date) rowDate = Utilities.formatDate(rowDate, ss.getSpreadsheetTimeZone(), "dd.MM.yyyy");
+        
+        if (rowDate === dateStr) {
+          var rowKNo = String(faalDataForCleanup[f][2]).trim().toUpperCase();
+          var uniqueKey = rowDate + "_" + rowKNo;
+          if (seenFaalIds[uniqueKey]) {
+            faalRowsToDelete.push(f + 1);
+          } else {
+            seenFaalIds[uniqueKey] = true;
+          }
+        }
+      }
+      faalRowsToDelete.forEach(function(rowIdx) { faalLogSheet.deleteRow(rowIdx); });
+      // --- DUPLICATE REMOVAL END ---
+
+      // Re-cache IDs and Current Values after cleanup
+      var logValues = logSheet.getDataRange().getValues();
       var logIdMap = {};
       for (var i = 0; i < logValues.length; i++) {
         var id = String(logValues[i][0]).trim();
         if (id) logIdMap[id] = { row: i + 1, data: logValues[i] };
       }
 
-      var faalFullRange = faalLogSheet.getDataRange();
-      var faalValues = faalFullRange.getValues();
+      var faalValues = faalLogSheet.getDataRange().getValues();
       var faalIdMap = {};
       for (var j = 0; j < faalValues.length; j++) {
         var id = String(faalValues[j][0]).trim();
@@ -945,34 +986,37 @@ function doPost(e) {
 
         var finalAnaliz = data.analizKodu || '?';
 
-        // --- 1. Envanter Log Güncelleme & Değişiklik Kontrolü ---
+        // --- 1. Envanter Log Güncelleme ---
         var logEntry = logIdMap[logId];
-        var needsLogUpdate = false;
         
+        var faydaliVal = data.faydaliSaat;
+        // Normalize faydali saat - if it's a number, use its decimal representation for the log
+        // This avoids the day/hour confusion in Sheets durations
+        if (typeof faydaliVal === 'string') faydaliVal = parseFloat(faydaliVal.replace(',', '.')) || 0;
+
         if (!logEntry) {
-          needsLogUpdate = true;
           logSheet.appendRow([
             logId, 
             dateStr, 
             kuyrukNo, 
             data.tip, 
             "", // Placeholder for govde
-            data.faydaliSaat || 0,
+            faydaliVal,
             data.konum,
             data.durum,
             data.durumAyrintisi,
-            finalAnaliz, // Ekleme
+            finalAnaliz,
             data.aciklama ? "'" + String(data.aciklama) : ""
           ]);
           var newRow = logSheet.getLastRow();
           setLogTimeValue(logSheet, newRow, 5, data.govdeUcusSaati, data.tip);
-          logSheet.getRange(newRow, 11).setNumberFormat("@"); // Açıklama kolonu 11 oldu
+          logSheet.getRange(newRow, 6).setNumberFormat("0.0#"); // Force decimal format for Faydali
+          logSheet.getRange(newRow, 11).setNumberFormat("@");
           updatedCount++;
         } else {
-          // Değişiklik kontrolü (Faydalı Saat, Konum, Durum, Ayrinti, Açıklama, Gövde Saati)
           var oldRow = logEntry.data;
-          var oldFaydali = String(oldRow[5]).trim();
-          var newFaydali = String(data.faydaliSaat || 0).trim();
+          var oldFaydali = parseFloat(oldRow[5]) || 0;
+          var newFaydali = parseFloat(faydaliVal) || 0;
           
           var oldKonum = String(oldRow[6]).trim().toUpperCase();
           var newKonum = String(data.konum || "").trim().toUpperCase();
@@ -981,7 +1025,6 @@ function doPost(e) {
           var newDurum = String(data.durum || "").trim().toUpperCase();
           
           var oldAyrinti = String(oldRow[8]).trim().toUpperCase();
-          
           var oldAnaliz = String(oldRow[9] || "").trim().toUpperCase();
           var newAnaliz = String(finalAnaliz || "").trim().toUpperCase();
           
@@ -989,27 +1032,30 @@ function doPost(e) {
           if (oldAciklama.indexOf("'") === 0) oldAciklama = oldAciklama.substring(1);
           var newAciklama = String(data.aciklama || "").trim();
           
-          // Gövde saati kontrolü biraz daha karmaşık (formatToHHMM kullanıyoruz)
-          var oldGovde = formatToHHMM(oldRow[4]);
+          var oldGovdeRaw = oldRow[4];
+          // We compare hour values by converting to HH:mm string to avoid float precision issues
+          var oldGovde = formatToHHMM(oldGovdeRaw);
           var newGovde = formatToHHMM(data.govdeUcusSaati);
 
-          if (oldFaydali !== newFaydali || oldKonum !== newKonum || oldDurum !== newDurum || 
+          if (Math.abs(oldFaydali - newFaydali) > 0.01 || oldKonum !== newKonum || oldDurum !== newDurum || 
               oldAyrinti !== newAyrinti || oldAnaliz !== newAnaliz || oldAciklama !== newAciklama || oldGovde !== newGovde) {
             
             logSheet.getRange(logEntry.row, 1, 1, 4).setValues([[logId, dateStr, kuyrukNo, data.tip]]);
             logSheet.getRange(logEntry.row, 6, 1, 6).setValues([[
-              data.faydaliSaat || 0,
+              newFaydali,
               data.konum,
               data.durum,
               data.durumAyrintisi,
               newAnaliz,
               data.aciklama ? "'" + String(data.aciklama) : ""
             ]]);
+            logSheet.getRange(logEntry.row, 6).setNumberFormat("0.0#");
             setLogTimeValue(logSheet, logEntry.row, 5, data.govdeUcusSaati, data.tip);
             logSheet.getRange(logEntry.row, 11).setNumberFormat("@");
             updatedCount++;
           }
         }
+
 
         // --- 2. Faaliyet Log Güncelleme & Değişiklik Kontrolü ---
         var faalEntry = faalIdMap[logId];
@@ -1070,31 +1116,25 @@ function doPost(e) {
       if (!logSheet) {
         logSheet = ss.insertSheet("Envanter Log");
         logSheet.appendRow([
-          "ID",
-          "Tarih",
-          "Kuyruk No",
-          "Tip",
-          "Gövde Uçuş Saati",
-          "Faydalı Saat",
-          "Konum",
-          "Durum",
-          "Durum Ayrıntısı",
-          "Analiz Kodu",
-          "Açıklama",
+          "ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", 
+          "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Analiz Kodu", "Açıklama"
         ]);
       }
+      
+      var faydaliVal = data.faydaliSaat;
+      if (typeof faydaliVal === 'string') faydaliVal = parseFloat(faydaliVal.replace(',', '.')) || 0;
       var finalAnaliz = data.analizKodu || '?';
 
       var logData = logSheet.getRange("A:A").getValues();
       var foundLog = false;
       for (var i = 1; i < logData.length; i++) {
         if (String(logData[i][0]).trim() === id) {
-          setLogTimeValue(logSheet, i + 1, 5, data.govdeUcusSaati, data.tip);
+          logSheet.getRange(i + 1, 1, 1, 4).setValues([[id, dateStr, kuyrukNo, data.tip]]);
           logSheet
             .getRange(i + 1, 6, 1, 6)
             .setValues([
               [
-                data.faydaliSaat || 0,
+                faydaliVal,
                 data.konum,
                 data.durum,
                 data.durumAyrintisi,
@@ -1102,7 +1142,8 @@ function doPost(e) {
                 data.aciklama ? "'" + String(data.aciklama) : "",
               ],
             ]);
-          // Açıklama sütununu (11. kolon) metin formatına zorla
+          setLogTimeValue(logSheet, i + 1, 5, data.govdeUcusSaati, data.tip);
+          logSheet.getRange(i + 1, 6).setNumberFormat("0.0#");
           logSheet.getRange(i + 1, 11).setNumberFormat("@");
           foundLog = true;
           break;
@@ -1115,7 +1156,7 @@ function doPost(e) {
           kuyrukNo,
           data.tip,
           "", // Gövde Uçuş Saati (set below)
-          data.faydaliSaat || 0,
+          faydaliVal,
           data.konum,
           data.durum,
           data.durumAyrintisi,
@@ -1124,7 +1165,7 @@ function doPost(e) {
         ]);
         var lastRowIdx = logSheet.getLastRow();
         setLogTimeValue(logSheet, lastRowIdx, 5, data.govdeUcusSaati, data.tip);
-        // Yeni eklenen satırın açıklama hücresini metin yap (11. kolon)
+        logSheet.getRange(lastRowIdx, 6).setNumberFormat("0.0#");
         logSheet.getRange(lastRowIdx, 11).setNumberFormat("@");
       }
 
@@ -1667,7 +1708,13 @@ function parseSingleCellToHour(val, aircraftType) {
     return null;
   if (typeof val === "number") {
     if (val <= 0) return null;
-    if (aircraftType === "AT-802" && val < 100) return val * 24;
+    // Heuristic: If it's a very small number (< 15) and not an integer, it's likely a day count (Sheet duration)
+    // Most aircraft total hours are > 500. Faydali can be small (e.g. 2.5 hours).
+    // If it's < 5 for AT-802, we treat it as days. Otherwise, it's hours.
+    if (aircraftType === "AT-802") {
+       if (val < 5) return val * 24; // 5 days is 120 hours. 
+       if (val >= 5 && val < 50000) return val; // Likely hours
+    }
     return val;
   }
   if (typeof val === "string") {
@@ -1889,46 +1936,68 @@ function performDailyMidnightLogging() {
   fleetData.forEach(function (item) {
     var id = dateStr + "_" + item.kuyrukNo;
     
+    var faydaliVal = item.faydaliSaat;
+    if (typeof faydaliVal === 'string') faydaliVal = parseFloat(faydaliVal.replace(',', '.')) || 0;
+
     // Values for Log
     var newLogValues = [
       id,
       dateStr,
       item.kuyrukNo,
       item.tip,
-      item.govdeUcusSaati || 0,
-      item.faydaliSaat || 0,
+      "", // Placeholder for govde - set via setLogTimeValue
+      faydaliVal,
       item.konum,
       item.durum,
       item.durumAyrintisi,
+      item.analizKodu || '?',
       item.aciklama ? "'" + String(item.aciklama) : "",
     ];
 
     // De-duplicate Envanter Log
     if (!logMap[id]) {
       logSheet.appendRow(newLogValues);
-      logSheet.getRange(logSheet.getLastRow(), 10).setNumberFormat("@");
-      logMap[id] = { row: logSheet.getLastRow(), data: newLogValues };
+      var lastR = logSheet.getLastRow();
+      setLogTimeValue(logSheet, lastR, 5, item.govdeUcusSaati, item.tip);
+      logSheet.getRange(lastR, 6).setNumberFormat("0.0#");
+      logSheet.getRange(lastR, 11).setNumberFormat("@");
+      logMap[id] = { row: lastR, data: newLogValues };
     } else {
       var entry = logMap[id];
       var targetRow = entry.row;
       var existingData = entry.data;
 
       var hasChanged = false;
-      for (var i = 3; i < 10; i++) { // Check from Tip onwards
+      // Check for changes (Tip to Aciklama)
+      for (var i = 3; i < 11; i++) { 
+         if (i === 4) continue; // Govde handled separately
          var existingVal = String(existingData[i] || "");
          var newVal = String(newLogValues[i] || "");
-         if (i === 9 && newVal.indexOf("'") === 0) newVal = newVal.substring(1);
-         if (i === 9 && existingVal.indexOf("'") === 0) existingVal = existingVal.substring(1);
+         if (i === 10 && newVal.indexOf("'") === 0) newVal = newVal.substring(1);
+         if (i === 10 && existingVal.indexOf("'") === 0) existingVal = existingVal.substring(1);
 
          if (existingVal !== newVal) {
            hasChanged = true;
            break;
          }
       }
+      
+      // Also check Govde
+      if (formatToHHMM(existingData[4]) !== formatToHHMM(item.govdeUcusSaati)) hasChanged = true;
 
       if (hasChanged) {
-        logSheet.getRange(targetRow, 1, 1, 10).setValues([newLogValues]);
-        logSheet.getRange(targetRow, 10).setNumberFormat("@");
+        logSheet.getRange(targetRow, 1, 1, 4).setValues([[id, dateStr, item.kuyrukNo, item.tip]]);
+        logSheet.getRange(targetRow, 6, 1, 6).setValues([[
+          faydaliVal,
+          item.konum,
+          item.durum,
+          item.durumAyrintisi,
+          item.analizKodu || '?',
+          item.aciklama ? "'" + String(item.aciklama) : ""
+        ]]);
+        setLogTimeValue(logSheet, targetRow, 5, item.govdeUcusSaati, item.tip);
+        logSheet.getRange(targetRow, 6).setNumberFormat("0.0#");
+        logSheet.getRange(targetRow, 11).setNumberFormat("@");
       }
     }
 
