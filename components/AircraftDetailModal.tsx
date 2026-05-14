@@ -557,13 +557,8 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                    </h3>
                    <div className="flex items-center gap-2">
                      <span className="text-[9px] font-black px-2 py-1 bg-blue-50 text-blue-600 rounded uppercase tracking-widest">
-                        EN YAKIN: {isT70 ? formatToHHMM(aircraft.faydaliSaat) : (isB360OrC650 || isBell429) ? formatToHHMM(aircraft.faydaliSaat) : aircraft.faydaliSaat} SAAT
+                        EN YAKIN: {formatToHHMM(aircraft.faydaliSaat, aircraft.tip)} SAAT
                      </span>
-                     {(isB360OrC650 || isBell429) && aircraft.faydaliSaat !== null && (
-                       <span className="text-[8px] font-bold text-gray-400 italic">
-                         *Ondalık sistemden saate çevrildi
-                       </span>
-                     )}
                    </div>
                  </div>
                  <div className="border border-gray-100 rounded-xl overflow-hidden shadow-sm">
@@ -583,7 +578,7 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                                   {mh.bakimTuru}
                                 </td>
                                 <td className={`px-5 py-4 text-right font-black text-2xl tracking-tighter ${Number(mh.kalanSaat) < 50 ? 'text-red-500' : 'text-emerald-600'}`}>
-                                  {formatToHHMM(Number(mh.kalanSaat))}
+                                  {formatToHHMM(Number(mh.kalanSaat), aircraft.tip)}
                                 </td>
                               </tr>
                             ))}
@@ -607,7 +602,7 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                               <tr key={i} className="border-b last:border-0 border-gray-50 hover:bg-gray-50 transition-colors">
                                 <td className="px-5 py-4 font-bold text-gray-600 uppercase tracking-tighter">{mh.bakimTuru}</td>
                                 <td className={`px-5 py-4 text-right font-black text-2xl tracking-tighter ${mh.kalanSaat < 50 ? 'text-red-500' : 'text-emerald-600'}`}>
-                                  {mh.kalanSaat}
+                                  {formatToHHMM(Number(mh.kalanSaat), aircraft.tip)}
                                 </td>
                               </tr>
                             ))}

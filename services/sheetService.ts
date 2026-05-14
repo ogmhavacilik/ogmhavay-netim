@@ -87,14 +87,22 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
 export const formatToHHMM = (totalHours: number | null, aircraftType?: string): string => {
   if (totalHours === null) return '-';
   
-  // Standard conversion for all types now, as per user's latest request to convert decimals (e.g. 1692.5) to HH:mm format (1692:30)
+  // Specific types should remain as decimal (with comma) for both Useful Hours and Airframe Hours
+  if (aircraftType === 'B-360' || aircraftType === 'C-650' || aircraftType === 'Bell-429') {
+    // Use at least 1, up to 2 decimal places to respect "ham veri" (raw data) as requested
+    return totalHours.toLocaleString('tr-TR', { 
+      minimumFractionDigits: 1, 
+      maximumFractionDigits: 2,
+      useGrouping: false 
+    });
+  }
+  
+  // Standard conversion for others: convert decimals (e.g. 1692.5) to HH:mm format (1692:30)
   const hours = Math.floor(Math.abs(totalHours));
   const minutes = Math.round((Math.abs(totalHours) - hours) * 60);
   const sign = totalHours < 0 ? '-' : '';
   
-  const result = `${sign}${hours}:${minutes.toString().padStart(2, '0')}`;
-  
-  return result;
+  return `${sign}${hours}:${minutes.toString().padStart(2, '0')}`;
 };
 
 /**
@@ -223,6 +231,13 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
     } else if (s.includes(',')) {
       // Only comma exists: treat as decimal
       s = s.replace(',', '.');
+    } else if (s.match(/^\d{1,3}(\.\d{3})+$/)) {
+      // If it matches pattern like 1.728 with NO comma, it's likely a Turkish thousands separator
+      // Especially if it's for the decimal aircraft types where hours are high
+      const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
+      if (decimalTypes.includes(aircraftType) || parseFloat(s.replace(/\./g, '')) > 500) {
+        s = s.replace(/\./g, '');
+      }
     }
     
     if (s.includes(':')) {
@@ -347,6 +362,28 @@ const formatDateIfISO = (val: any): string => {
   return s;
 };
 
+export const proxyFetch = async (url: string, body: any) => {
+  try {
+    const response = await fetch('/api/proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url, body }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result.data;
+  } catch (error) {
+    console.error('proxyFetch Error:', error);
+    throw error;
+  }
+};
+
 export const fetchAircraftDataFromAppsScript = async (url: string, config: SheetConfig): Promise<Partial<Aircraft>[]> => {
   const cleanUrl = url?.trim();
   if (!cleanUrl || !cleanUrl.startsWith('http')) {
@@ -358,29 +395,13 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
     return [];
   }
   try {
-    const response = await fetch(cleanUrl, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        sheetId: config.sheetId,
-        sheetName: config.sheetName || '',
-        mapping: config.mapping,
-        action: 'getAircraftData',
-        fetchTechnicalDetails: config.aircraftType === 'AT-802'
-      })
+    const result = await proxyFetch(cleanUrl, {
+      sheetId: config.sheetId,
+      sheetName: config.sheetName || '',
+      mapping: config.mapping,
+      action: 'getAircraftData',
+      fetchTechnicalDetails: config.aircraftType === 'AT-802'
     });
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    let result;
-    const text = await response.text();
-    try {
-      result = JSON.parse(text);
-    } catch (e) {
-      console.error(`fetchAircraftDataFromAppsScript JSON Parse Error (${config.aircraftType}):`, e, "Raw response:", text.substring(0, 200));
-      return [];
-    }
     
     const data = (result && (result.success || result.status === 'success') && Array.isArray(result.data)) 
       ? result.data 
@@ -449,11 +470,13 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
           .filter((h): h is number => h !== null);
         finalMinHour = validFaydaliHours.length > 0 ? Math.min(...validFaydaliHours) : null;
         
-        const hourInt = (config.aircraftType === 'C-650' && finalMinHour !== null) 
-          ? Math.floor(finalMinHour) 
+        // Use decimal for specific types, floor for others (like T-70 if not specified otherwise)
+        const isDecimalType = config.aircraftType === 'B-360' || config.aircraftType === 'C-650' || config.aircraftType === 'Bell-429';
+        const displayHour = (isDecimalType && finalMinHour !== null) 
+          ? finalMinHour 
           : (finalMinHour !== null ? Math.floor(finalMinHour) : null);
           
-        maintenanceHours = [{ bakimTuru: 'KALAN', kalanSaat: hourInt || 0 }];
+        maintenanceHours = [{ bakimTuru: 'KALAN', kalanSaat: displayHour || 0 }];
       }
 
       const govdeStr = formatGovdeHour(item.govdeUcusSaati ?? item.E ?? item.e ?? item[4], config.aircraftType);
@@ -653,25 +676,12 @@ export const fetchOPLData = async (
     return [];
   }
   try {
-    const response = await fetch(cleanUrl, {
-      method: "POST",
-      redirect: 'follow',
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify({
-        action: "getOPLData",
-        sheetId,
-        kuyrukNo
-      })
+    const result = await proxyFetch(cleanUrl, {
+      action: "getOPLData",
+      sheetId,
+      kuyrukNo
     });
 
-    if (!response.ok) {
-      console.warn(`fetchOPLData: HTTP Hatası ${response.status} - ${scriptUrl}`);
-      return [];
-    }
-
-    const result = await response.json();
     if (!result || !result.success || !Array.isArray(result.data)) {
       console.warn("fetchOPLData: Geçersiz veri yapısı", result);
       return [];
@@ -696,20 +706,11 @@ export const fetchAircraftSpecificData = async (
   if (!cleanUrl || !cleanUrl.startsWith('http')) return { success: false };
   if (!cleanUrl.includes('script.google.com/macros/')) return { success: false };
   try {
-    const response = await fetch(cleanUrl, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify({
-        action: 'getAircraftSpecificData',
-        sheetId,
-        kuyrukNo
-      })
+    return await proxyFetch(cleanUrl, {
+      action: 'getAircraftSpecificData',
+      sheetId,
+      kuyrukNo
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
   } catch (error) {
     console.error("fetchAircraftSpecificData error:", error);
     return { success: false };
@@ -728,22 +729,15 @@ export const updateAircraftData = async (
   const cleanUrl = url?.trim();
   if (!cleanUrl || !cleanUrl.includes('script.google.com/macros/')) return { success: false, message: 'Geçersiz URL formatı.' };
   try {
-    const response = await fetch(cleanUrl, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        action: 'updateAircraftData',
-        sheetId,
-        sheetName,
-        kuyrukNo,
-        updates,
-        mapping,
-        aircraftType
-      })
+    const result = await proxyFetch(cleanUrl, {
+      action: 'updateAircraftData',
+      sheetId,
+      sheetName,
+      kuyrukNo,
+      updates,
+      mapping,
+      aircraftType
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const result = await response.json();
     const message = typeof result.data === 'string' ? result.data : (result.data?.message || result.message || result.error);
     return {
       success: result.success || result.status === 'success' || false,
@@ -766,21 +760,14 @@ export const updatePastEnvanterLog = async (
   const cleanUrl = url?.trim();
   if (!cleanUrl || !cleanUrl.includes('script.google.com/macros/')) return { success: false, message: 'Geçersiz URL formatı.' };
   try {
-    const response = await fetch(cleanUrl, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        action: 'updatePastEnvanterLog',
-        sheetId,
-        kuyrukNo,
-        date,
-        newHours,
-        tip
-      })
+    const result = await proxyFetch(cleanUrl, {
+      action: 'updatePastEnvanterLog',
+      sheetId,
+      kuyrukNo,
+      date,
+      newHours,
+      tip
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const result = await response.json();
     const message = typeof result.data === 'string' ? result.data : (result.data?.message || result.message || result.error);
     return {
       success: result.success || result.status === 'success' || false,
