@@ -527,8 +527,21 @@ const App = () => {
       
       // Handle different response structures
       const data = result.data || result;
-      const logData = data.faaliyetLog || data.dailyLogs || [];
+      const faaliyetLogs = data.faaliyetLog || data.dailyLogs || [];
+      const envanterLogs = data.envanterLog || [];
       const intraDayData = data.intraDayLog || data.intraDayLogs || data.hourlyLogs || [];
+      
+      const logData = [...faaliyetLogs];
+      envanterLogs.forEach((env: any) => {
+        const envKNo = String(env.kuyrukNo || env['Kuyruk No'] || env.tailNumber || '').trim();
+        const envTarih = String(env.tarih || env.Tarih || '').trim();
+        if (envKNo && envTarih && !logData.some(f => 
+          String(f.kuyrukNo || f['Kuyruk No'] || f.tailNumber || '').trim() === envKNo && 
+          String(f.tarih || f.Tarih || '').trim() === envTarih
+        )) {
+          logData.push(env);
+        }
+      });
       
       setEnvanterLog(logData.map((logEntry: any) => {
         const tarihStr = String(logEntry.tarih || logEntry.Tarih || '').trim();
@@ -633,7 +646,7 @@ const App = () => {
             }
 
             const tarihStr = String(logEntry.tarih || logEntry.Tarih || '').trim();
-            const durumAyrintisi = String(logEntry.durum || logEntry.Durum || '').trim().toUpperCase();
+            const durumAyrintisi = String(logEntry.durumAyrintisi || logEntry.durum || logEntry.Durum || '').trim().toUpperCase();
             const analizKodu = logEntry.analizKodu ? String(logEntry.analizKodu).trim() : null;
 
             let dayNum = -1, monthNum = -1, yearNum = -1;
@@ -667,18 +680,46 @@ const App = () => {
               const dateStrKey = `${yearNum}-${String(monthNum + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
               if (dateStrKey > todayStr) return;
               
-              normalizedEnvanterLog.push({
-                ...logEntry,
-                kuyrukNo: kuyrukNo,
-                tarih: dateStrKey
-              });
+              // De-duplicate normalizedEnvanterLog (use latest record for same date/tail)
+              const existingIdx = normalizedEnvanterLog.findIndex(e => e.kuyrukNo === kuyrukNo && e.tarih === dateStrKey);
+              if (existingIdx !== -1) {
+                normalizedEnvanterLog[existingIdx] = {
+                  ...logEntry,
+                  kuyrukNo: kuyrukNo,
+                  tarih: dateStrKey
+                };
+              } else {
+                normalizedEnvanterLog.push({
+                  ...logEntry,
+                  kuyrukNo: kuyrukNo,
+                  tarih: dateStrKey
+                });
+              }
 
               // Bugünün verisini logdan değil, canlı veriden alıyoruz
               let code: DailyStatusCode = '?';
-              if (String(durumAyrintisi).toUpperCase() === 'FAAL') code = 'F';
+              const isMainFaal = durumAyrintisi === 'FAAL';
               
               if (analizKodu) {
                 code = analizKodu as DailyStatusCode;
+                // Heuristic fix: If main status is tracked as 'FAAL' in the log but the analysis code
+                // remained 'TB' or 'KM', it's likely a logic error from the past.
+                if (isMainFaal && (code === 'TB' || code === 'KM')) {
+                  code = 'F';
+                }
+              } else if (isMainFaal) {
+                code = 'F';
+              } else {
+                // Heuristic mapping for non-faal without analizKodu
+                if (durumAyrintisi.includes('BAKIM') && durumAyrintisi.includes('BEKLER')) code = 'BB';
+                else if (durumAyrintisi.includes('BAKIM')) code = 'B';
+                else if (durumAyrintisi.includes('ARIZA')) code = 'A';
+                else if (durumAyrintisi.includes('PARÇA')) code = 'PB';
+                else if (durumAyrintisi.includes('KABUL')) code = 'KM';
+                else if (durumAyrintisi.includes('TEKNİK BÜLTEN')) code = 'TBU';
+                else if (durumAyrintisi.includes('KAZA')) code = 'KK';
+                else if (durumAyrintisi.includes('TB') || durumAyrintisi.includes('TECRÜBE')) code = 'TB';
+                else if (durumAyrintisi.includes('X')) code = 'X';
               }
 
               let act = activityMap.get(kuyrukNo);
@@ -787,12 +828,12 @@ const App = () => {
                 if (statusRaw.includes('TEKNİK BÜLTEN') || statusRaw.includes('TBU')) code = 'TBU';
                 else if (statusRaw.includes('BAKIM') && statusRaw.includes('BEKLER')) code = 'BB';
                 else if (statusRaw.includes('BAKIM')) code = 'B';
-                else if (statusRaw.includes('ARIZA') || statusRaw.includes('OVERSPEED') || statusRaw.includes('NG')) code = 'A';
                 else if (statusRaw.includes('PARÇA')) code = 'PB';
                 else if (statusRaw.includes('KABUL')) code = 'KM';
                 else if (statusRaw.includes('KAZA')) code = 'KK';
                 else if (statusRaw.includes('OLMADIĞI')) code = 'X';
                 else if (statusRaw.includes('TECRÜBE')) code = 'TB';
+                else if (statusRaw.includes('ARIZA') || statusRaw.includes('OVERSPEED') || statusRaw.includes('NG')) code = 'A';
                 else if (statusRaw.length > 0) code = statusRaw.substring(0, 2);
 
                 const parseExactMins = (timeStr: string) => {
@@ -818,7 +859,7 @@ const App = () => {
               }
             });
 
-            events.sort((a, b) => a.exactMins - b.exactMins);
+            events.sort((a, b) => a.exactMins - b.exactMins || (a.type === 'up' ? -1 : 1));
 
             if (!act.dailyStatuses) act.dailyStatuses = {};
             const dailyStatus = act.dailyStatuses[dateStr] || 'F';
@@ -832,19 +873,29 @@ const App = () => {
             const currentMins = now.getHours() * 60 + now.getMinutes();
             const endOfDayMins = isToday ? currentMins : 24 * 60;
 
+            let initialStatus = previousTailStatus;
             let isDown = (previousTailStatus !== 'F');
-            let lastDownMins = 0;
-            
-            if (!act.intraDayStartStatuses) act.intraDayStartStatuses = {};
-            act.intraDayStartStatuses[dateStr] = previousTailStatus;
 
-            if (events.length > 0 && events[0].type === 'up') {
+            // Smart logic: If first event of day is a failure start, then we must have been Faal before that
+            if (events.length > 0) {
+              if (events[0].type === 'up') {
+                isDown = true;
+                initialStatus = (previousTailStatus !== 'F' ? previousTailStatus : (events[0].status || 'GA'));
+              } else if (events[0].type === 'down') {
+                isDown = false;
+                initialStatus = 'F';
+              }
+            } else if ((dailyStatus as string) !== 'F' && (dailyStatus as string) !== '?' && (dailyStatus as string) !== '') {
               isDown = true;
-              lastDownMins = 0;
-            } else if (events.length === 0 && dailyStatus !== 'F') {
-              isDown = true;
-              lastDownMins = 0;
+              initialStatus = dailyStatus;
+            } else if (dailyStatus === 'F' && previousTailStatus !== 'F') {
+              isDown = false;
+              initialStatus = 'F';
             }
+
+            let lastDownMins = 0;
+            if (!act.intraDayStartStatuses) act.intraDayStartStatuses = {};
+            act.intraDayStartStatuses[dateStr] = initialStatus;
 
             for (const ev of events) {
               if (ev.type === 'down') {
@@ -865,12 +916,8 @@ const App = () => {
               totalGayriFaalMins += Math.max(0, endOfDayMins - lastDownMins);
             }
 
-            let currentState = previousTailStatus;
+            let currentState = initialStatus;
             let currentDesc = '';
-
-            if (events.length === 0 && dailyStatus !== 'F' && previousTailStatus === 'F') {
-              currentState = dailyStatus;
-            }
 
             for (let h = 0; h < 24; h++) {
               const eventsAtHour = events.filter(e => e.hour === h);
@@ -893,7 +940,9 @@ const App = () => {
 
             tailLastStatusMap.set(kuyrukNo, currentState);
             
-            if ((!act.dailyStatuses[dateStr] || act.dailyStatuses[dateStr] === 'F') && currentState !== 'F') {
+            // Bug Fix: Only carry over if we don't have a record for today or if it's explicitly unknown ('?')
+            // DO NOT override 'F' (Faal) status from the log with a previous day's maintenance status.
+            if ((act.dailyStatuses[dateStr] === undefined || act.dailyStatuses[dateStr] === '?' || act.dailyStatuses[dateStr] === '') && currentState !== 'F') {
               act.dailyStatuses[dateStr] = currentState as DailyStatusCode;
             }
 
@@ -1157,35 +1206,6 @@ const App = () => {
                  rowDate.getFullYear() === targetYear;
         });
 
-        const parseHour = (val: any, aircraftType?: string): number | null => {
-          if (val === null || val === undefined || String(val).trim() === "" || String(val).toUpperCase() === "N/A") return null;
-          
-          if (typeof val === 'string' && val.includes('T') && val.includes('Z')) {
-            const d = new Date(val);
-            const epoch = new Date(Date.UTC(1899, 11, 30));
-            return (d.getTime() - epoch.getTime()) / (1000 * 60 * 60);
-          }
-          
-          let s = String(val).trim();
-          
-          // Handle Turkish format: dots for thousands, comma for decimal (e.g. 1.736,6)
-          if (s.includes('.') && s.includes(',')) {
-            s = s.replace(/\./g, '').replace(',', '.');
-          } else if (s.includes(',')) {
-            s = s.replace(',', '.');
-          }
-          
-          if (s.includes(':')) {
-            const parts = s.split(':').map(Number);
-            if (parts.length >= 2) return (parts[0] || 0) + (parts[1] || 0) / 60;
-          }
-          
-          const n = parseFloat(s);
-          if (isNaN(n)) return null;
-
-          return n;
-        };
-
         const historyFleet: Aircraft[] = filtered.map((row: any) => {
           const rowTip = row.tip || '';
           const govdeSaat = parseSingleCellToHour(row.govdeUcusSaati, rowTip);
@@ -1365,9 +1385,24 @@ const App = () => {
     } catch (error) {
       console.error('Sync log error:', error);
       const errorMsg = error instanceof Error ? error.message : String(error);
-      alert(`Senkronizasyon sırasında bir hata oluştu: ${errorMsg}\n\nİpucu: Bu hata genellikle internet bağlantısı veya Google Apps Script izinlerinden (Anyone erişimi) kaynaklanır.`);
+      alert(`Senkronizasyon sırasında bir hata oluştu: ${errorMsg}`);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const cleanupLogs = async () => {
+    try {
+      const result = await proxyFetch(LOG_SCRIPT_URL, { action: 'cleanupAllLogs' });
+      if (result && result.success) {
+        alert('Log temizleme işlemi başarıyla tamamlandı. Tekrar eden kayıtlar silindi.');
+        runGlobalSync();
+      } else {
+        alert('Temizleme hatası: ' + (result?.message || result?.error || 'Bilinmeyen hata'));
+      }
+    } catch (error) {
+      console.error('Cleanup logs error:', error);
+      alert('Temizleme işlemi sırasında bir hata oluştu.');
     }
   };
 
@@ -1669,7 +1704,7 @@ const App = () => {
           }}
         />
       )}
-      {isAdminOpen && <AdminPanel notifications={notifications} initialData={fleet} onSave={(configs, data) => handleSyncFromExcel(data, configs?.[0]?.aircraftType || 'GENEL', true)} onOverride={handleManualOverride} onSyncLogs={syncLogs} onClose={() => setIsAdminOpen(false)} />}
+      {isAdminOpen && <AdminPanel notifications={notifications} initialData={fleet} onSave={(configs, data) => handleSyncFromExcel(data, configs?.[0]?.aircraftType || 'GENEL', true)} onOverride={handleManualOverride} onSyncLogs={syncLogs} onCleanupLogs={cleanupLogs} onClose={() => setIsAdminOpen(false)} />}
       
       {pendingAction && (
         <div className="fixed inset-0 z-[400] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">
@@ -1811,7 +1846,25 @@ const App = () => {
               </div>
 
               <button 
-                onClick={handleSaveIntraDay}
+                onClick={() => {
+                  if (selectedAircraftForIntraDay) {
+                    handleSaveIntraDay({
+                      kuyrukNo: selectedAircraftForIntraDay.kuyrukNo,
+                      tip: selectedAircraftForIntraDay.tip,
+                      startTime: intraDayStartTime,
+                      endTime: intraDayEndTime,
+                      status: intraDayStatus,
+                      description: intraDayDescription
+                    }).then(success => {
+                      if (success) {
+                        setShowIntraDayModal(false);
+                        setIntraDayDescription('');
+                        setIntraDayStartTime('');
+                        setIntraDayEndTime('');
+                      }
+                    });
+                  }
+                }}
                 disabled={isSavingIntraDay}
                 className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-black py-5 rounded-2xl transition-all shadow-xl shadow-emerald-900/40 uppercase tracking-widest text-xs"
               >

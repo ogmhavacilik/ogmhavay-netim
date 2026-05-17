@@ -118,8 +118,67 @@ function doPost(e) {
       }
     }
 
+    if (action === "cleanupAllLogs") {
+      var logSheet = findSheet(ss, "Envanter Log");
+      var faalLogSheet = findSheet(ss, "Faaliyet Log");
+      var cleanupResult = "Cleanup completed: ";
+
+      var normalizeDate = function(d) {
+        if (!d) return "";
+        if (d instanceof Date) return Utilities.formatDate(d, "GMT+3", "dd.MM.yyyy");
+        var s = String(d).trim();
+        if (s.includes('-')) {
+          var p = s.split('-');
+          if (p[0].length === 4) return p[2] + "." + p[1] + "." + p[0];
+        }
+        return s;
+      };
+
+      if (logSheet) {
+        var data = logSheet.getDataRange().getValues();
+        var seen = {};
+        var toDelete = [];
+        // Scan bottom to top to keep the latest entries
+        for (var i = data.length - 1; i >= 1; i--) {
+          var date = normalizeDate(data[i][1]);
+          var tail = String(data[i][2]).trim().toUpperCase();
+          if (!date || !tail) continue;
+          var key = date + "_" + tail;
+          if (seen[key]) {
+            toDelete.push(i + 1);
+          } else {
+            seen[key] = true;
+          }
+        }
+        toDelete.sort(function(a, b) { return b - a; });
+        toDelete.forEach(function(row) { logSheet.deleteRow(row); });
+        cleanupResult += "Envanter Log: " + toDelete.length + " duplicates removed. ";
+      }
+
+      if (faalLogSheet) {
+        var data = faalLogSheet.getDataRange().getValues();
+        var seen = {};
+        var toDelete = [];
+        for (var i = data.length - 1; i >= 1; i--) {
+          var date = normalizeDate(data[i][1]);
+          var tail = String(data[i][2]).trim().toUpperCase();
+          if (!date || !tail) continue;
+          var key = date + "_" + tail;
+          if (seen[key]) {
+            toDelete.push(i + 1);
+          } else {
+            seen[key] = true;
+          }
+        }
+        toDelete.sort(function(a, b) { return b - a; });
+        toDelete.forEach(function(row) { faalLogSheet.deleteRow(row); });
+        cleanupResult += "Faaliyet Log: " + toDelete.length + " duplicates removed.";
+      }
+      return jsonSuccess(cleanupResult);
+    }
+
     // -----------------------------------------------------
-    // 🔵 AKSİYON: ÖPL VERİSİ (ARŞİV) SORGULAMA
+    // 🟡 AKSİYON: ÖPL VERİSİ (ARŞİV) SORGULAMA
     // -----------------------------------------------------
     if (action === "getOPLData") {
       var searchKuyruk = String(params.kuyrukNo || "")
@@ -910,88 +969,94 @@ function doPost(e) {
       }
       
       var dateStr = params.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
-      // Normalize date string if it comes from frontend as yyyy-MM-dd
+      // Normalize date string
       if (dateStr.includes('-')) {
         var parts = dateStr.split('-');
-        if (parts[0].length === 4) {
-          dateStr = parts[2] + "." + parts[1] + "." + parts[0];
-        }
+        if (parts[0].length === 4) dateStr = parts[2] + "." + parts[1] + "." + parts[0];
       }
 
-      // --- DUPLICATE REMOVAL START ---
-      // Scan and remove any existing duplicates for this specific date before logging
-      var logDataForCleanup = logSheet.getDataRange().getValues();
-      var rowsToDelete = [];
-      var seenIds = {};
-      
-      // We go backwards to delete safely
-      for (var d = logDataForCleanup.length - 1; d >= 1; d--) {
-        var rowDate = logDataForCleanup[d][1];
-        if (rowDate instanceof Date) rowDate = Utilities.formatDate(rowDate, ss.getSpreadsheetTimeZone(), "dd.MM.yyyy");
-        
-        if (rowDate === dateStr) {
-          var rowKNo = String(logDataForCleanup[d][2]).trim().toUpperCase();
-          var uniqueKey = rowDate + "_" + rowKNo;
-          if (seenIds[uniqueKey]) {
-            rowsToDelete.push(d + 1);
-          } else {
-            seenIds[uniqueKey] = true;
-          }
+      var normalizeDate = function(d) {
+        if (!d) return "";
+        if (d instanceof Date) return Utilities.formatDate(d, "GMT+3", "dd.MM.yyyy");
+        var s = String(d).trim();
+        if (s.includes('-')) {
+          var p = s.split('-');
+          if (p[0].length === 4) return p[2] + "." + p[1] + "." + p[0];
         }
-      }
-      rowsToDelete.forEach(function(rowIdx) { logSheet.deleteRow(rowIdx); });
+        return s;
+      };
 
-      var faalDataForCleanup = faalLogSheet.getDataRange().getValues();
-      var faalRowsToDelete = [];
-      var seenFaalIds = {};
-      for (var f = faalDataForCleanup.length - 1; f >= 1; f--) {
-        var rowDate = faalDataForCleanup[f][1];
-        if (rowDate instanceof Date) rowDate = Utilities.formatDate(rowDate, ss.getSpreadsheetTimeZone(), "dd.MM.yyyy");
+      // --- DUPLICATE REMOVAL START (STRONGER) ---
+      var normalizeDate = function(d) {
+        if (!d) return "";
+        if (d instanceof Date) return Utilities.formatDate(d, "GMT+3", "dd.MM.yyyy");
+        var s = String(d).trim();
+        if (s.includes('-')) {
+          var p = s.split('-');
+          if (p[0].length === 4) return p[2] + "." + p[1] + "." + p[0];
+        }
+        return s;
+      };
+
+      var targets = {};
+      fleetData.forEach(function(d) {
+        var k = String(d.kuyrukNo || "").trim().toUpperCase();
+        if (k) targets[dateStr + "_" + k] = true;
+      });
+
+      var cleanupSheet = function(sheet) {
+        var dataRows = sheet.getDataRange().getValues();
+        var rowsToDelete = [];
+        var seenOnThisPass = {};
         
-        if (rowDate === dateStr) {
-          var rowKNo = String(faalDataForCleanup[f][2]).trim().toUpperCase();
-          var uniqueKey = rowDate + "_" + rowKNo;
-          if (seenFaalIds[uniqueKey]) {
-            faalRowsToDelete.push(f + 1);
+        for (var i = dataRows.length - 1; i >= 1; i--) {
+          var rDate = normalizeDate(dataRows[i][1]);
+          var rKNo = String(dataRows[i][2]).trim().toUpperCase();
+          if (!rDate || !rKNo) continue;
+          var key = rDate + "_" + rKNo;
+          
+          if (targets[key] || seenOnThisPass[key]) {
+            rowsToDelete.push(i + 1);
           } else {
-            seenFaalIds[uniqueKey] = true;
+            seenOnThisPass[key] = true;
           }
         }
-      }
-      faalRowsToDelete.forEach(function(rowIdx) { faalLogSheet.deleteRow(rowIdx); });
+        
+        rowsToDelete.sort(function(a, b) { return b - a; });
+        rowsToDelete.forEach(function(idx) { sheet.deleteRow(idx); });
+      };
+
+      cleanupSheet(logSheet);
+      cleanupSheet(faalLogSheet);
       // --- DUPLICATE REMOVAL END ---
 
-      // Re-cache IDs and Current Values after cleanup
-      var logValues = logSheet.getDataRange().getValues();
+      // Populate ID maps after rows have been deleted/moved
       var logIdMap = {};
-      for (var i = 0; i < logValues.length; i++) {
-        var id = String(logValues[i][0]).trim();
-        if (id) logIdMap[id] = { row: i + 1, data: logValues[i] };
+      var logData = logSheet.getDataRange().getValues();
+      for (var i = 1; i < logData.length; i++) {
+        var rId = String(logData[i][0]).trim();
+        if (rId) logIdMap[rId] = { row: i + 1, data: logData[i] };
       }
 
-      var faalValues = faalLogSheet.getDataRange().getValues();
       var faalIdMap = {};
-      for (var j = 0; j < faalValues.length; j++) {
-        var id = String(faalValues[j][0]).trim();
-        if (id) faalIdMap[id] = { row: j + 1, data: faalValues[j] };
+      var faalData = faalLogSheet.getDataRange().getValues();
+      for (var i = 1; i < faalData.length; i++) {
+        var rId = String(faalData[i][0]).trim();
+        if (rId) faalIdMap[rId] = { row: i + 1, data: faalData[i] };
       }
       
       var updatedCount = 0;
       
       fleetData.forEach(function(data) {
-        var kuyrukNo = String(data.kuyrukNo || "").trim();
+        var kuyrukNo = String(data.kuyrukNo || "").trim().toUpperCase();
         if (!kuyrukNo) return;
         var logId = dateStr + "_" + kuyrukNo;
         var newAyrinti = String(data.durumAyrintisi || "").trim().toUpperCase();
-
-        var finalAnaliz = data.analizKodu || '?';
+        var finalAnaliz = data.analizKodu || analyzeStatusGS(data);
 
         // --- 1. Envanter Log Güncelleme ---
         var logEntry = logIdMap[logId];
-        
         var faydaliVal = data.faydaliSaat;
-        // Normalize faydali saat - if it's a number, use its decimal representation for the log
-        // This avoids the day/hour confusion in Sheets durations
         if (typeof faydaliVal === 'string') faydaliVal = parseFloat(faydaliVal.replace(',', '.')) || 0;
 
         if (!logEntry) {
@@ -1010,8 +1075,7 @@ function doPost(e) {
           ]);
           var newRow = logSheet.getLastRow();
           setLogTimeValue(logSheet, newRow, 5, data.govdeUcusSaati, data.tip);
-          logSheet.getRange(newRow, 6).setNumberFormat("0.0#"); // Force decimal format for Faydali
-          logSheet.getRange(newRow, 11).setNumberFormat("@");
+          logSheet.getRange(newRow, 6).setNumberFormat("0.0#");
           updatedCount++;
         } else {
           var oldRow = logEntry.data;
@@ -1033,14 +1097,12 @@ function doPost(e) {
           var newAciklama = String(data.aciklama || "").trim();
           
           var oldGovdeRaw = oldRow[4];
-          // We compare hour values by converting to HH:mm string to avoid float precision issues
-          var oldGovde = formatToHHMM(oldGovdeRaw);
-          var newGovde = formatToHHMM(data.govdeUcusSaati);
+          var oldGovde = formatToHHMM(oldGovdeRaw, data.tip);
+          var newGovde = formatToHHMM(data.govdeUcusSaati, data.tip);
 
           if (Math.abs(oldFaydali - newFaydali) > 0.01 || oldKonum !== newKonum || oldDurum !== newDurum || 
               oldAyrinti !== newAyrinti || oldAnaliz !== newAnaliz || oldAciklama !== newAciklama || oldGovde !== newGovde) {
             
-            logSheet.getRange(logEntry.row, 1, 1, 4).setValues([[logId, dateStr, kuyrukNo, data.tip]]);
             logSheet.getRange(logEntry.row, 6, 1, 6).setValues([[
               newFaydali,
               data.konum,
@@ -1051,7 +1113,6 @@ function doPost(e) {
             ]]);
             logSheet.getRange(logEntry.row, 6).setNumberFormat("0.0#");
             setLogTimeValue(logSheet, logEntry.row, 5, data.govdeUcusSaati, data.tip);
-            logSheet.getRange(logEntry.row, 11).setNumberFormat("@");
             updatedCount++;
           }
         }
@@ -1222,17 +1283,33 @@ function doPost(e) {
         ]);
       }
       var data = params.data;
-      var id = data.date + "_" + data.kuyrukNo + "_" + data.startTime;
-      intraDaySheet.appendRow([
-        id,
-        data.date,
-        data.kuyrukNo,
-        data.tip,
-        data.startTime,
-        data.endTime,
-        data.status,
-        data.description,
-      ]);
+      var dateStr = data.date;
+      // Normalize date if needed
+      if (dateStr.includes('-')) {
+        var p = dateStr.split('-');
+        if (p[0].length === 4) dateStr = p[2] + "." + p[1] + "." + p[0];
+      }
+      
+      var id = dateStr + "_" + data.kuyrukNo + "_" + data.startTime;
+      
+      var dataRows = intraDaySheet.getDataRange().getValues();
+      var existingRow = -1;
+      for (var i = 1; i < dataRows.length; i++) {
+        if (String(dataRows[i][0]) === id) {
+          existingRow = i + 1;
+          break;
+        }
+      }
+      
+      if (existingRow !== -1) {
+        intraDaySheet.getRange(existingRow, 1, 1, 8).setValues([[
+          id, dateStr, data.kuyrukNo, data.tip, data.startTime, data.endTime, data.status, data.description
+        ]]);
+      } else {
+        intraDaySheet.appendRow([
+          id, dateStr, data.kuyrukNo, data.tip, data.startTime, data.endTime, data.status, data.description
+        ]);
+      }
       return jsonSuccess("Gün içi faaliyet kaydedildi.");
     }
 
@@ -1619,6 +1696,20 @@ function analyzeStatusGS(item) {
   var descUpper = toUpperTR(item.aciklama);
   var durumUpper = toUpperTR(item.durum);
 
+  // 1. KESİN DURUM KONTROLÜ (Eğer FAAL ise öncelikle F veya K dönmeliyiz)
+  // Kullanıcı Talebi: Eğer uçak FAAL ise TB vs. olsa bile FAAL kalmalı (Karma değilse)
+  if (durumUpper === "FAAL" || durumUpper === "F") {
+    if (
+      detailUpper.indexOf("KARMA") !== -1 ||
+      detailUpper.indexOf("HEM FAAL") !== -1 ||
+      descUpper.indexOf("KARMA") !== -1 ||
+      descUpper.indexOf("HEM FAAL") !== -1
+    ) {
+      return "K";
+    }
+    return "F";
+  }
+
   var findCodeInText = function(t) {
     if (!t) return null;
     
@@ -1630,9 +1721,6 @@ function analyzeStatusGS(item) {
     if (exactCodes.indexOf(t) !== -1) return t;
 
     // Keyword Match - Use Normalized version 'n' for better matching
-    // ÖNCE ARIZA KONTROLÜ (Kullanıcı Talebi: Arıza = A diyemiyor sorunu için)
-    if (n.indexOf('ARIZA') !== -1 || n.indexOf('ARZ') !== -1 || n === 'A' || n.indexOf('OVERSPEED') !== -1 || n.indexOf('NG') !== -1) return 'A';
-    
     if (n.indexOf('TEKNİK BÜLTEN') !== -1 || n.indexOf('TEKNIK BULTEN') !== -1 || n.indexOf('TBU') !== -1) return 'TBU';
     if (n.indexOf('BAKIM BEKLER') !== -1 || n === 'BB') return 'BB';
     if (n.indexOf('BAKIM') !== -1) return 'B';
@@ -1641,6 +1729,9 @@ function analyzeStatusGS(item) {
     if (n.indexOf('KABUL MUAYENE') !== -1 || n === 'KM') return 'KM';
     if (n.indexOf('KAZA KIRIM') !== -1 || n === 'KK') return 'KK';
     if (n.indexOf('OLMADIĞI GÜNLER') !== -1 || n.indexOf('OLMADIGI GUNLER') !== -1 || n === 'X') return 'X';
+    
+    // ARIZA last as it's the most general catch-all for failures
+    if (n.indexOf('ARIZA') !== -1 || n.indexOf('ARZ') !== -1 || n === 'A' || n.indexOf('OVERSPEED') !== -1 || n.indexOf('NG') !== -1) return 'A';
     
     return null;
   };
@@ -1656,16 +1747,7 @@ function analyzeStatusGS(item) {
   // Eğer Durumda GAYRİ FAAL yazıyorsa ve ayrıntıda bir şey bulunamadıysa A (Arıza) dönelim
   if (DURUM_IS_GAYRI_FAAL(durumUpper)) return 'A';
 
-  // Adım 3: Açıklama (ACIKLAMA) - KULLANICI TALEBİ ÜZERİNE İPTAL EDİLDİ
-  // var descMatch = findCodeInText(descUpper);
-  // if (descMatch) return descMatch;
-
-  // Adım 4: Karma Kontrolü (Hepsini kapsayabilir)
-  if (detailUpper.indexOf('KARMA') !== -1 || detailUpper.indexOf('HEM FAAL') !== -1 || descUpper.indexOf('KARMA') !== -1 || descUpper.indexOf('HEM FAAL') !== -1) {
-    return 'K';
-  }
-
-  return 'F';
+  return "F";
 }
 
 function DURUM_IS_GAYRI_FAAL(s) {
@@ -1674,8 +1756,14 @@ function DURUM_IS_GAYRI_FAAL(s) {
   return n.indexOf("GAYRI") !== -1 || n.indexOf("GF") !== -1 || n === "G.FAAL" || n.indexOf("ARIZA") !== -1 || n.indexOf("ARZ") !== -1 || n === "A";
 }
 
-function formatToHHMM(val) {
+function formatToHHMM(val, aircraftType) {
   if (val === null || val === undefined || val === "") return "00:00";
+  
+  var cleanTip = (aircraftType || "").toUpperCase().replace(/[\s-]/g, "");
+  var isDecimalType = cleanTip.indexOf("B360") !== -1 || 
+                      cleanTip.indexOf("C650") !== -1 || 
+                      cleanTip.indexOf("BELL429") !== -1;
+
   var hours = 0;
   if (typeof val === "number") {
     hours = val;
@@ -1688,6 +1776,11 @@ function formatToHHMM(val) {
       hours = parseFloat(s) || 0;
     }
   }
+  
+  if (isDecimalType) {
+    return hours.toFixed(1).replace(".", ",");
+  }
+
   var h = Math.floor(hours);
   var m = Math.round((hours - h) * 60);
   if (m === 60) {
@@ -1702,32 +1795,42 @@ function parseSingleCellToHour(val, aircraftType) {
     val === undefined ||
     val === null ||
     val === "" ||
-    val === "0" ||
-    val === "00:00"
+    val === "-"
   )
     return null;
+  
   if (typeof val === "number") {
-    if (val <= 0) return null;
-    // Heuristic: If it's a very small number (< 15) and not an integer, it's likely a day count (Sheet duration)
-    // Most aircraft total hours are > 500. Faydali can be small (e.g. 2.5 hours).
-    // If it's < 5 for AT-802, we treat it as days. Otherwise, it's hours.
-    if (aircraftType === "AT-802") {
-       if (val < 5) return val * 24; // 5 days is 120 hours. 
-       if (val >= 5 && val < 50000) return val; // Likely hours
-    }
+    // If it's a number, trust it. 0 is valid.
+    if (aircraftType === "AT-802" && val > 0 && val < 5) return val * 24;
     return val;
   }
+
   if (typeof val === "string") {
     var s = val.trim().replace(",", ".");
+    if (s === "" || s === "-") return null;
+    
     if (s.includes(":")) {
       var parts = s.split(":").map(Number);
       return (parts[0] || 0) + (parts[1] || 0) / 60;
     }
+    
     var n = parseFloat(s);
     if (!isNaN(n)) {
-      if (aircraftType === "Bell-429" && s.includes(".")) {
-        var parts = s.split(".");
-        return (parseInt(parts[0]) || 0) + (parseInt(parts[1]) || 0) / 60;
+      // Aviation format check: if it has a dot and the part after the dot is <= 59, 
+      // it might be HH.MM instead of decimal hours.
+      // E.g. 1.30 -> 1:30 (1.5 hours)
+      // We apply this heuristic if it's not a Bell-429/B-360 etc. which explicitly use decimals.
+      var cleanTip = (aircraftType || "").toUpperCase().replace(/[\s-]/g, "");
+      var isDecimalType = cleanTip.indexOf("B360") !== -1 || 
+                          cleanTip.indexOf("C650") !== -1 || 
+                          cleanTip.indexOf("BELL429") !== -1;
+      
+      if (!isDecimalType && s.includes(".")) {
+        var dotParts = s.split(".");
+        var mins = parseInt(dotParts[1]);
+        if (mins >= 0 && mins <= 59 && dotParts[1].length <= 2) {
+           return (parseInt(dotParts[0]) || 0) + (mins / 60);
+        }
       }
       return n;
     }
@@ -2378,63 +2481,52 @@ function setLogTimeValue(sheet, row, col, value, tip) {
   var valStr = String(value).trim();
   var tipUpper = (tip || "").toUpperCase();
   
-  // B-360, C-650, BELL-429 ve diğer ondalık tercih edenler
   var cleanTip = tipUpper.replace(/[\s-]/g, "");
   var isDecimalType = cleanTip.indexOf("B360") !== -1 || 
                       cleanTip.indexOf("C650") !== -1 || 
                       cleanTip.indexOf("BELL429") !== -1;
 
-  // EXTREME PRECISION: Eğer değerde virgül varsa ve saat formatında değilse (HH:MM), 
-  // direk ondalık sayı olarak yazalım.
-  if (!valStr.includes(":") && (valStr.includes(",") || valStr.includes("."))) {
+  // PRIORITY: If the value is a number (float), treat it according to aircraft preference
+  if (!valStr.includes(":") && (valStr.includes(",") || valStr.includes(".") || /^\d+(\.\d+)?$/.test(valStr))) {
     var n = parseFloat(valStr.replace(",", "."));
     if (!isNaN(n)) {
-      range.setValue(n);
-      range.setNumberFormat("#,##0.0#"); // En az 1, opsiyonel 2 basamak
+      if (isDecimalType) {
+        range.setValue(n);
+        range.setNumberFormat("#,##0.0#");
+      } else {
+        // Standard aviation types (T-70, AT-802) store as days for [h]:mm formatting
+        range.setValue(n / 24);
+        range.setNumberFormat("[h]:mm");
+      }
       return;
     }
   }
 
   if (isDecimalType) {
-    // Robust decimal parsing for Turkish context:
-    // If it has a comma and a dot, assume dot is thousand separator.
-    // If it only has a dot, we need to decide if it's decimal or thousand.
-    // In many cases, 1732.5 is intended as decimal if it's small.
     var n;
     if (valStr.includes(',') && valStr.includes('.')) {
       n = parseFloat(valStr.replace(/\./g, "").replace(',', '.'));
     } else if (valStr.includes(',')) {
       n = parseFloat(valStr.replace(',', '.'));
+    } else if (valStr.includes(':')) {
+      var parts = valStr.split(':').map(Number);
+      n = (parts[0] || 0) + (parts[1] || 0) / 60;
     } else {
       n = parseFloat(valStr);
     }
     
     if (!isNaN(n)) {
       range.setValue(n);
-      range.setNumberFormat("#,##0.0");
+      range.setNumberFormat("#,##0.0#");
       return;
     }
   }
 
-  // Time based parsing
-  if (/^\d+$/.test(valStr)) {
-    valStr = valStr + ':00';
-  } else if (/^\d+[.,]\d+$/.test(valStr)) {
-    // If they typed 1732.5 -> treat as 1732:30 or just use decimal if it's a number
-    var n = parseFloat(valStr.replace(',', '.'));
-    if (!isNaN(n)) {
-      range.setValue(n / 24);
-      range.setNumberFormat("[h]:mm");
-      return;
-    }
-  }
-
-  if (/^\d+:\d{2}(:\d{2})?$/.test(valStr) || (/^\d+:\d{1}$/.test(valStr))) {
+  // Duration based parsing for [h]:mm types
+  if (/^\d+:\d{2}(:\d{2})?$/.test(valStr)) {
     var parts = valStr.split(':');
     var hours = parseInt(parts[0], 10);
     var mins = parseInt(parts[1], 10);
-    if (parts[1].length === 1) mins = mins * 10;
-    
     var secs = parts.length > 2 ? parseInt(parts[2], 10) : 0;
     var decimalValue = (hours + (mins / 60) + (secs / 3600)) / 24;
     range.setValue(decimalValue);

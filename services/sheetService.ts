@@ -20,6 +20,14 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   const desc = (getVal(['aciklama', 'Açıklama', 'AÇIKLAMA', 'P', 'p', 'D', 'd', 'aciklama']) || '').trim();
   const descUpper = desc.toLocaleUpperCase('tr-TR');
 
+  // Adım 0: KESİN DURUM KONTROLÜ (Eğer FAAL ise öncelikle F veya K dönmeliyiz)
+  if (durumStr === 'FAAL' || durumStr === 'F') {
+    if (detailUpper.includes('KARMA') || detailUpper.includes('HEM FAAL') || descUpper.includes('KARMA') || descUpper.includes('HEM FAAL')) {
+      return { code: 'K', interpretation: 'KARMA GÜN' };
+    }
+    return { code: 'F', interpretation: 'FAAL' };
+  }
+
   const findCodeInText = (text: string): { code: DailyStatusCode, interpretation: string } | null => {
     const t = text.toLocaleUpperCase('tr-TR');
     if (!t) return null;
@@ -90,7 +98,6 @@ export const formatToHHMM = (totalHours: number | null, aircraftType?: string): 
   // Specific types should remain as decimal (with comma) for both Useful Hours and Airframe Hours
   if (aircraftType === 'B-360' || aircraftType === 'C-650' || aircraftType === 'Bell-429') {
     // Preserve at least 1, up to 2 decimal places to respect "ham veri" (raw data) as requested.
-    // Use fixed precision to catch floating point errors, then trim excess zeros.
     let s = totalHours.toFixed(2);
     if (s.endsWith('.00')) {
       s = totalHours.toFixed(1);
@@ -101,11 +108,17 @@ export const formatToHHMM = (totalHours: number | null, aircraftType?: string): 
   }
   
   // Standard conversion for others: convert decimals (e.g. 1692.5) to HH:mm format (1692:30)
-  const hours = Math.floor(Math.abs(totalHours));
-  const minutes = Math.round((Math.abs(totalHours) - hours) * 60);
+  const positiveHours = Math.abs(totalHours);
+  const hours = Math.floor(positiveHours);
+  // Using Math.round to avoid 5:59 due to floating point precision issues (e.g. 0.999999)
+  const minutes = Math.round((positiveHours - hours) * 60);
+  
+  const finalHours = minutes === 60 ? hours + 1 : hours;
+  const finalMinutes = minutes === 60 ? 0 : minutes;
+  
   const sign = totalHours < 0 ? '-' : '';
   
-  return `${sign}${hours}:${minutes.toString().padStart(2, '0')}`;
+  return `${sign}${finalHours}:${finalMinutes.toString().padStart(2, '0')}`;
 };
 
 /**
@@ -115,7 +128,6 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
   if (val === undefined || val === null || val === "" || val === "0" || val === "00:00") return null;
 
   // 1. Handle ISO string from Sheets duration (e.g. 1900-01-05T13:53:04.000Z)
-  // We parse MANUALLY first to avoid timezone/historical offset issues (e.g. Istanbul LMT +1:57 in 1900)
   if (typeof val === 'string' && val.includes('T') && val.includes('Z')) {
     const s = val.trim();
     const match = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
@@ -127,7 +139,7 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
       const mm = parseInt(match[5]);
       const ss = parseInt(match[6]);
 
-      // Sheets duration base is 1899-12-30.
+      let totalDays = 0;
       const isLeap = (yr: number) => (yr % 4 === 0 && yr % 100 !== 0) || (yr % 400 === 0);
       const daysInMonth = (month: number, year: number) => {
         if (month === 2) return isLeap(year) ? 29 : 28;
@@ -135,130 +147,66 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
         return 31;
       };
 
-      let totalDays = 0;
       if (y === 1899 && m === 12) {
         totalDays = d - 30;
       } else if (y >= 1900) {
         totalDays = 1; // Dec 31 1899
         for (let yr = 1900; yr < y; yr++) {
           totalDays += isLeap(yr) ? 366 : 365;
-          // Replicate Excel/Sheets 1900 leap year bug (treating 1900 as leap)
           if (yr === 1900) totalDays += 1;
         }
         for (let mon = 1; mon < m; mon++) {
           totalDays += daysInMonth(mon, y);
         }
         totalDays += d;
-        // Replicate bug for months after Feb 1900
         if (y === 1900 && m > 2) totalDays += 1;
       }
       
-      let totalHours = totalDays * 24 + hh + mm / 60 + ss / 3600;
-      
-      // 2-hour (1:57) fix for Istanbul LMT offset in 1900
-      if (aircraftType === 'AT-802' || aircraftType === 'T-70') {
-        totalHours += 1.95; // 1.95 hours = 1 hour 57 minutes
-      }
-      
-      return totalHours;
+      return totalDays * 24 + hh + mm / 60 + ss / 3600;
     }
   }
 
-  let d: Date | null = null;
-  if (val instanceof Date || (val && typeof val.getTime === 'function')) {
-    d = new Date(val);
-  } else if (typeof val === 'string' && /^\d{1,2}\.\d{1,2}\.\d{4}/.test(val)) {
-    // Handle DD.MM.YYYY strings from getDisplayValues()
-    const parts = val.split(/[.\s:]+/);
-    if (parts.length >= 3) {
-      const day = parseInt(parts[0]);
-      const month = parseInt(parts[1]) - 1;
-      const year = parseInt(parts[2]);
-      const hour = parseInt(parts[3]) || 0;
-      const min = parseInt(parts[4]) || 0;
-      d = new Date(Date.UTC(year, month, day, hour, min));
-    }
-  }
-
-  if (d && !isNaN(d.getTime())) {
-    const year = d.getUTCFullYear();
-    if (year <= 1905) {
-      // Robust duration calculation: milliseconds since Sheets epoch (1899-12-30)
-      const base = new Date(Date.UTC(1899, 11, 30, 0, 0, 0));
-      const diffMs = d.getTime() - base.getTime();
-      let totalHours = diffMs / (1000 * 60 * 60);
-      
-      // 2-hour (1:57) fix for Istanbul LMT offset in 1900
-      if (aircraftType === 'AT-802' || aircraftType === 'T-70') {
-        totalHours += 1.95;
-      }
-      
-      return totalHours > 0 ? totalHours : null;
-    }
-  }
-
+  // 2. Handle number (could be fraction of days or absolute hours)
   if (typeof val === 'number') {
     if (val <= 0) return null;
     let n = val;
-    // AT-802 correction for numeric hours (days or hours)
-    if (aircraftType === 'AT-802') {
-      // If it's a number like 73.3333333, it's definitely days (duration in Sheets)
-      // Most AT-802 flight hours are between 100 and 5000 hours.
-      // 10000 hours is ~416 days.
-      if (n < 500) {
-        // Additional heuristic: durations in Sheets almost always have decimals
-        if (n % 1 !== 0) {
-          n = n * 24;
-        } else if (n < 100) {
-          // Humans might enter 25 hours? But durations < 4 days (96 hours) are rare for total flight hours.
-          // However, if it's an integer < 100, we'll keep it as hours for now unless it's clearly a day count.
-          // But wait, the previous code was n < 100 -> multiply by 24.
-          // That would turn 73 hours into 1752 hours. 
-          // If the user meant 73 hours, then n < 100 was wrong.
-          // BUT if they meant 73 days (1752 hours), then n < 100 was correct.
-          // Given the user's data (1760 hours = 73.33 days), n < 100 seems to be for DAY interpretation.
-          n = n * 24; 
-        }
-      }
+    // Heuristic: If it's a small decimal fraction (0 < n < 1), it's likely a day fraction (time of day)
+    // If it's > 400 it's likely absolute hours. 
+    // BUT some maintenance intervals are short (e.g. 40, 100).
+    // Let's use a smarter check: if it comes from a sheet where duration is used, we usually get a fraction.
+    if (n > 0 && n < 400 && n % 1 !== 0) {
+       // Only convert if it doesn't look like a manual decimal entry (e.g. 1.1 might be 1.1 hours or 1.1 days?)
+       // Actually most absolute hours in these logs are either integers or specific decimals like .1, .2, .5
+       // Day fractions from Sheets usually have many decimal places.
+       const s = String(n);
+       if (s.split('.')[1]?.length > 4) {
+         n = n * 24;
+       }
     }
     return n;
   }
 
+  // 3. Handle string (HH:mm or decimal with comma/dot)
   if (typeof val === 'string') {
     let s = val.trim();
-    
-    // Check for Turkish format: dots for thousands, comma for decimal (e.g. 1.736,6)
-    if (s.includes('.') && s.includes(',')) {
-      // If comma exists, dots are almost certainly thousands separators
-      s = s.replace(/\./g, '').replace(',', '.');
-    } else if (s.includes(',')) {
-      // Only comma exists: treat as decimal
-      s = s.replace(',', '.');
-    } else if (s.match(/^\d{1,3}(\.\d{3})+$/)) {
-      // If it matches pattern like 1.728 with NO comma, it's likely a Turkish thousands separator
-      // Especially if it's for the decimal aircraft types where hours are high
-      const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
-      if (decimalTypes.includes(aircraftType) || parseFloat(s.replace(/\./g, '')) > 500) {
-        s = s.replace(/\./g, '');
-      }
-    }
-    
+    if (s === '-' || s === '0' || s === '00:00' || s === 'N/A') return null;
+
     if (s.includes(':')) {
       const parts = s.split(':').map(Number);
       if (parts.length >= 2) {
-        const h = parts[0] || 0;
-        const m = parts[1] || 0;
-        const s_sec = parts[2] || 0;
-        let total = h + m / 60 + s_sec / 3600;
-        
-        return total;
+        return (parts[0] || 0) + (parts[1] || 0) / 60 + (parts[2] || 0) / 3600;
       }
     }
 
-    const n = parseFloat(s);
-    if (!isNaN(n)) {
-      return n;
+    // Replace Turkish separators: 1.728,5 -> 1728.5
+    if (s.includes('.') && s.includes(',')) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else if (s.includes(',')) {
+      s = s.replace(',', '.');
     }
+
+    const n = parseFloat(s);
+    if (!isNaN(n)) return n;
   }
 
   return null;

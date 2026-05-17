@@ -254,8 +254,8 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         durum: aircraft.durum || '',
         durumAyrintisi: aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? aircraft.durumAyrintisi : '',
         aciklama: aircraft.aciklama && aircraft.aciklama !== '-' ? aircraft.aciklama : '',
-        intraDayStartTime: '',
-        intraDayEndTime: '',
+        intraDayStartTime: aircraft.durumBaslangic && aircraft.durumBaslangic !== '-' ? aircraft.durumBaslangic : '',
+        intraDayEndTime: aircraft.durumBitis && aircraft.durumBitis !== '-' ? aircraft.durumBitis : '',
         islemTarihi: new Date().toISOString().split('T')[0]
       });
 
@@ -547,12 +547,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     try {
       // 1. GÜN İÇİ FAALİYET KAYDI (Sadece güncel tarih için geçerli)
       if (!isPastDate && onSaveIntraDay && (formData.intraDayStartTime || formData.intraDayEndTime)) {
-        // If changing to FAAL, the time logged is for the PREVIOUS status (GAYRI_FAAL)
-        const statusToAnalyze = formData.durum === Status.FAAL ? {
-          durum: selectedAircraft.durum,
-          durumAyrintisi: selectedAircraft.durumAyrintisi,
-          aciklama: selectedAircraft.aciklama
-        } : { 
+        const statusToAnalyze = { 
           durum: formData.durum, 
           durumAyrintisi: formData.durumAyrintisi, 
           aciklama: formData.aciklama 

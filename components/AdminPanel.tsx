@@ -9,13 +9,15 @@ interface AdminPanelProps {
   onSave: (configs: SheetConfig[], data: Partial<Aircraft>[]) => void;
   onOverride?: (kuyrukNo: string, code: DailyStatusCode) => void;
   onSyncLogs?: () => void;
+  onCleanupLogs?: () => void;
   onClose: () => void;
   notifications: AppNotification[];
   initialData?: any[]; 
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs, onClose, notifications, initialData = [] }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs, onCleanupLogs, onClose, notifications, initialData = [] }) => {
   const [activeSubTab, setActiveSubTab] = useState('notifications'); 
+  const [isCleaningLogs, setIsCleaningLogs] = useState(false);
   const [previewData, setPreviewData] = useState<any[]>(initialData);
   const [isLoading, setIsLoading] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -454,6 +456,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                     <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest mt-2">NOT: BURADAN YAPILAN ATAMALAR KESİN EMİRDİR VE SİSTEM TARAFINDAN DEĞİŞTİRİLEMEZ</p>
                   </div>
                   <div className="flex space-x-4">
+                    <button 
+                      onClick={async () => {
+                        if (onCleanupLogs) {
+                          setIsCleaningLogs(true);
+                          await onCleanupLogs();
+                          setIsCleaningLogs(false);
+                        }
+                      }}
+                      disabled={isCleaningLogs}
+                      className={`${isCleaningLogs ? 'bg-red-800' : 'bg-red-700 hover:bg-red-600'} text-white px-10 py-4 rounded-xl font-black text-[11px] uppercase shadow-xl transition-all flex items-center`}
+                    >
+                      {isCleaningLogs ? 'TEMİZLENİYOR...' : 'LOGLARI TEMİZLE (TEKRARLARI SİL)'}
+                    </button>
                     <button 
                       onClick={onSyncLogs}
                       className="bg-orange-600 hover:bg-orange-500 text-white px-10 py-4 rounded-xl font-black text-[11px] uppercase shadow-xl transition-all flex items-center"

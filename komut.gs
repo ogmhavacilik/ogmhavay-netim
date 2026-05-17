@@ -152,6 +152,65 @@ function doPost(e) {
       return jsonSuccess({ id: id });
     }
 
+    if (action === "cleanupAllLogs") {
+      var logSs = SpreadsheetApp.openById(logSsId);
+      var logSheet = findSheet(logSs, "Envanter Log");
+      var faalLogSheet = findSheet(logSs, "Faaliyet Log");
+      var cleanupResult = "Cleanup completed: ";
+
+      var normalizeDate = function(d) {
+        if (!d) return "";
+        if (d instanceof Date) return Utilities.formatDate(d, "GMT+3", "dd.MM.yyyy");
+        var s = String(d).trim();
+        if (s.includes('-')) {
+          var p = s.split('-');
+          if (p[0].length === 4) return p[2] + "." + p[1] + "." + p[0];
+        }
+        return s;
+      };
+
+      if (logSheet) {
+        var data = logSheet.getDataRange().getValues();
+        var seen = {};
+        var toDelete = [];
+        for (var i = data.length - 1; i >= 1; i--) {
+          var date = normalizeDate(data[i][1]);
+          var tail = String(data[i][2]).trim().toUpperCase();
+          if (!date || !tail) continue;
+          var key = date + "_" + tail;
+          if (seen[key]) {
+            toDelete.push(i + 1);
+          } else {
+            seen[key] = true;
+          }
+        }
+        toDelete.sort(function(a, b) { return b - a; });
+        toDelete.forEach(function(row) { logSheet.deleteRow(row); });
+        cleanupResult += "Envanter Log: " + toDelete.length + " removed. ";
+      }
+
+      if (faalLogSheet) {
+        var data = faalLogSheet.getDataRange().getValues();
+        var seen = {};
+        var toDelete = [];
+        for (var i = data.length - 1; i >= 1; i--) {
+          var date = normalizeDate(data[i][1]);
+          var tail = String(data[i][2]).trim().toUpperCase();
+          if (!date || !tail) continue;
+          var key = date + "_" + tail;
+          if (seen[key]) {
+            toDelete.push(i + 1);
+          } else {
+            seen[key] = true;
+          }
+        }
+        toDelete.sort(function(a, b) { return b - a; });
+        toDelete.forEach(function(row) { faalLogSheet.deleteRow(row); });
+        cleanupResult += "Faaliyet Log: " + toDelete.length + " removed.";
+      }
+      return jsonSuccess(cleanupResult);
+    }
+
     // 🔵 AKSİYON: FAALİYET LOGU ÇEKME
     if (action === "getFaaliyetLog") {
       var logSs = SpreadsheetApp.openById(logSsId);
@@ -1034,6 +1093,14 @@ function analyzeStatusGS(item) {
   var detailUpper = toUpperTR(item.durumAyrintisi);
   var descUpper = toUpperTR(item.aciklama);
   
+  // 1. KESİN DURUM KONTROLÜ (Eğer FAAL veya F ise diğerlerine bakmaya gerek yok - Karma hariç)
+  if (durumUpper === 'FAAL' || durumUpper === 'F') {
+     if (detailUpper.indexOf('KARMA') !== -1 || detailUpper.indexOf('HEM FAAL') !== -1 || descUpper.indexOf('KARMA') !== -1 || descUpper.indexOf('HEM FAAL') !== -1) {
+       return 'K';
+     }
+     return 'F';
+  }
+
   var findCodeInText = function(t) {
     if (!t) return null;
     
@@ -1069,15 +1136,6 @@ function analyzeStatusGS(item) {
   var isGayriFaalStatus = durumUpper.indexOf('GAYRİ') !== -1 || durumUpper.indexOf('GAYRI') !== -1 || durumUpper.indexOf('GF') !== -1 || durumUpper === 'G.FAAL' || durumUpper.indexOf('ARIZA') !== -1 || durumUpper.indexOf('ARZ') !== -1 || durumUpper === 'A';
   if (isGayriFaalStatus) return 'A';
 
-  // Adım 3: Açıklama (ACIKLAMA)
-  var descMatch = findCodeInText(descUpper);
-  if (descMatch) return descMatch;
-
-  // Adım 4: Karma Kontrolü
-  if (detailUpper.indexOf('KARMA') !== -1 || detailUpper.indexOf('HEM FAAL') !== -1 || descUpper.indexOf('KARMA') !== -1 || descUpper.indexOf('HEM FAAL') !== -1) {
-    return 'K';
-  }
-
   return 'F';
 }
 
@@ -1098,125 +1156,138 @@ function saveLogsToSheets(ss, fleetData) {
   }
 
   var bugun = new Date();
-  // Gece yarısı çalıştığında bir önceki günün logunu tutması daha mantıklı olabilir
-  // Ancak kullanıcı listesinde 13.03.2026 gördüğü için şimdilik bugünü kullanıyoruz.
-  var tarihStr = Utilities.formatDate(bugun, Session.getScriptTimeZone(), "dd.MM.yyyy");
+  var tarihStr = Utilities.formatDate(bugun, "GMT+3", "dd.MM.yyyy");
   
-  // Mevcut ID'leri ve satır numaralarını al (Hızlı güncelleme için)
-  var lastRow = envLogSheet.getLastRow();
-  var envFullData = lastRow > 1 ? envLogSheet.getRange(2, 1, lastRow - 1, 10).getValues() : [];
-  var envIdMap = {};
-  for (var i = 0; i < envFullData.length; i++) {
-    var id = String(envFullData[i][0]);
-    envIdMap[id] = {
-      row: i + 2,
-      data: envFullData[i]
-    }; 
-  }
+  var normalizeDate = function(d) {
+    if (!d) return "";
+    if (d instanceof Date) return Utilities.formatDate(d, "GMT+3", "dd.MM.yyyy");
+    var s = String(d).trim();
+    if (s.includes('-')) {
+      var p = s.split('-');
+      if (p[0].length === 4) return p[2] + "." + p[1] + "." + p[0];
+    }
+    return s;
+  };
 
-  var faalLastRow = faalLogSheet.getLastRow();
-  var faalFullData = faalLastRow > 1 ? faalLogSheet.getRange(2, 1, faalLastRow - 1, 6).getValues() : [];
-  var faalIdMap = {};
-  for (var i = 0; i < faalFullData.length; i++) {
-    var id = String(faalFullData[i][0]);
-    faalIdMap[id] = {
-      row: i + 2,
-      data: faalFullData[i]
-    };
-  }
+  // --- STRICT ONE RECORD PER DAY CLEANUP ---
+  var targets = {};
+  fleetData.forEach(function(d) {
+    var k = String(d.kuyrukNo || "").trim().toUpperCase();
+    if (k) targets[tarihStr + "_" + k] = true;
+  });
+
+  var removeDuplicates = function(sheet) {
+    var data = sheet.getDataRange().getValues();
+    var toDelete = [];
+    var seenOnThisPass = {};
+    for (var i = data.length - 1; i >= 1; i--) {
+      var rDate = normalizeDate(data[i][1]);
+      var rTail = String(data[i][2]).trim().toUpperCase();
+      if (!rDate || !rTail) continue;
+      var key = rDate + "_" + rTail;
+      if (targets[key] || seenOnThisPass[key]) {
+        toDelete.push(i + 1);
+      } else {
+        seenOnThisPass[key] = true;
+      }
+    }
+    toDelete.sort(function(a, b) { return b - a; });
+    toDelete.forEach(function(idx) { sheet.deleteRow(idx); });
+  };
+
+  removeDuplicates(envLogSheet);
+  removeDuplicates(faalLogSheet);
   
+  // Re-append updated records
   fleetData.forEach(function(aircraft) {
-    var kNo = String(aircraft.kuyrukNo || "").trim();
+    var kNo = String(aircraft.kuyrukNo || "").trim().toUpperCase();
     if (!kNo) return;
 
     var envKey = tarihStr + "_" + kNo;
-    
-    // Check if there's an existing manually overridden code in the sheet
-    var existingFaalCode = (faalIdMap[envKey] && faalIdMap[envKey].data) ? String(faalIdMap[envKey].data[5] || "") : "";
-    var isManualOverride = aircraft.isManualOverride || (aircraft.assignedCode && !aircraft._autoAnalyzed);
-    
-    var assignedCode = aircraft.assignedCode || aircraft.analizKodu;
-    if (!assignedCode) {
-      // If we don't have a code from caller, only re-analyze if existing code is empty or 'F' 
-      // or if we really want to force it.
-      if (!existingFaalCode || existingFaalCode === 'F') {
-        assignedCode = analyzeStatusGS(aircraft);
-      } else {
-        assignedCode = existingFaalCode;
-      }
-    }
+    var assignedCode = aircraft.assignedCode || aircraft.analizKodu || analyzeStatusGS(aircraft);
     
     // Values to write
     var newEnvValues = [
-      aircraft.tip || "", aircraft.govdeUcusSaati || "", 
+      envKey, tarihStr, kNo,
+      aircraft.tip || "", "", // Placeholder for gHour
       aircraft.faydaliSaat || "", aircraft.konum || "", aircraft.durum || "", 
       aircraft.durumAyrintisi || "", aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
     ];
 
-    // ENVANTER LOG GÜNCELLE VEYA EKLE
-    if (envIdMap[envKey]) {
-      var entry = envIdMap[envKey];
-      var row = entry.row;
-      var existingData = entry.data; // col 0 to 9
-      
-      // Compare current values (cols index 3 to 9)
-      var hasChanged = false;
-      for (var j = 0; j < newEnvValues.length; j++) {
-        var existingVal = String(existingData[j + 3] || "");
-        var newVal = String(newEnvValues[j] || "");
-        // Strip single quote for aciklama comparison if needed
-        if (j === 6 && newVal.indexOf("'") === 0) newVal = newVal.substring(1);
-        if (j === 6 && existingVal.indexOf("'") === 0) existingVal = existingVal.substring(1);
+    envLogSheet.appendRow(newEnvValues);
+    var lastR = envLogSheet.getLastRow();
+    setLogTimeValueGS(envLogSheet, lastR, 5, aircraft.govdeUcusSaati, aircraft.tip);
+    envLogSheet.getRange(lastR, 6).setNumberFormat("0.0#");
 
-        if (existingVal !== newVal) {
-          hasChanged = true;
-          break;
-        }
-      }
-
-      if (hasChanged) {
-        envLogSheet.getRange(row, 4, 1, 7).setValues([newEnvValues]);
-      }
-    } else {
-      envLogSheet.appendRow([
-        envKey, tarihStr, kNo, 
-        newEnvValues[0], newEnvValues[1], newEnvValues[2], 
-        newEnvValues[3], newEnvValues[4], newEnvValues[5], newEnvValues[6]
-      ]);
-      // Update map so we don't append again in the same batch
-      envIdMap[envKey] = { row: envLogSheet.getLastRow(), data: [envKey, tarihStr, kNo].concat(newEnvValues) };
-    }
-
-    // Values for Faaliyet
+    // Faaliyet
     var newFaalValues = [
+      envKey, tarihStr, kNo,
       aircraft.tip || "", aircraft.durumAyrintisi || "", assignedCode
     ];
-
-    // FAALİYET LOG GÜNCELLE VEYA EKLE
-    if (faalIdMap[envKey]) {
-      var entry = faalIdMap[envKey];
-      var row = entry.row;
-      var existingData = entry.data; // cols 0 to 5
-
-      var hasChanged = false;
-      for (var j = 0; j < newFaalValues.length; j++) {
-        if (String(existingData[j + 3] || "") !== String(newFaalValues[j] || "")) {
-          hasChanged = true;
-          break;
-        }
-      }
-
-      if (hasChanged) {
-        faalLogSheet.getRange(row, 4, 1, 3).setValues([newFaalValues]);
-      }
-    } else {
-      faalLogSheet.appendRow([
-        envKey, tarihStr, kNo, 
-        newFaalValues[0], newFaalValues[1], newFaalValues[2]
-      ]);
-      faalIdMap[envKey] = { row: faalLogSheet.getLastRow(), data: [envKey, tarihStr, kNo].concat(newFaalValues) };
-    }
+    faalLogSheet.appendRow(newFaalValues);
   });
+}
+
+function setLogTimeValueGS(sheet, row, col, value, tip) {
+  var range = sheet.getRange(row, col);
+  if (value === null || value === undefined || value === "") {
+    range.setValue("");
+    return;
+  }
+  var valStr = String(value).trim();
+  var tipUpper = (tip || "").toUpperCase();
+  var cleanTip = tipUpper.replace(/[\s-]/g, "");
+  var isDecimalType = cleanTip.indexOf("B360") !== -1 || 
+                      cleanTip.indexOf("C650") !== -1 || 
+                      cleanTip.indexOf("BELL429") !== -1;
+
+  if (!valStr.includes(":") && (valStr.includes(",") || valStr.includes(".") || /^\d+(\.\d+)?$/.test(valStr))) {
+    var n = parseFloat(valStr.replace(",", "."));
+    if (!isNaN(n)) {
+      if (isDecimalType) {
+        range.setValue(n);
+        range.setNumberFormat("#,##0.0#");
+      } else {
+        range.setValue(n / 24);
+        range.setNumberFormat("[h]:mm");
+      }
+      return;
+    }
+  }
+
+  if (isDecimalType) {
+    var n;
+    if (valStr.includes(',') && valStr.includes('.')) n = parseFloat(valStr.replace(/\./g, "").replace(',', '.'));
+    else if (valStr.includes(',')) n = parseFloat(valStr.replace(',', '.'));
+    else if (valStr.includes(':')) {
+      var parts = valStr.split(':').map(Number);
+      n = (parts[0] || 0) + (parts[1] || 0) / 60;
+    }
+    else n = parseFloat(valStr);
+    
+    if (!isNaN(n)) {
+      range.setValue(n);
+      range.setNumberFormat("#,##0.0#");
+      return;
+    }
+  }
+
+  if (/^\d+:\d{2}(:\d{2})?$/.test(valStr)) {
+    var parts = valStr.split(':');
+    var hours = parseInt(parts[0], 10);
+    var mins = parseInt(parts[1], 10);
+    var decimalValue = (hours + (mins / 60)) / 24;
+    range.setValue(decimalValue);
+    range.setNumberFormat("[h]:mm");
+  } else {
+    var n = parseFloat(String(value).replace(',', '.'));
+    if (!isNaN(n)) {
+      range.setValue(n / 24);
+      range.setNumberFormat("[h]:mm");
+    } else {
+      range.setValue(value);
+    }
+  }
 }
 
 /**
