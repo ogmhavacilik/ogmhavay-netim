@@ -170,11 +170,17 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
   if (typeof val === 'number') {
     if (val <= 0) return null;
     let n = val;
+
+    const cleanTip = (aircraftType || '').toUpperCase().replace(/[\s-]/g, '');
+    const isDecimalType = cleanTip.indexOf('B360') !== -1 || 
+                          cleanTip.indexOf('C650') !== -1 || 
+                          cleanTip.indexOf('BELL429') !== -1;
+
     // Heuristic: If it's a small decimal fraction (0 < n < 1), it's likely a day fraction (time of day)
     // If it's > 400 it's likely absolute hours. 
     // BUT some maintenance intervals are short (e.g. 40, 100).
     // Let's use a smarter check: if it comes from a sheet where duration is used, we usually get a fraction.
-    if (n > 0 && n < 400 && n % 1 !== 0) {
+    if (n > 0 && n < 400 && n % 1 !== 0 && !isDecimalType) {
        // Only convert if it doesn't look like a manual decimal entry (e.g. 1.1 might be 1.1 hours or 1.1 days?)
        // Actually most absolute hours in these logs are either integers or specific decimals like .1, .2, .5
        // Day fractions from Sheets usually have many decimal places.
