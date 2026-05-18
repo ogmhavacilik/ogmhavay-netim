@@ -1065,8 +1065,8 @@ function doPost(e) {
           
           var key = rDate + "_" + rKNo;
           
-          // Mark for deletion if it's in our update targets OR a duplicate on this sheet scan
-          if (targets[key] || seenOnThisPass[key]) {
+          // Mark for deletion if it's a duplicate on this sheet scan
+          if (seenOnThisPass[key]) {
             rowsToDelete.push(i + 1);
           } else {
             seenOnThisPass[key] = true;

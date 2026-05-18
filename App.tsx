@@ -1180,7 +1180,7 @@ const App = () => {
 
   useEffect(() => {
     runGlobalSync(); 
-    const interval = setInterval(runGlobalSync, 60000); 
+    const interval = setInterval(runGlobalSync, 900000); 
     return () => clearInterval(interval);
   }, [runGlobalSync]);
 
