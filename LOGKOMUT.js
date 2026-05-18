@@ -1082,24 +1082,26 @@ function doPost(e) {
         }
       };
 
-      // cleanupSheet(logSheet);
-      // cleanupSheet(faalLogSheet);
-      // --- DUPLICATE REMOVAL STOPPED ---
+      cleanupSheet(logSheet);
+      cleanupSheet(faalLogSheet);
+      // --- DUPLICATE REMOVAL RE-ENABLED ---
 
       // Populate ID maps after rows have been deleted/moved
       var logIdMap = {};
-      var logData = logSheet.getDataRange().getValues();
-      for (var i = 1; i < logData.length; i++) {
-        var rId = String(logData[i][0]).trim();
-        if (rId) logIdMap[rId] = { row: i + 1, data: logData[i] };
+      var logDataRows = logSheet.getDataRange().getValues();
+      for (var i = 1; i < logDataRows.length; i++) {
+        var rId = String(logDataRows[i][0]).trim();
+        if (rId) logIdMap[rId] = { row: i + 1, data: logDataRows[i] };
       }
+      var nextLogFullRow = logDataRows.length + 1;
 
       var faalIdMap = {};
-      var faalData = faalLogSheet.getDataRange().getValues();
-      for (var i = 1; i < faalData.length; i++) {
-        var rId = String(faalData[i][0]).trim();
-        if (rId) faalIdMap[rId] = { row: i + 1, data: faalData[i] };
+      var faalDataRows = faalLogSheet.getDataRange().getValues();
+      for (var i = 1; i < faalDataRows.length; i++) {
+        var rId = String(faalDataRows[i][0]).trim();
+        if (rId) faalIdMap[rId] = { row: i + 1, data: faalDataRows[i] };
       }
+      var nextFaalFullRow = faalDataRows.length + 1;
       
       var updatedCount = 0;
       
@@ -1121,8 +1123,8 @@ function doPost(e) {
         var newGovdeFormatted = formatToHHMM(newGovdeRaw, data.tip);
 
         if (!logEntry) {
-          // Only append if we have ANY meaningful data OR if it's a valid new record
-          logSheet.appendRow([
+          var targetRow = nextLogFullRow;
+          logSheet.getRange(targetRow, 1, 1, 11).setValues([[
             logId, 
             dateStr, 
             kuyrukNo, 
@@ -1134,10 +1136,20 @@ function doPost(e) {
             data.durumAyrintisi,
             finalAnaliz,
             data.aciklama ? "'" + String(data.aciklama) : ""
-          ]);
-          var newRow = logSheet.getLastRow();
-          setLogTimeValue(logSheet, newRow, 5, newGovdeRaw, data.tip);
-          logSheet.getRange(newRow, 6).setNumberFormat("0.0#");
+          ]]);
+          
+          setLogTimeValue(logSheet, targetRow, 5, newGovdeRaw, data.tip);
+          logSheet.getRange(targetRow, 6).setNumberFormat("0.0#");
+          
+          logIdMap[logId] = { 
+            row: targetRow, 
+            data: [
+              logId, dateStr, kuyrukNo, data.tip, 
+              newGovdeRaw, faydaliVal, data.konum, data.durum, 
+              data.durumAyrintisi, finalAnaliz, data.aciklama
+            ] 
+          };
+          nextLogFullRow++;
           updatedCount++;
         } else {
           var oldRow = logEntry.data;
@@ -1184,6 +1196,12 @@ function doPost(e) {
             ]]);
             logSheet.getRange(logEntry.row, 6).setNumberFormat("0.0#");
             setLogTimeValue(logSheet, logEntry.row, 5, finalGovdeToUpdate, data.tip);
+            // Update the map data so subsequent duplicates in the same batch use the latest data
+            logIdMap[logId].data = [
+              logId, dateStr, kuyrukNo, data.tip,
+              finalGovdeToUpdate, finalFaydaliToUpdate, data.konum, data.durum,
+              data.durumAyrintisi, newAnaliz, data.aciklama
+            ];
             updatedCount++;
           }
         }
@@ -1193,14 +1211,18 @@ function doPost(e) {
         var faalEntry = faalIdMap[logId];
         
         if (!faalEntry) {
-          faalLogSheet.appendRow([
+          var targetFaalRow = nextFaalFullRow;
+          faalLogSheet.getRange(targetFaalRow, 1, 1, 6).setValues([[
             logId,
             dateStr,
             kuyrukNo,
             data.tip,
             data.durumAyrintisi,
             finalAnaliz
-          ]);
+          ]]);
+          // Update the map
+          faalIdMap[logId] = { row: targetFaalRow, data: [logId, dateStr, kuyrukNo, data.tip, data.durumAyrintisi, finalAnaliz] };
+          nextFaalFullRow++;
         } else {
           var oldFaalRow = faalEntry.data;
           var oldAyrintiLog = String(oldFaalRow[4]).trim().toUpperCase();
@@ -1216,6 +1238,8 @@ function doPost(e) {
               data.durumAyrintisi, 
               finalAnaliz
             ]]);
+            // Update the map
+            faalIdMap[logId].data = [logId, dateStr, kuyrukNo, data.tip, data.durumAyrintisi, finalAnaliz];
           }
         }
       });
