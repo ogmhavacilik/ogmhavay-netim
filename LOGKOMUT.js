@@ -1082,9 +1082,9 @@ function doPost(e) {
         }
       };
 
-      cleanupSheet(logSheet);
-      cleanupSheet(faalLogSheet);
-      // --- DUPLICATE REMOVAL END ---
+      // cleanupSheet(logSheet);
+      // cleanupSheet(faalLogSheet);
+      // --- DUPLICATE REMOVAL STOPPED ---
 
       // Populate ID maps after rows have been deleted/moved
       var logIdMap = {};
