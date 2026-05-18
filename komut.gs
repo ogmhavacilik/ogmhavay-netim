@@ -330,13 +330,19 @@ function doPost(e) {
       var aircraftData = params.data || {};
       if (!aircraftData.kuyrukNo) return jsonError("Kuyruk no eksik.");
       
-      // saveLogsToSheets expects an array of aircraft objects
-      saveLogsToSheets(logSs, [aircraftData]);
+      saveLogsToSheets(logSs, [aircraftData], params.date || params.tarih);
       return jsonSuccess("Log başarıyla kaydedildi.");
     }
 
-    // 🔵 AKSİYON: SİSTEM LOGLARI (ENVANTER VE FAALİYET) - GERÇEK ZAMANLI GÜNCELLEME
-    // BU BLOK KULLANICI İSTEĞİ ÜZERİNE KALDIRILDI. LOGLAR SADECE GECE YARISI VEYA GÜN İÇİ FAALİYET İLE KAYDEDİLECEK.
+    // 🔵 AKSİYON: TÜM FİLO LOGLAMA (App.tsx'den gelir)
+    if (action === "logAllAircraftActivity") {
+      var logSs = SpreadsheetApp.openById(logSsId);
+      var fleetData = params.fleetData;
+      if (!fleetData || !Array.isArray(fleetData)) return jsonError("Filo verisi eksik.");
+      
+      saveLogsToSheets(logSs, fleetData, params.date);
+      return jsonSuccess("Tüm filo logları başarıyla işlendi.");
+    }
 
     if (action === "getMailRecipients") {
       var mailSheet = findSheet(ss, "mail log");
@@ -953,12 +959,7 @@ function sendReportEmail(recipient) {
       try {
         var config = platformConfigs[platform];
         
-        // Eski log sayfalarını temizle (Eğer varsa)
-        var pSs = SpreadsheetApp.openById(config.id);
-        var s1 = pSs.getSheetByName("Envanter Log");
-        if (s1) pSs.deleteSheet(s1);
-        var s2 = pSs.getSheetByName("Faaliyet Log");
-        if (s2) pSs.deleteSheet(s2);
+        // EKLERİ GÖNDERMEDEN ÖNCE LOG SAYFALARINI SİLMEYİ DURDURDUK (VERİ KAYBI RİSKİ NEDENİYLE)
         
         var blob = getSheetAsExcel(config.id, platform + "_Online_Excel.xlsx", config.sheet);
         if (blob) attachments.push(blob);
@@ -1140,7 +1141,7 @@ function analyzeStatusGS(item) {
 }
 
 
-function saveLogsToSheets(ss, fleetData) {
+function saveLogsToSheets(ss, fleetData, customDateStr) {
   var envLogSheet = findSheet(ss, "Envanter Log");
   if (!envLogSheet) {
     envLogSheet = ss.insertSheet("Envanter Log");
@@ -1156,7 +1157,7 @@ function saveLogsToSheets(ss, fleetData) {
   }
 
   var bugun = new Date();
-  var tarihStr = Utilities.formatDate(bugun, "GMT+3", "dd.MM.yyyy");
+  var tarihStr = customDateStr || Utilities.formatDate(bugun, Session.getScriptTimeZone(), "dd.MM.yyyy");
   
   var normalizeDate = function(d) {
     if (!d) return "";
@@ -1164,27 +1165,27 @@ function saveLogsToSheets(ss, fleetData) {
     var s = String(d).trim();
     if (s.includes('-')) {
       var p = s.split('-');
-      if (p[0].length === 4) return p[2] + "." + p[1] + "." + p[0];
+      if (p.length >= 3 && p[0].length === 4) return p[2] + "." + p[1] + "." + p[0];
     }
     return s;
   };
 
   // --- SURGICAL UPDATE INSTEAD OF DELETE-AND-APPEND ---
+  var envDataRows = envLogSheet.getDataRange().getValues();
   var envIdMap = {};
-  var envData = envLogSheet.getDataRange().getValues();
-  for (var i = 1; i < envData.length; i++) {
-    var rId = String(envData[i][0]).trim();
-    if (rId) envIdMap[rId] = { row: i + 1, data: envData[i] };
+  for (var i = 1; i < envDataRows.length; i++) {
+    var rId = String(envDataRows[i][0]).trim();
+    if (rId) envIdMap[rId] = { row: i + 1, data: envDataRows[i] };
   }
-  var nextEnvRow = envData.length + 1;
+  var nextEnvRow = envLogSheet.getLastRow() + 1;
 
+  var faalDataRows = faalLogSheet.getDataRange().getValues();
   var faalIdMap = {};
-  var faalData = faalLogSheet.getDataRange().getValues();
-  for (var i = 1; i < faalData.length; i++) {
-    var rId = String(faalData[i][0]).trim();
-    if (rId) faalIdMap[rId] = { row: i + 1, data: faalData[i] };
+  for (var i = 1; i < faalDataRows.length; i++) {
+    var rId = String(faalDataRows[i][0]).trim();
+    if (rId) faalIdMap[rId] = { row: i + 1, data: faalDataRows[i] };
   }
-  var nextFaalRow = faalData.length + 1;
+  var nextFaalRow = faalLogSheet.getLastRow() + 1;
 
   fleetData.forEach(function(aircraft) {
     var kNo = String(aircraft.kuyrukNo || "").trim().toUpperCase();
@@ -1201,39 +1202,55 @@ function saveLogsToSheets(ss, fleetData) {
     }
 
     if (!envEntry) {
-      var targetRow = nextEnvRow;
-      envLogSheet.getRange(targetRow, 1, 1, 11).setValues([[
+      envLogSheet.getRange(nextEnvRow, 1, 1, 11).setValues([[
         logId, tarihStr, kNo, aircraft.tip || "", "", 
         faydaliVal, aircraft.konum || "", aircraft.durum || "", 
         aircraft.durumAyrintisi || "", assignedCode, aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
       ]]);
-      setLogTimeValueGS(envLogSheet, targetRow, 5, aircraft.govdeUcusSaati, aircraft.tip);
-      envLogSheet.getRange(targetRow, 6).setNumberFormat("0.0#");
+      setLogTimeValueGS(envLogSheet, nextEnvRow, 5, aircraft.govdeUcusSaati, aircraft.tip);
+      envLogSheet.getRange(nextEnvRow, 6).setNumberFormat("0.0#");
+      
+      // Update map to avoid duplicates if same tail processed twice (unlikely but safe)
+      envIdMap[logId] = { row: nextEnvRow, data: [logId, tarihStr, kNo, aircraft.tip, aircraft.govdeUcusSaati, faydaliVal] };
       nextEnvRow++;
     } else {
-      // Surgical Update
-      envLogSheet.getRange(envEntry.row, 6, 1, 6).setValues([[
-        faydaliVal, aircraft.konum || "", aircraft.durum || "", 
-        aircraft.durumAyrintisi || "", assignedCode, aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
-      ]]);
-      setLogTimeValueGS(envLogSheet, envEntry.row, 5, aircraft.govdeUcusSaati, aircraft.tip);
-      envLogSheet.getRange(envEntry.row, 6).setNumberFormat("0.0#");
+      // Surgical Update - Only if changed
+      var oldRow = envEntry.data;
+      var oldFaydali = parseFloat(oldRow[5]) || 0;
+      var oldDurum = String(oldRow[7] || "").trim().toUpperCase();
+      var newDurum = String(aircraft.durum || "").trim().toUpperCase();
+      var oldAyrinti = String(oldRow[8] || "").trim().toUpperCase();
+      var newAyrinti = String(aircraft.durumAyrintisi || "").trim().toUpperCase();
+      var oldKonum = String(oldRow[6] || "").trim().toUpperCase();
+      var newKonum = String(aircraft.konum || "").trim().toUpperCase();
+      
+      if (Math.abs(oldFaydali - faydaliVal) > 0.001 || oldDurum !== newDurum || oldAyrinti !== newAyrinti || oldKonum !== newKonum || String(oldRow[9]) !== String(assignedCode)) {
+        envLogSheet.getRange(envEntry.row, 1, 1, 4).setValues([[logId, tarihStr, kNo, aircraft.tip || ""]]);
+        envLogSheet.getRange(envEntry.row, 6, 1, 6).setValues([[
+          faydaliVal, aircraft.konum || "", aircraft.durum || "", 
+          aircraft.durumAyrintisi || "", assignedCode, aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
+        ]]);
+        setLogTimeValueGS(envLogSheet, envEntry.row, 5, aircraft.govdeUcusSaati, aircraft.tip);
+        envLogSheet.getRange(envEntry.row, 6).setNumberFormat("0.0#");
+      }
     }
 
     // 2. FAALİYET LOG
     var faalEntry = faalIdMap[logId];
     if (!faalEntry) {
-      var targetFaalRow = nextFaalRow;
-      faalLogSheet.getRange(targetFaalRow, 1, 1, 6).setValues([[
+      faalLogSheet.getRange(nextFaalRow, 1, 1, 6).setValues([[
         logId, tarihStr, kNo, aircraft.tip || "", aircraft.durumAyrintisi || "", assignedCode
       ]]);
+      faalIdMap[logId] = { row: nextFaalRow };
       nextFaalRow++;
     } else {
-      faalLogSheet.getRange(faalEntry.row, 5, 1, 2).setValues([[
-        aircraft.durumAyrintisi || "", assignedCode
+      faalLogSheet.getRange(faalEntry.row, 1, 1, 6).setValues([[
+        logId, tarihStr, kNo, aircraft.tip || "", aircraft.durumAyrintisi || "", assignedCode
       ]]);
     }
   });
+  
+  SpreadsheetApp.flush();
 }
 
 function setLogTimeValueGS(sheet, row, col, value, tip) {
