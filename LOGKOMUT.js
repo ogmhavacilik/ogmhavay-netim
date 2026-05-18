@@ -1082,9 +1082,9 @@ function doPost(e) {
         }
       };
 
-      cleanupSheet(logSheet);
-      cleanupSheet(faalLogSheet);
-      // --- DUPLICATE REMOVAL RE-ENABLED ---
+      // cleanupSheet(logSheet);
+      // cleanupSheet(faalLogSheet);
+      // --- DUPLICATE REMOVAL COMPLETELY DISABLED DURING AUTO-SYNC ---
 
       // Populate ID maps after rows have been deleted/moved
       var logIdMap = {};
@@ -1173,9 +1173,8 @@ function doPost(e) {
           var oldGovdeRaw = oldRow[4];
           var oldGovde = formatToHHMM(oldGovdeRaw, data.tip);
           
-          // "0 SIFIR OLMAZ" Guard: 
-          // If existing Govde/Faydali has data, and incoming is zero/empty, REJECT the update for those fields
-          var skipGovdeUpdate = (newGovdeFormatted === "00:00" || newGovdeFormatted === "0,0") && (oldGovde !== "00:00" && oldGovde !== "0,0");
+          // "0 SIFIR/BOŞ" Guard: Mevcut veri varsa sıfır/boş ile güncelleme
+          var skipGovdeUpdate = (newGovdeFormatted === "00:00" || newGovdeFormatted === "0,0" || !newGovdeRaw) && (oldGovde !== "00:00" && oldGovde !== "0,0" && oldGovdeRaw);
           var skipFaydaliUpdate = (newFaydali === 0) && (oldFaydali !== 0);
 
           var finalGovdeToUpdate = skipGovdeUpdate ? oldGovdeRaw : newGovdeRaw;
@@ -1196,12 +1195,15 @@ function doPost(e) {
             ]]);
             logSheet.getRange(logEntry.row, 6).setNumberFormat("0.0#");
             setLogTimeValue(logSheet, logEntry.row, 5, finalGovdeToUpdate, data.tip);
-            // Update the map data so subsequent duplicates in the same batch use the latest data
-            logIdMap[logId].data = [
-              logId, dateStr, kuyrukNo, data.tip,
-              finalGovdeToUpdate, finalFaydaliToUpdate, data.konum, data.durum,
-              data.durumAyrintisi, newAnaliz, data.aciklama
-            ];
+            
+            // Map datasını güncelle
+            logEntry.data[4] = finalGovdeToUpdate;
+            logEntry.data[5] = finalFaydaliToUpdate;
+            logEntry.data[6] = data.konum;
+            logEntry.data[7] = data.durum;
+            logEntry.data[8] = data.durumAyrintisi;
+            logEntry.data[9] = newAnaliz;
+            logEntry.data[10] = data.aciklama;
             updatedCount++;
           }
         }
@@ -1228,18 +1230,10 @@ function doPost(e) {
           var oldAyrintiLog = String(oldFaalRow[4]).trim().toUpperCase();
           var oldAnalizLog = String(oldFaalRow[5]).trim().toUpperCase();
           
-          // Eğer durum ayrıntısı değiştiyse veya analiz kodu farklıysa güncelle
           if (oldAyrintiLog !== newAyrinti || oldAnalizLog !== finalAnaliz) {
-             faalLogSheet.getRange(faalEntry.row, 1, 1, 6).setValues([[
-              logId, 
-              dateStr, 
-              kuyrukNo, 
-              data.tip, 
-              data.durumAyrintisi, 
-              finalAnaliz
-            ]]);
-            // Update the map
-            faalIdMap[logId].data = [logId, dateStr, kuyrukNo, data.tip, data.durumAyrintisi, finalAnaliz];
+             faalLogSheet.getRange(faalEntry.row, 5, 1, 2).setValues([[newAyrinti, finalAnaliz]]);
+             faalEntry.data[4] = newAyrinti;
+             faalEntry.data[5] = finalAnaliz;
           }
         }
       });
