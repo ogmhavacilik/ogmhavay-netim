@@ -45,6 +45,8 @@ const App = () => {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [showActivity, setShowActivity] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'checking' | 'updated' | 'no-change' | 'error'>('idle');
+  const lastSyncSignatureRef = useRef<string>('');
   
   const [fleet, setFleet] = useState<Aircraft[]>([]);
   const [activities, setActivities] = useState<AircraftActivity[]>([]);
@@ -1001,20 +1003,18 @@ const App = () => {
 
   const runGlobalSync = useCallback(async () => {
     setIsSyncing(true);
+    setSyncStatus('checking');
     
     // Geçmiş logları beklemeden hemen çekmeye başla
     fetchPastLogs();
 
     try {
       const fetchedFleet: Aircraft[] = [];
-      let totalChanges = 0;
 
       await Promise.all(SHEET_CONFIGS.map(async (config) => {
         try {
           const data = await fetchAircraftDataFromAppsScript(config.appsScriptUrl, config);
           if (data && data.length > 0) {
-            // handleSyncFromExcel will catch individual changes
-            handleSyncFromExcel(data, config.aircraftType, false); // Don't log individually
             fetchedFleet.push(...(data as Aircraft[]));
           }
         } catch (e) {
@@ -1022,36 +1022,60 @@ const App = () => {
         }
       }));
 
-      // Toplu loglama işlemi - LOGKOMUT tarafında değişim kontrolü yapıldığı için güvenle çağrılabilir
-      // Ancak gereksiz trafik oluşturmamak için frontend tarafında da basit bir kontrol eklenebilir
       if (fetchedFleet.length > 0) {
-        try {
-          await proxyFetch(LOG_SCRIPT_URL, {
-            action: 'logAllAircraftActivity',
-            sheetId: MAIL_LOG_SHEET_ID,
-            fleetData: fetchedFleet.map(a => ({
-              kuyrukNo: a.kuyrukNo,
-              tip: a.tip || '',
-              govdeUcusSaati: a.govdeUcusSaati,
-              faydaliSaat: a.faydaliSaat,
-              konum: a.konum,
-              durum: a.durum,
-              durumAyrintisi: a.durumAyrintisi,
-              aciklama: a.aciklama,
-              analizKodu: a.assignedCode
-            }))
-          });
-        } catch (logError) {
-          console.error("Otomatik log güncelleme hatası:", logError);
+        // Create a signature of the data to detect changes
+        const currentSignature = JSON.stringify(fetchedFleet.map(a => ({
+          k: a.kuyrukNo,
+          g: a.govdeUcusSaati,
+          f: a.faydaliSaat,
+          ko: a.konum,
+          d: a.durum,
+          da: a.durumAyrintisi,
+          ac: a.aciklama,
+          an: a.assignedCode
+        })));
+
+        if (currentSignature !== lastSyncSignatureRef.current) {
+          console.log("Changes detected in fleet data, proceeding with update and logging.");
+          
+          // Apply changes to UI
+          handleSyncFromExcel(fetchedFleet, 'SYNC', false);
+
+          try {
+            await proxyFetch(LOG_SCRIPT_URL, {
+              action: 'logAllAircraftActivity',
+              sheetId: MAIL_LOG_SHEET_ID,
+              fleetData: fetchedFleet.map(a => ({
+                kuyrukNo: a.kuyrukNo,
+                tip: a.tip || '',
+                govdeUcusSaati: a.govdeUcusSaati,
+                faydaliSaat: a.faydaliSaat,
+                konum: a.konum,
+                durum: a.durum,
+                durumAyrintisi: a.durumAyrintisi,
+                aciklama: a.aciklama,
+                analizKodu: a.assignedCode
+              }))
+            });
+            lastSyncSignatureRef.current = currentSignature;
+            setSyncStatus('updated');
+          } catch (logError) {
+            console.error("Otomatik log güncelleme hatası:", logError);
+            setSyncStatus('error');
+          }
+        } else {
+          console.log("No changes detected in fleet data, skipping update/logging.");
+          setSyncStatus('no-change');
         }
       }
-
-      // Log saving removed from frontend to prevent duplicate logs on refresh.
-      // Now handled by server-side trigger at midnight.
-
+    } catch (e) {
+      console.error("Global sync failed:", e);
+      setSyncStatus('error');
     } finally {
       initialSyncDone.current = true;
       setIsSyncing(false);
+      // Reset status after a few seconds
+      setTimeout(() => setSyncStatus(prev => prev === 'checking' ? 'idle' : prev), 3000);
     }
   }, [handleSyncFromExcel]);
 
@@ -1473,10 +1497,10 @@ const App = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
               </svg>
             </button>
-            <div className={`bg-emerald-500/10 border border-emerald-500/30 px-6 py-4 rounded-[1.8rem] flex items-center shadow-2xl backdrop-blur-md ${isSyncing ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
-               <div className={`w-3 h-3 rounded-full mr-4 shadow-[0_0_10px_#10b981] ${isSyncing ? 'bg-yellow-400 animate-spin shadow-[0_0_10px_#facc15]' : 'bg-emerald-500 animate-pulse shadow-[0_0_10px_#10b981]'}`}></div>
-               <span className={`font-black text-[11px] uppercase tracking-[0.5em] ${isSyncing ? 'text-yellow-400' : 'text-emerald-400'}`}>
-                  {isSyncing ? 'FİLO VERİLERİ ÇEKİLİYOR...' : 'OTOMATİK VERİ TAKİBİ AKTİF'}
+            <div className={`bg-emerald-500/10 border border-emerald-500/30 px-6 py-4 rounded-[1.8rem] flex items-center shadow-2xl backdrop-blur-md ${isSyncing ? 'bg-yellow-500/10 border-yellow-500/30' : (syncStatus === 'no-change' ? 'bg-blue-500/10 border-blue-500/30' : 'bg-emerald-500/10 border-emerald-500/30')}`}>
+               <div className={`w-3 h-3 rounded-full mr-4 shadow-[0_0_10px_#10b981] ${isSyncing ? 'bg-yellow-400 animate-spin shadow-[0_0_10px_#facc15]' : (syncStatus === 'no-change' ? 'bg-blue-400 shadow-[0_0_10px_#3b82f6]' : 'bg-emerald-500 animate-pulse shadow-[0_0_10px_#10b981]')}`}></div>
+               <span className={`font-black text-[11px] uppercase tracking-[0.5em] ${isSyncing ? 'text-yellow-400' : (syncStatus === 'no-change' ? 'text-blue-400' : 'text-emerald-400')}`}>
+                  {isSyncing ? 'VERİLER KONTROL EDİLİYOR...' : (syncStatus === 'no-change' ? 'OTOMATİK VERİ TAKİBİ: DEĞİŞİKLİK YOK' : 'OTOMATİK VERİ TAKİBİ AKTİF')}
                </span>
             </div>
           </div>

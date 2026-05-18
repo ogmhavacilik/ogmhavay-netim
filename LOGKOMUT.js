@@ -1053,19 +1053,19 @@ function doPost(e) {
         var rowsToDelete = [];
         var seenOnThisPass = {};
         
+        // Pass 1: Identify duplicate rows for the same Date_Tail
+        // We scan from top to bottom keep the FIRST one, or the one with MOST data.
+        // Actually, for cleanup, keeping the last one is usually best as it's the most recent.
         for (var i = dataRows.length - 1; i >= 1; i--) {
           var rDate = normalizeDate(dataRows[i][1]);
           var rKNo = String(dataRows[i][2]).trim().toUpperCase();
           
-          // Delete orphaned rows too
           if (!rDate || !rKNo) {
             rowsToDelete.push(i + 1);
             continue;
           }
           
           var key = rDate + "_" + rKNo;
-          
-          // Mark for deletion if it's a duplicate on this sheet scan
           if (seenOnThisPass[key]) {
             rowsToDelete.push(i + 1);
           } else {
@@ -1073,14 +1073,13 @@ function doPost(e) {
           }
         }
         
-        rowsToDelete.sort(function(a, b) { return b - a; });
-        rowsToDelete.forEach(function(idx) { 
-          try {
-            sheet.deleteRow(idx); 
-          } catch(e) {
-            Logger.log("Row delete error: " + e);
-          }
-        });
+        if (rowsToDelete.length > 0) {
+          rowsToDelete.sort(function(a, b) { return b - a; });
+          // Batch delete to avoid flickering
+          rowsToDelete.forEach(function(idx) { 
+            try { sheet.deleteRow(idx); } catch(e) {}
+          });
+        }
       };
 
       cleanupSheet(logSheet);
@@ -1114,15 +1113,21 @@ function doPost(e) {
         // --- 1. Envanter Log Güncelleme ---
         var logEntry = logIdMap[logId];
         var faydaliVal = data.faydaliSaat;
-        if (typeof faydaliVal === 'string') faydaliVal = parseFloat(faydaliVal.replace(',', '.')) || 0;
+        if (typeof faydaliVal === 'string') {
+          faydaliVal = parseFloat(faydaliVal.replace(/\./g, "").replace(',', '.')) || 0;
+        }
+
+        var newGovdeRaw = data.govdeUcusSaati;
+        var newGovdeFormatted = formatToHHMM(newGovdeRaw, data.tip);
 
         if (!logEntry) {
+          // Only append if we have ANY meaningful data OR if it's a valid new record
           logSheet.appendRow([
             logId, 
             dateStr, 
             kuyrukNo, 
             data.tip, 
-            "", // Placeholder for govde
+            "", // Placeholder
             faydaliVal,
             data.konum,
             data.durum,
@@ -1131,7 +1136,7 @@ function doPost(e) {
             data.aciklama ? "'" + String(data.aciklama) : ""
           ]);
           var newRow = logSheet.getLastRow();
-          setLogTimeValue(logSheet, newRow, 5, data.govdeUcusSaati, data.tip);
+          setLogTimeValue(logSheet, newRow, 5, newGovdeRaw, data.tip);
           logSheet.getRange(newRow, 6).setNumberFormat("0.0#");
           updatedCount++;
         } else {
@@ -1155,13 +1160,22 @@ function doPost(e) {
           
           var oldGovdeRaw = oldRow[4];
           var oldGovde = formatToHHMM(oldGovdeRaw, data.tip);
-          var newGovde = formatToHHMM(data.govdeUcusSaati, data.tip);
+          
+          // "0 SIFIR OLMAZ" Guard: 
+          // If existing Govde/Faydali has data, and incoming is zero/empty, REJECT the update for those fields
+          var skipGovdeUpdate = (newGovdeFormatted === "00:00" || newGovdeFormatted === "0,0") && (oldGovde !== "00:00" && oldGovde !== "0,0");
+          var skipFaydaliUpdate = (newFaydali === 0) && (oldFaydali !== 0);
 
-          if (Math.abs(oldFaydali - newFaydali) > 0.01 || oldKonum !== newKonum || oldDurum !== newDurum || 
-              oldAyrinti !== newAyrinti || oldAnaliz !== newAnaliz || oldAciklama !== newAciklama || oldGovde !== newGovde) {
+          var finalGovdeToUpdate = skipGovdeUpdate ? oldGovdeRaw : newGovdeRaw;
+          var finalFaydaliToUpdate = skipFaydaliUpdate ? oldFaydali : newFaydali;
+
+          // Check if significant changes exist
+          if (Math.abs(oldFaydali - finalFaydaliToUpdate) > 0.01 || oldKonum !== newKonum || 
+              oldDurum !== newDurum || oldAyrinti !== newAyrinti || 
+              oldAnaliz !== newAnaliz || oldAciklama !== newAciklama || oldGovde !== formatToHHMM(finalGovdeToUpdate, data.tip)) {
             
             logSheet.getRange(logEntry.row, 6, 1, 6).setValues([[
-              newFaydali,
+              finalFaydaliToUpdate,
               data.konum,
               data.durum,
               data.durumAyrintisi,
@@ -1169,7 +1183,7 @@ function doPost(e) {
               data.aciklama ? "'" + String(data.aciklama) : ""
             ]]);
             logSheet.getRange(logEntry.row, 6).setNumberFormat("0.0#");
-            setLogTimeValue(logSheet, logEntry.row, 5, data.govdeUcusSaati, data.tip);
+            setLogTimeValue(logSheet, logEntry.row, 5, finalGovdeToUpdate, data.tip);
             updatedCount++;
           }
         }
