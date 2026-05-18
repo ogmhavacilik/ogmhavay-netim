@@ -96,7 +96,8 @@ export const formatToHHMM = (totalHours: number | null, aircraftType?: string): 
   if (totalHours === null) return '-';
   
   // Specific types should remain as decimal (with comma) for both Useful Hours and Airframe Hours
-  if (aircraftType === 'B-360' || aircraftType === 'C-650' || aircraftType === 'Bell-429') {
+  const cleanTip = (aircraftType || '').toUpperCase().replace(/[\s-]/g, '');
+  if (cleanTip.includes('B360') || cleanTip.includes('C650') || cleanTip.includes('BELL') || cleanTip.includes('B429')) {
     // Preserve at least 1, up to 2 decimal places to respect "ham veri" (raw data) as requested.
     let s = totalHours.toFixed(2);
     if (s.endsWith('.00')) {
@@ -172,9 +173,10 @@ export const parseSingleCellToHour = (val: any, aircraftType: string): number | 
     let n = val;
 
     const cleanTip = (aircraftType || '').toUpperCase().replace(/[\s-]/g, '');
-    const isDecimalType = cleanTip.indexOf('B360') !== -1 || 
-                          cleanTip.indexOf('C650') !== -1 || 
-                          cleanTip.indexOf('BELL429') !== -1;
+    const isDecimalType = cleanTip.includes('B360') || 
+                          cleanTip.includes('C650') || 
+                          cleanTip.includes('BELL') ||
+                          cleanTip.includes('B429');
 
     // Heuristic: If it's a small decimal fraction (0 < n < 1), it's likely a day fraction (time of day)
     // If it's > 400 it's likely absolute hours. 

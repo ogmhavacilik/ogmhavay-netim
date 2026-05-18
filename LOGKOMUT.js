@@ -124,12 +124,22 @@ function doPost(e) {
       var cleanupResult = "Cleanup completed: ";
 
       var normalizeDate = function(d) {
-        if (!d) return "";
+        if (!d && d !== 0) return "";
         if (d instanceof Date) return Utilities.formatDate(d, "GMT+3", "dd.MM.yyyy");
         var s = String(d).trim();
-        if (s.includes('-')) {
-          var p = s.split('-');
-          if (p[0].length === 4) return p[2] + "." + p[1] + "." + p[0];
+        if (!s) return "";
+        if (s.includes("-") || s.includes(".") || s.includes("/")) {
+          var p = s.split(/[- ./:]/);
+          if (p.length >= 3) {
+            // YYYY-MM-DD or YYYY.MM.DD
+            if (p[0].length === 4) {
+              return (p[2].length < 2 ? "0" + p[2] : p[2]) + "." + (p[1].length < 2 ? "0" + p[1] : p[1]) + "." + p[0];
+            }
+            // DD-MM-YYYY or DD.MM.YYYY
+            if (p[2].split(" ")[0].length === 4) {
+              return (p[0].length < 2 ? "0" + p[0] : p[0]) + "." + (p[1].length < 2 ? "0" + p[1] : p[1]) + "." + p[2].split(" ")[0];
+            }
+          }
         }
         return s;
       };
@@ -138,41 +148,79 @@ function doPost(e) {
         var data = logSheet.getDataRange().getValues();
         var seen = {};
         var toDelete = [];
-        // Scan bottom to top to keep the latest entries
-        for (var i = data.length - 1; i >= 1; i--) {
+        
+        // Pass 1: Identify best row for each key (Day_Tail)
+        // Prefer rows that have Govde Ucus Saati or Durum
+        for (var i = 1; i < data.length; i++) {
           var date = normalizeDate(data[i][1]);
           var tail = String(data[i][2]).trim().toUpperCase();
           if (!date || !tail) continue;
+          
           var key = date + "_" + tail;
-          if (seen[key]) {
-            toDelete.push(i + 1);
+          var score = 0;
+          var govdeVal = String(data[i][4] || "").trim();
+          if (govdeVal !== "" && govdeVal !== "-" && govdeVal !== "0" && govdeVal !== "00:00") score += 10;
+          if (data[i][7] && String(data[i][7]).trim() !== "") score += 5;
+          if (data[i][8] && String(data[i][8]).trim() !== "") score += 3;
+          
+          if (!seen[key] || score >= seen[key].score) {
+            if (seen[key]) toDelete.push(seen[key].index); // Mark previous worse row for deletion
+            seen[key] = { index: i + 1, score: score };
           } else {
-            seen[key] = true;
+            toDelete.push(i + 1);
           }
         }
+        
+        // Also find truly empty/invalid rows
+        for (var i = 1; i < data.length; i++) {
+          var date = normalizeDate(data[i][1]);
+          var tail = String(data[i][2]).trim().toUpperCase();
+          if (!date || !tail) {
+            if (toDelete.indexOf(i + 1) === -1) toDelete.push(i + 1);
+          }
+        }
+        
         toDelete.sort(function(a, b) { return b - a; });
-        toDelete.forEach(function(row) { logSheet.deleteRow(row); });
-        cleanupResult += "Envanter Log: " + toDelete.length + " duplicates removed. ";
+        var uniqueToDelete = [];
+        for (var i = 0; i < toDelete.length; i++) {
+          if (uniqueToDelete.indexOf(toDelete[i]) === -1) uniqueToDelete.push(toDelete[i]);
+        }
+        uniqueToDelete.forEach(function(row) { logSheet.deleteRow(row); });
+        cleanupResult += "Envanter Log: " + uniqueToDelete.length + " duplicates/orphans removed. ";
       }
 
       if (faalLogSheet) {
         var data = faalLogSheet.getDataRange().getValues();
         var seen = {};
         var toDelete = [];
-        for (var i = data.length - 1; i >= 1; i--) {
+        for (var i = 1; i < data.length; i++) {
           var date = normalizeDate(data[i][1]);
           var tail = String(data[i][2]).trim().toUpperCase();
-          if (!date || !tail) continue;
+          if (!date || !tail) {
+             toDelete.push(i + 1);
+             continue;
+          }
+          
           var key = date + "_" + tail;
-          if (seen[key]) {
-            toDelete.push(i + 1);
+          // For Faaliyet Log, we prefer rows with Analiz Kodu
+          var score = 0;
+          if (data[i][4] && String(data[i][4]).trim() !== "") score += 5;
+          if (data[i][5] && String(data[i][5]).trim() !== "") score += 10;
+
+          if (!seen[key] || score >= seen[key].score) {
+            if (seen[key]) toDelete.push(seen[key].index);
+            seen[key] = { index: i + 1, score: score };
           } else {
-            seen[key] = true;
+            toDelete.push(i + 1);
           }
         }
         toDelete.sort(function(a, b) { return b - a; });
-        toDelete.forEach(function(row) { faalLogSheet.deleteRow(row); });
-        cleanupResult += "Faaliyet Log: " + toDelete.length + " duplicates removed.";
+        var uniqueToDelete = [];
+        for (var i = 0; i < toDelete.length; i++) {
+          if (uniqueToDelete.indexOf(toDelete[i]) === -1) uniqueToDelete.push(toDelete[i]);
+        }
+        uniqueToDelete.forEach(function(row) { faalLogSheet.deleteRow(row); });
+        cleanupResult += "Faaliyet Log: " + uniqueToDelete.length + " duplicates/orphans removed.";
       }
       return jsonSuccess(cleanupResult);
     }
@@ -976,24 +1024,20 @@ function doPost(e) {
       }
 
       var normalizeDate = function(d) {
-        if (!d) return "";
+        if (!d && d !== 0) return "";
         if (d instanceof Date) return Utilities.formatDate(d, "GMT+3", "dd.MM.yyyy");
         var s = String(d).trim();
-        if (s.includes('-')) {
-          var p = s.split('-');
-          if (p[0].length === 4) return p[2] + "." + p[1] + "." + p[0];
-        }
-        return s;
-      };
-
-      // --- DUPLICATE REMOVAL START (STRONGER) ---
-      var normalizeDate = function(d) {
-        if (!d) return "";
-        if (d instanceof Date) return Utilities.formatDate(d, "GMT+3", "dd.MM.yyyy");
-        var s = String(d).trim();
-        if (s.includes('-')) {
-          var p = s.split('-');
-          if (p[0].length === 4) return p[2] + "." + p[1] + "." + p[0];
+        if (!s) return "";
+        if (s.includes("-") || s.includes(".") || s.includes("/")) {
+          var p = s.split(/[- ./:]/);
+          if (p.length >= 3) {
+            if (p[0].length === 4) {
+              return (p[2].length < 2 ? "0" + p[2] : p[2]) + "." + (p[1].length < 2 ? "0" + p[1] : p[1]) + "." + p[0];
+            }
+            if (p[2].split(" ")[0].length === 4) {
+              return (p[0].length < 2 ? "0" + p[0] : p[0]) + "." + (p[1].length < 2 ? "0" + p[1] : p[1]) + "." + p[2].split(" ")[0];
+            }
+          }
         }
         return s;
       };
@@ -1012,9 +1056,16 @@ function doPost(e) {
         for (var i = dataRows.length - 1; i >= 1; i--) {
           var rDate = normalizeDate(dataRows[i][1]);
           var rKNo = String(dataRows[i][2]).trim().toUpperCase();
-          if (!rDate || !rKNo) continue;
+          
+          // Delete orphaned rows too
+          if (!rDate || !rKNo) {
+            rowsToDelete.push(i + 1);
+            continue;
+          }
+          
           var key = rDate + "_" + rKNo;
           
+          // Mark for deletion if it's in our update targets OR a duplicate on this sheet scan
           if (targets[key] || seenOnThisPass[key]) {
             rowsToDelete.push(i + 1);
           } else {
@@ -1023,7 +1074,13 @@ function doPost(e) {
         }
         
         rowsToDelete.sort(function(a, b) { return b - a; });
-        rowsToDelete.forEach(function(idx) { sheet.deleteRow(idx); });
+        rowsToDelete.forEach(function(idx) { 
+          try {
+            sheet.deleteRow(idx); 
+          } catch(e) {
+            Logger.log("Row delete error: " + e);
+          }
+        });
       };
 
       cleanupSheet(logSheet);
@@ -1762,7 +1819,8 @@ function formatToHHMM(val, aircraftType) {
   var cleanTip = (aircraftType || "").toUpperCase().replace(/[\s-]/g, "");
   var isDecimalType = cleanTip.indexOf("B360") !== -1 || 
                       cleanTip.indexOf("C650") !== -1 || 
-                      cleanTip.indexOf("BELL429") !== -1;
+                      cleanTip.indexOf("BELL") !== -1 ||
+                      cleanTip.indexOf("B429") !== -1;
 
   var hours = 0;
   if (typeof val === "number") {
@@ -1823,7 +1881,8 @@ function parseSingleCellToHour(val, aircraftType) {
       var cleanTip = (aircraftType || "").toUpperCase().replace(/[\s-]/g, "");
       var isDecimalType = cleanTip.indexOf("B360") !== -1 || 
                           cleanTip.indexOf("C650") !== -1 || 
-                          cleanTip.indexOf("BELL429") !== -1;
+                          cleanTip.indexOf("BELL") !== -1 ||
+                          cleanTip.indexOf("B429") !== -1;
       
       if (!isDecimalType && s.includes(".")) {
         var dotParts = s.split(".");
@@ -2484,7 +2543,8 @@ function setLogTimeValue(sheet, row, col, value, tip) {
   var cleanTip = tipUpper.replace(/[\s-]/g, "");
   var isDecimalType = cleanTip.indexOf("B360") !== -1 || 
                       cleanTip.indexOf("C650") !== -1 || 
-                      cleanTip.indexOf("BELL429") !== -1;
+                      cleanTip.indexOf("BELL") !== -1 ||
+                      cleanTip.indexOf("B429") !== -1;
 
   // PRIORITY: If the value is a number (float), treat it according to aircraft preference
   if (!valStr.includes(":") && (valStr.includes(",") || valStr.includes(".") || /^\d+(\.\d+)?$/.test(valStr))) {

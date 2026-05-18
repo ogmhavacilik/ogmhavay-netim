@@ -1,8 +1,21 @@
 
 import { Aircraft, Status, DailyStatusCode } from '../../types';
 
-export const formatToHHMM = (decimalHours: number | string): string => {
+export const formatToHHMM = (decimalHours: number | string, aircraftType?: string): string => {
   if (decimalHours === null || decimalHours === undefined || decimalHours === '') return '-';
+  
+  const cleanType = (aircraftType || '').toUpperCase().replace(/[\s-]/g, '');
+  const isDecimalType = cleanType.indexOf('B360') !== -1 || 
+                        cleanType.indexOf('C650') !== -1 || 
+                        cleanType.indexOf('BELL429') !== -1;
+
+  if (isDecimalType) {
+    const val = parseFloat(decimalHours.toString());
+    if (isNaN(val)) return decimalHours.toString();
+    // Return decimal with 1 digits, replacing . with , for Turkish locale preference if needed, or keep as is
+    return val.toFixed(1).replace('.', ',');
+  }
+
   const hours = parseFloat(decimalHours.toString());
   if (isNaN(hours)) return decimalHours.toString();
   const h = Math.floor(hours);
@@ -105,7 +118,7 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
 
   sortedFleet.forEach((aircraft, index) => {
     const aciklama = (aircraft.aciklama || '').replace(/\n/g, '<br>');
-    const faydaliSaat = (aircraft.faydaliSaat !== null && aircraft.faydaliSaat !== undefined) ? formatToHHMM(aircraft.faydaliSaat) : '';
+    const faydaliSaat = (aircraft.faydaliSaat !== null && aircraft.faydaliSaat !== undefined) ? formatToHHMM(aircraft.faydaliSaat, aircraft.tip) : '';
     const abbr = getAbbreviation(aircraft.kuyrukNo || '');
     
     const isFaal = String(aircraft.durum || '').toUpperCase().includes("FAAL") && !String(aircraft.durum || '').toUpperCase().includes("GAYRİ") && !String(aircraft.durum || '').toUpperCase().includes("GAYRI");

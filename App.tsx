@@ -531,21 +531,66 @@ const App = () => {
       const envanterLogs = data.envanterLog || [];
       const intraDayData = data.intraDayLog || data.intraDayLogs || data.hourlyLogs || [];
       
-      const logData = [...faaliyetLogs];
-      envanterLogs.forEach((env: any) => {
-        const envKNo = String(env.kuyrukNo || env['Kuyruk No'] || env.tailNumber || '').trim();
-        const envTarih = String(env.tarih || env.Tarih || '').trim();
-        if (envKNo && envTarih && !logData.some(f => 
-          String(f.kuyrukNo || f['Kuyruk No'] || f.tailNumber || '').trim() === envKNo && 
-          String(f.tarih || f.Tarih || '').trim() === envTarih
-        )) {
-          logData.push(env);
+      // Robust duplicate removal and merging
+      const logDataMap = new Map<string, any>();
+      
+      const getUniversalKey = (entry: any) => {
+        const k = String(entry.kuyrukNo || entry['Kuyruk No'] || entry.tailNumber || entry.tail || entry.Tail || '').trim().toUpperCase();
+        const t = String(entry.tarih || entry.Tarih || entry.date || entry.Date || '').trim();
+        if (!k || !t) return null;
+        
+        let d = -1, m = -1, y = -1;
+        if (t.includes('T')) {
+          const dt = new Date(t);
+          if (!isNaN(dt.getTime())) { d = dt.getUTCDate(); m = dt.getUTCMonth() + 1; y = dt.getUTCFullYear(); }
+        } else {
+          const p = t.split(/[- ./:]/);
+          if (p.length >= 3) {
+            if (p[0].length === 4) { y = parseInt(p[0], 10); m = parseInt(p[1], 10); d = parseInt(p[2], 10); }
+            else if (p[2].split(" ")[0].length === 4) { d = parseInt(p[0], 10); m = parseInt(p[1], 10); y = parseInt(p[2].split(" ")[0], 10); }
+          }
+        }
+        
+        if (d > 0 && m > 0 && y > 0) {
+          return `${k}_${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+        return null;
+      };
+
+      faaliyetLogs.forEach((f: any) => {
+        const key = getUniversalKey(f);
+        if (key) {
+          const existing = logDataMap.get(key);
+          // If we have an existing one, merge only if the new one is 'better' (has more fields)
+          if (!existing) {
+            logDataMap.set(key, { ...f });
+          } else {
+            logDataMap.set(key, { ...existing, ...f });
+          }
         }
       });
+
+      envanterLogs.forEach((env: any) => {
+        const key = getUniversalKey(env);
+        if (key) {
+          const existing = logDataMap.get(key);
+          if (!existing) {
+            logDataMap.set(key, { ...env });
+          } else {
+            // MERGE: envanterLog usually has Govde hours which is high priority
+            const merged = { ...existing, ...env };
+            // Ensure we keep the best version of values
+            if (!merged.govdeUcusSaati || merged.govdeUcusSaati === '0') merged.govdeUcusSaati = existing.govdeUcusSaati || env.govdeUcusSaati;
+            logDataMap.set(key, merged);
+          }
+        }
+      });
+
+      const logData = Array.from(logDataMap.values());
       
       setEnvanterLog(logData.map((logEntry: any) => {
-        const tarihStr = String(logEntry.tarih || logEntry.Tarih || '').trim();
-        const kuyrukNo = String(logEntry.kuyrukNo || logEntry['Kuyruk No'] || logEntry.tailNumber || '').trim();
+        const tarihStr = String(logEntry.tarih || logEntry['Tarih'] || logEntry['date'] || '').trim();
+        const kuyrukNo = String(logEntry.kuyrukNo || logEntry['Kuyruk No'] || logEntry.tailNumber || logEntry.tail || '').trim().toUpperCase();
         let dayNum = -1, monthNum = -1, yearNum = -1;
         
         if (tarihStr.includes('T')) {
@@ -555,54 +600,36 @@ const App = () => {
             monthNum = d.getUTCMonth();
             yearNum = d.getUTCFullYear();
           }
-        } else if (tarihStr.includes('-')) {
-          const parts = tarihStr.split(/[- :]/);
+        } else {
+          const parts = tarihStr.split(/[- ./:]/);
           if (parts.length >= 3) {
             if (parts[0].length === 4) {
               yearNum = parseInt(parts[0], 10);
               monthNum = parseInt(parts[1], 10) - 1;
               dayNum = parseInt(parts[2], 10);
-            } else {
+            } else if (parts[2].split(" ")[0].length === 4) {
               dayNum = parseInt(parts[0], 10);
               monthNum = parseInt(parts[1], 10) - 1;
-              yearNum = parseInt(parts[2], 10);
+              yearNum = parseInt(parts[2].split(" ")[0], 10);
             }
-          }
-        } else if (tarihStr.includes('/')) {
-          const parts = tarihStr.split('/');
-          if (parts.length === 3) {
-            dayNum = parseInt(parts[0], 10);
-            monthNum = parseInt(parts[1], 10) - 1;
-            yearNum = parseInt(parts[2], 10);
-          }
-        } else if (tarihStr.includes('.')) {
-          const parts = tarihStr.split('.');
-          if (parts.length === 3) {
-            dayNum = parseInt(parts[0], 10);
-            monthNum = parseInt(parts[1], 10) - 1;
-            yearNum = parseInt(parts[2], 10);
           }
         }
 
-        if (dayNum !== -1) {
+        if (dayNum !== -1 && yearNum > 0) {
           return {
             ...logEntry,
             kuyrukNo: kuyrukNo,
             tarih: `${yearNum}-${String(monthNum + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`
           };
         }
-        return logEntry;
+        return { ...logEntry, kuyrukNo: kuyrukNo };
       }));
 
       console.log(`Processing ${logData.length} daily logs and ${intraDayData.length} intra-day logs`);
 
-      setActivities(prevActivities => {
+      setActivities(() => {
         const activityMap = new Map<string, AircraftActivity>();
-        // Mevcut aktiviteleri haritaya ekle
-        prevActivities.forEach(act => {
-          activityMap.set(act.kuyrukNo, { ...act });
-        });
-
+        
         const now = new Date();
         const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
@@ -615,20 +642,18 @@ const App = () => {
             if (upperDurum === 'FAAL') code = 'F';
           }
 
-          if (!activityMap.has(a.kuyrukNo)) {
-            activityMap.set(a.kuyrukNo, {
-              kuyrukNo: a.kuyrukNo,
-              cagriKodu: a.cagriKodu,
-              tip: a.tip || 'Bilinmiyor',
-              dailyStatuses: { [todayStr]: code },
-              hourlyStatuses: {},
-              intraDayCompletions: {},
-              intraDayDurations: {}
-            });
-          } else {
-            const existing = activityMap.get(a.kuyrukNo)!;
-            existing.dailyStatuses[todayStr] = code;
-          }
+          activityMap.set(a.kuyrukNo, {
+            kuyrukNo: a.kuyrukNo,
+            cagriKodu: a.cagriKodu,
+            tip: a.tip || 'Bilinmiyor',
+            dailyStatuses: { [todayStr]: code },
+            hourlyStatuses: {},
+            intraDayCompletions: {},
+            intraDayDurations: {},
+            intraDayEvents: {},
+            hourlyDescriptions: {},
+            intraDayStartStatuses: {}
+          });
         });
 
         const normalizedEnvanterLog: any[] = [];
@@ -652,27 +677,25 @@ const App = () => {
             let dayNum = -1, monthNum = -1, yearNum = -1;
             
             // Tarih formatlarını dene
-            if (tarihStr.includes('T') || (tarihStr.includes('-') && !tarihStr.includes('.'))) {
+            if (tarihStr.includes('T')) {
               const d = new Date(tarihStr);
               if (!isNaN(d.getTime())) {
-                dayNum = d.getDate();
-                monthNum = d.getMonth();
-                yearNum = d.getFullYear();
+                dayNum = d.getUTCDate();
+                monthNum = d.getUTCMonth();
+                yearNum = d.getUTCFullYear();
               }
-            } else if (tarihStr.includes('/')) {
-              const parts = tarihStr.split('/');
-              if (parts.length === 3) {
-                // TR formatı varsay (DD/MM/YYYY)
-                dayNum = parseInt(parts[0], 10);
-                monthNum = parseInt(parts[1], 10) - 1;
-                yearNum = parseInt(parts[2], 10);
-              }
-            } else if (tarihStr.includes('.')) {
-              const parts = tarihStr.split('.');
-              if (parts.length === 3) {
-                dayNum = parseInt(parts[0], 10);
-                monthNum = parseInt(parts[1], 10) - 1;
-                yearNum = parseInt(parts[2], 10);
+            } else {
+              const parts = tarihStr.split(/[- ./:]/);
+              if (parts.length >= 3) {
+                if (parts[0].length === 4) {
+                  yearNum = parseInt(parts[0], 10);
+                  monthNum = parseInt(parts[1], 10) - 1;
+                  dayNum = parseInt(parts[2], 10);
+                } else if (parts[2].split(" ")[0].length === 4) {
+                  dayNum = parseInt(parts[0], 10);
+                  monthNum = parseInt(parts[1], 10) - 1;
+                  yearNum = parseInt(parts[2].split(" ")[0], 10);
+                }
               }
             }
 

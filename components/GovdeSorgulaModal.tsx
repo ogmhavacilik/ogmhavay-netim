@@ -76,8 +76,10 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
       const allData = (result && result.success && result.data && Array.isArray(result.data.envanterLog)) ? result.data.envanterLog : [];
       
       const normalizeDate = (dateStr: any): string | null => {
-        if (!dateStr) return null;
+        if (!dateStr && dateStr !== 0) return null;
         const s = String(dateStr).trim();
+        if (!s) return null;
+        
         let d = -1, m = -1, y = -1;
         
         if (s.includes('T')) {
@@ -87,36 +89,22 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
             m = dt.getUTCMonth() + 1;
             y = dt.getUTCFullYear();
           }
-        } else if (s.includes('-')) {
-          const parts = s.split(/[- :]/);
+        } else if (s.includes('-') || s.includes('.') || s.includes('/')) {
+          const parts = s.split(/[- ./:]/);
           if (parts.length >= 3) {
             if (parts[0].length === 4) {
               y = parseInt(parts[0], 10);
               m = parseInt(parts[1], 10);
               d = parseInt(parts[2], 10);
-            } else {
+            } else if (parts[2].split(" ")[0].length === 4) {
               d = parseInt(parts[0], 10);
               m = parseInt(parts[1], 10);
-              y = parseInt(parts[2], 10);
+              y = parseInt(parts[2].split(" ")[0], 10);
             }
-          }
-        } else if (s.includes('.')) {
-          const parts = s.split('.');
-          if (parts.length === 3) {
-            d = parseInt(parts[0], 10);
-            m = parseInt(parts[1], 10);
-            y = parseInt(parts[2], 10);
-          }
-        } else if (s.includes('/')) {
-          const parts = s.split('/');
-          if (parts.length === 3) {
-            d = parseInt(parts[0], 10);
-            m = parseInt(parts[1], 10);
-            y = parseInt(parts[2], 10);
           }
         }
         
-        if (d !== -1 && m !== -1 && y !== -1) {
+        if (d > 0 && m > 0 && y > 0) {
           return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         }
         return null;
