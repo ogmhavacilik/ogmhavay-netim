@@ -1531,73 +1531,59 @@ function findSheet(ss, name) {
 }
 
 function sendReportEmail(recipient, customAttachments, ss) {
-  var attachments = [];
+  var attachments = Array.isArray(customAttachments) ? customAttachments : [];
   var currentSs = ss || SpreadsheetApp.getActiveSpreadsheet();
-  var currentSsId = currentSs
-    ? currentSs.getId()
-    : "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
+  var logSsId = currentSs ? currentSs.getId() : "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
 
-  // Custom attachments from client (e.g. generated HTML-Excel)
-  var skipEnvanter = false;
-  if (customAttachments && customAttachments.length > 0) {
-    customAttachments.forEach(function (att) {
-      attachments.push(
-        Utilities.newBlob(
-          Utilities.base64Decode(att.data),
-          att.mimeType,
-          att.name,
-        ),
-      );
-      if (att.name.toUpperCase().includes("ENVANTER RAPOR") || att.name.toUpperCase().includes("ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU")) skipEnvanter = true;
-    });
-  }
-
+  // 1. Get reports and email from recipient object
   var selectedReports = "";
   for (var key in recipient) {
-    if (
-      key.toUpperCase().includes("EK") ||
-      key.toUpperCase().includes("ATTACHMENT") ||
-      key.toUpperCase().includes("RAPOR")
-    ) {
-      selectedReports = recipient[key] || "";
+    if (key.toUpperCase().includes("EK") || key.toUpperCase().includes("ATTACHMENT") || key.toUpperCase().includes("RAPOR")) {
+      selectedReports = String(recipient[key] || "");
       break;
     }
   }
 
   var targetEmail = "";
   for (var key in recipient) {
-    if (
-      key.toUpperCase().includes("MAİL") ||
-      key.toUpperCase().includes("EMAIL")
-    ) {
-      targetEmail = recipient[key];
+    if (key.toUpperCase().includes("MAİL") || key.toUpperCase().includes("EMAIL")) {
+      targetEmail = String(recipient[key] || "");
       break;
     }
   }
 
   if (!targetEmail) {
-    console.error("Target email not found in recipient object");
+    console.error("Target email not found in recipient: " + JSON.stringify(recipient));
     return;
   }
 
   var upperReports = selectedReports.toUpperCase();
-  if (
-    !skipEnvanter &&
-    (upperReports.includes("ENVANTER RAPORU") ||
-      upperReports.includes("ENVANTER HAVA ARACI DURUM RAPORU") ||
-      upperReports.includes("ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU") ||
-      upperReports.includes("ENVANTER RAPOR"))
-  ) {
+  console.log("Sending email to: " + targetEmail + " | Reports: " + upperReports);
+
+  // 2. Attachments matching
+  
+  // A) ENVANTER RAPORU
+  if (upperReports.includes("ENVANTER") && (upperReports.includes("RAPOR") || upperReports.includes("DURUM"))) {
     try {
-      var blob = generateEnvanterExcelBlob();
+      var blob = generateFormattedEnvanterExcel(logSsId);
       if (blob) attachments.push(blob);
     } catch (e) {
-      console.error("Error attaching Envanter Raporu: " + e.toString());
+      console.error("Error attaching Envanter: " + e.toString());
     }
   }
 
-  // Faaliyet Çizelgesi ve diğer online excellere dokunmuyoruz ama log sayfalarını dahil etmiyoruz
-  if (upperReports.includes("HAVA ARACI EXCELİ (ONLİNE)") || upperReports.includes("HAVA ARACI EXCELI")) {
+  // B) FAALİYET ÇİZELGESİ
+  if (upperReports.includes("FAALİYET") || upperReports.includes("FAALIYET") || upperReports.includes("ÇİZELGE") || upperReports.includes("CIZELGE")) {
+    try {
+      var blob = generateFormattedFaaliyetExcel(logSsId);
+      if (blob) attachments.push(blob);
+    } catch (e) {
+      console.error("Error attaching Faaliyet: " + e.toString());
+    }
+  }
+
+  // C) ONLINE EXCEL DOSYALARI
+  if (upperReports.includes("ONLİNE") || upperReports.includes("ONLINE") || upperReports.includes("HAVA ARACI EXCELİ")) {
     var platformIds = {
       "Bell-429": "1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ",
       "AT-802": "1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4",
@@ -1608,35 +1594,33 @@ function sendReportEmail(recipient, customAttachments, ss) {
 
     for (var platform in platformIds) {
       try {
-        var blob = getSheetAsExcel(
-          platformIds[platform],
-          platform + "_Online_Excel.xlsx",
-        );
-        if (blob) {
-          attachments.push(blob);
-        }
+        var blob = getSheetAsExcel(platformIds[platform], platform + "_Online_Excel.xlsx");
+        if (blob) attachments.push(blob);
       } catch (e) {
         console.error("Error attaching " + platform + ": " + e.toString());
       }
     }
   }
 
-  var body =
-    "Sayın " +
-    (recipient["PERSONEL ADI"] || "") +
-    ",\n\n" +
-    "Günlük hava aracı durum raporları ekte sunulmuştur.\n\n" +
-    "İyi çalışmalar.";
+  console.log("Total attachments for " + targetEmail + ": " + attachments.length);
+
+  if (attachments.length === 0) {
+    console.error("No attachments to send for: " + targetEmail + ". Skipping email.");
+    return;
+  }
+
+  if (attachments.length === 0) {
+    console.error("No attachments found for " + targetEmail + ". Skipping email.");
+    return;
+  }
+
+  var body = "Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",\n\n" +
+             "Günlük hava aracı operasyonel durum raporları ekte sunulmuştur.\n\n" +
+             "İyi çalışmalar.";
 
   MailApp.sendEmail({
     to: targetEmail,
-    subject:
-      "OGM Hava Aracı Durum Raporu - " +
-      Utilities.formatDate(
-        new Date(),
-        Session.getScriptTimeZone(),
-        "dd.MM.yyyy",
-      ),
+    subject: "OGM Hava Aracı Durum Raporu - " + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy"),
     body: body,
     attachments: attachments,
   });
@@ -1762,6 +1746,8 @@ function getCallSignByTail(tail) {
     "OR-2036": "ORMAN-36",
     "OR-2037": "ORMAN-37",
     "OR-2038": "ORMAN-38",
+    "OR-2039": "ORMAN-39",
+    "OR-2040": "ORMAN-40",
     "OR-1018": "ORMAN-18",
     "OR-1019": "ORMAN-19",
     "OR-1020": "ORMAN-20",
@@ -2250,30 +2236,30 @@ function getFleetDataFromServer() {
       type: "AT-802",
       id: "1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4",
       mapping: {
-        kuyrukNo: "B3:B40",
-        durum: "C3:C40",
-        durumAyrintisi: "D3:D40",
-        konum: "E3:E40",
-        faydaliSaat: "V3:AI40",
-        govdeUcusSaati: "F3:F40",
-        aciklama: "AL3:AL40",
+        kuyrukNo: "B3:B50",
+        durum: "C3:C50",
+        durumAyrintisi: "D3:D50",
+        konum: "E3:E50",
+        faydaliSaat: "V3:AI50",
+        govdeUcusSaati: "F3:F50",
+        aciklama: "AL3:AL50",
       },
     },
     {
       type: "T-70",
       id: "10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw",
       mapping: {
-        kuyrukNo: "A4:A6",
-        faydaliSaat: "L4:O6", // Includes 40H, 120H, 480H remainders (L, N, O columns)
-        konum: "P4:P6",
-        durum: "Q4:Q6",
-        durumAyrintisi: "R4:R6",
-        bakimTakvimTarih: "K4:K6",
-        bakim40H: "H4:H6",
-        bakim120H: "I4:I6",
-        bakim480H: "J4:J6",
-        aciklama: "S4:S6",
-        govdeUcusSaati: "E4:E6",
+        kuyrukNo: "A4:A10",
+        faydaliSaat: "L4:O10", // Includes 40H, 120H, 480H remainders (L, N, O columns)
+        konum: "P4:P10",
+        durum: "Q4:Q10",
+        durumAyrintisi: "R4:R10",
+        bakimTakvimTarih: "K4:K10",
+        bakim40H: "H4:H10",
+        bakim120H: "I4:I10",
+        bakim480H: "J4:J10",
+        aciklama: "S4:S10",
+        govdeUcusSaati: "E4:E10",
       },
     },
     {
@@ -2399,148 +2385,228 @@ function getFleetDataFromServer() {
   return fleet;
 }
 
-function generateEnvanterExcelBlob() {
-  var fleet = getFleetDataFromServer();
-  var typeOrder = ["C-650", "B-360", "Bell-429", "AT-802", "T-70"];
+/**
+ * Formatted Excel Generation for Envanter - High Quality Output for Emails
+ */
+function generateFormattedEnvanterExcel(ssId) {
+  try {
+    // Fetch fresh data from all platforms
+    var platformConfigs = [
+      { type: 'C-650', id: '1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE', range: 'A3:P20', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} },
+      { type: 'B-360', id: '1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0', range: 'A3:P20', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} },
+      { type: 'Bell-429', id: '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ', range: 'A3:O30', map: {kNo:0, durum:12, detail:13, desc:14, loc:11, gHour:4, fHour:8} },
+      { type: 'AT-802', id: '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4', sheet: 'GÜNLÜK DURUM', range: 'B3:AL200', map: {kNo:0, durum:1, detail:2, desc:36, loc:3, gHour:4, fHourStart:20, fHourEnd:33} },
+      { type: 'T-70', id: '10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw', range: 'A4:S30', map: {kNo:0, durum:16, detail:17, desc:18, loc:15, gHour:4, fHour:13} }
+    ];
 
-  fleet.sort(function (a, b) {
-    var indexA = typeOrder.indexOf(a.tip);
-    var indexB = typeOrder.indexOf(b.tip);
-    if (indexA !== indexB) return indexA - indexB;
+    var fleetData = [];
+    platformConfigs.forEach(function(config) {
+      try {
+        var pSs = SpreadsheetApp.openById(config.id);
+        var pSheet = config.sheet ? pSs.getSheetByName(config.sheet) : pSs.getSheets()[0];
+        var displayValues = pSheet.getRange(config.range).getDisplayValues();
+        var rawValues = pSheet.getRange(config.range).getValues();
+        
+        displayValues.forEach(function(row, rIdx) {
+          var kNo = String(row[config.map.kNo] || "").trim();
+          var durum = String(row[config.map.durum] || "").trim();
+          
+          // Skip empty or placeholder rows
+          if (kNo === "" || kNo.toUpperCase().indexOf("XX") !== -1) return;
+          if (durum === "" || durum === "-") return;
 
-    var getOrder = function (cagri) {
-      var m = String(cagri).match(/ORMAN-(\d+)/i);
-      return m ? parseInt(m[1]) : 999;
-    };
-    return getOrder(a.cagriKodu) - getOrder(b.cagriKodu);
-  });
+          var cagriKodu = getCallSignByTail(kNo.match(/OR-\d+/i) ? kNo.match(/OR-\d+/i)[0].toUpperCase() : kNo);
+          if (String(cagriKodu || "").toUpperCase().indexOf("XX") !== -1) return;
 
-  var dateStr = Utilities.formatDate(
-    new Date(),
-    Session.getScriptTimeZone(),
-    "dd.MM.yyyy",
-  );
+          if (kNo && kNo.trim() !== "") {
+            var faydaliSaatFormatted = "-";
+            if (config.type === 'AT-802') {
+              var minVal = null;
+              for (var c = config.map.fHourStart; c <= config.map.fHourEnd; c++) {
+                var p = parseSingleCellToHour(rawValues[rIdx][c], config.type);
+                if (p !== null && (minVal === null || p < minVal)) minVal = p;
+              }
+              faydaliSaatFormatted = formatToHHMM(minVal, config.type);
+            } else {
+              var p = parseSingleCellToHour(rawValues[rIdx][config.map.fHour], config.type);
+              faydaliSaatFormatted = formatToHHMM(p, config.type);
+            }
 
-  var html =
-    '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8" /><style>' +
-    "table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }" +
-    "th, td { border: 1px solid black; padding: 8px; text-align: center; vertical-align: middle; font-size: 11px; }" +
-    ".title-row { font-weight: bold; font-size: 14px; text-align: center; }" +
-    ".header-row th { font-weight: bold; background-color: #ffffff; color: black; }" +
-    ".date-text { color: #d32f2f; font-weight: bold; text-align: right; font-size: 12px; }" +
-    ".faal { background-color: #c6efce; color: #006100; font-weight: bold; }" +
-    ".gayrifaal { background-color: #ffc7ce; color: #9c0006; font-weight: bold; }" +
-    ".abbr-text { color: #d32f2f; font-weight: bold; margin-left: 4px; }" +
-    ".aciklama-cell { text-align: left; font-style: italic; white-space: pre-wrap; }" +
-    "</style></head><body><table>" +
-    '<tr><td colspan="9" class="date-text" style="border: none;">' +
-    dateStr +
-    "</td></tr>" +
-    '<tr><td colspan="9" class="title-row">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td></tr>' +
-    '<tr class="header-row">' +
-    "<th>SIRA NO</th>" +
-    "<th>ÇAĞRI KODU</th>" +
-    "<th>KUYRUK NUMARASI</th>" +
-    "<th>GÖVDE SAATİ</th>" +
-    "<th>DURUM</th>" +
-    "<th>DURUM AYRINTISI</th>" +
-    "<th>KONUM</th>" +
-    "<th>FAYDALİ SAAT</th>" +
-    "<th>AÇIKLAMA</th></tr>";
+            fleetData.push({
+              kuyrukNo: kNo,
+              cagriKodu: getCallSignByTail(kNo.match(/OR-\d+/i) ? kNo.match(/OR-\d+/i)[0].toUpperCase() : kNo),
+              tip: config.type,
+              durum: row[config.map.durum],
+              durumAyrintisi: row[config.map.detail],
+              aciklama: row[config.map.desc],
+              konum: row[config.map.loc],
+              govdeUcusSaati: row[config.map.gHour],
+              faydaliSaat: faydaliSaatFormatted
+            });
+          }
+        });
+      } catch (e) {
+        console.error("Error fetching " + config.type + ": " + e.toString());
+      }
+    });
 
-  var currentTip = "";
-  var isGray = false;
+    if (fleetData.length === 0) return null;
 
-  fleet.forEach(function (a, index) {
-    if (a.tip !== currentTip) {
-      currentTip = a.tip || "";
-      isGray = !isGray;
+    // Sorting
+    var typeOrder = ['C-650', 'B-360', 'Bell-429', 'AT-802', 'T-70'];
+    fleetData.sort(function(a, b) {
+      var iA = typeOrder.indexOf(a.tip);
+      var iB = typeOrder.indexOf(b.tip);
+      if (iA !== iB) return iA - iB;
+      var getOrd = function(c) { var m = String(c).match(/ORMAN-(\d+)/i); return m ? parseInt(m[1]) : 999; };
+      return getOrd(a.cagriKodu) - getOrd(b.cagriKodu);
+    });
+
+    var tempSs = SpreadsheetApp.create("Envanter_Raporu_Temp");
+    var tempSheet = tempSs.getSheets()[0];
+    var tariStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
+
+    tempSheet.getRange("G1").setValue(tariStr).setFontColor("red").setFontWeight("bold").setHorizontalAlignment("right");
+    tempSheet.getRange("A2:G2").merge().setValue("OGM HAVA ARAÇLARI DURUM ÖZETLERİ").setBackground("#f2f2f2").setFontWeight("bold").setHorizontalAlignment("center");
+    
+    var h = ["ÇAĞRI KODU", "KUYRUK NUMARASI", "DURUM", "DURUM AYRINTISI", "KONUM", "FAYDALI SAAT", "AÇIKLAMA"];
+    tempSheet.getRange("A3:G3").setValues([h]).setBackground("#d9d9d9").setFontWeight("bold").setHorizontalAlignment("center").setBorder(true, true, true, true, true, true);
+
+    fleetData.forEach(function(item, idx) {
+      var r = 4 + idx;
+      var isF = String(item.durum).toUpperCase().includes("FAAL") && !String(item.durum).toUpperCase().includes("GAYRİ") && !String(item.durum).toUpperCase().includes("GAYRI");
+      var abbr = getAbbreviation(item.kuyrukNo);
+      
+      var kNoRT = SpreadsheetApp.newRichTextValue().setText(item.kuyrukNo + abbr);
+      if (abbr) kNoRT.setTextStyle(item.kuyrukNo.length, (item.kuyrukNo + abbr).length, SpreadsheetApp.newTextStyle().setForegroundColor("red").setBold(true).build());
+      
+      tempSheet.getRange(r, 1).setValue(item.cagriKodu).setBackground("#e6e6e6");
+      tempSheet.getRange(r, 2).setRichTextValue(kNoRT.build()).setBackground("#e6e6e6");
+      tempSheet.getRange(r, 3).setValue(item.durum).setBackground(isF ? "#c6efce" : "#ffc7ce").setFontColor(isF ? "#006100" : "#9c0006").setFontWeight("bold");
+      tempSheet.getRange(r, 4).setValue(item.durumAyrintisi);
+      tempSheet.getRange(r, 5).setValue(item.konum);
+      tempSheet.getRange(r, 6).setValue(item.faydaliSaat).setNumberFormat("@").setFontColor("#0000ff").setFontWeight("bold");
+      tempSheet.getRange(r, 7).setValue(item.aciklama).setFontStyle("italic").setFontSize(10).setWrap(true);
+      tempSheet.getRange(r, 1, 1, 7).setBorder(true, true, true, true, true, true);
+    });
+
+    tempSheet.autoResizeColumns(1, 7);
+    tempSheet.setColumnWidth(7, 400);
+    SpreadsheetApp.flush();
+
+    var url = "https://docs.google.com/spreadsheets/d/" + tempSs.getId() + "/export?format=xlsx";
+    var token = ScriptApp.getOAuthToken();
+    var response = UrlFetchApp.fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+    var blob = response.getBlob().setName("ENVANTER RAPORU.xlsx");
+    DriveApp.getFileById(tempSs.getId()).setTrashed(true);
+    return blob;
+  } catch (e) {
+    console.error("Envanter Excel Error: " + e.toString());
+    return null;
+  }
+}
+
+function generateFormattedFaaliyetExcel(ssId) {
+  try {
+    var ss = SpreadsheetApp.openById(ssId);
+    var logSheet = findSheet(ss, "Faaliyet Log");
+    if (!logSheet) return null;
+
+    var tempSs = SpreadsheetApp.create("Faaliyet_Cizelgesi_Temp");
+    var tempSheet = tempSs.getSheets()[0];
+    var data = logSheet.getDataRange().getDisplayValues();
+    var dates = [], aircrafts = [], grid = {}, aircraftInfo = {};
+
+    for (var i = 1; i < data.length; i++) {
+      var d = data[i][1], k = data[i][2], tip = data[i][3], c = data[i][5];
+      if (dates.indexOf(d) === -1) dates.push(d);
+      if (aircrafts.indexOf(k) === -1) {
+        aircrafts.push(k);
+        aircraftInfo[k] = { tip: tip, cagri: getCallSignByTail(k) };
+      }
+      if (!grid[k]) grid[k] = {};
+      grid[k][d] = c;
     }
-    var bgClass = isGray ? "background-color: #f2f2f2;" : "background-color: #ffffff;";
+    
+    dates.sort(function(a, b) {
+      var pA = a.split('.'), pB = b.split('.');
+      return new Date(pA[2], pA[1]-1, pA[0]) - new Date(pB[2], pB[1]-1, pB[0]);
+    });
+    
+    var typeOrder = ['C-650', 'B-360', 'Bell-429', 'AT-802', 'T-70'];
+    aircrafts.sort(function(a, b) {
+      var iA = typeOrder.indexOf(aircraftInfo[a].tip), iB = typeOrder.indexOf(aircraftInfo[b].tip);
+      if (iA !== iB) return iA - iB;
+      return aircraftInfo[a].cagri.localeCompare(aircraftInfo[b].cagri);
+    });
 
-    var abbr = "";
-    var tail = String(a.kuyrukNo).trim().toUpperCase();
-    if (["OR-2021", "OR-2022", "OR-2023", "OR-2037"].includes(tail))
-      abbr = " (DA)";
-    else if (
-      [
-        "OR-2024",
-        "OR-2025",
-        "OR-2026",
-        "OR-2027",
-        "OR-2028",
-        "OR-2029",
-        "OR-2030",
-        "OR-2031",
-      ].includes(tail)
-    )
-      abbr = " (SA)";
-    else if (tail === "OR-2036") abbr = " (DL)";
-    else if (tail === "OR-2038") abbr = " (SL)";
-    else if (tail === "OR-1020") abbr = " (H)";
+    var h1 = ["KUYRUK NO", "ÇAĞRI KODU", "HAVA ARACI TİPİ"];
+    dates.forEach(function(d) { h1.push(d); });
+    h1.push("TOPLAM G.FAAL", "", "", "TOPLAM G.FAAL", "TOPLAM FAAL", "FAALİYET %");
+    
+    tempSheet.getRange(1, 1, 1, h1.length).setValues([h1]);
+    tempSheet.getRange(1, 1, 2, 3).mergeVertically().setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle");
+    tempSheet.getRange(1, 4, 2, dates.length).mergeVertically().setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle");
+    for (var c = 4; c < 4 + dates.length; c++) tempSheet.getRange(1, c).setTextRotation(90);
 
-    var isFaal =
-      String(a.durum).toUpperCase().includes("FAAL") &&
-      !String(a.durum).toUpperCase().includes("GAYRİ") &&
-      !String(a.durum).toUpperCase().includes("GAYRI");
-    var durumClass = isFaal ? "faal" : "gayrifaal";
-    var faydaliVal = a.faydaliSaat;
-    var faydali = (faydaliVal === 0 || faydaliVal === "0" || faydaliVal === "0:00" || faydaliVal === "00:00") ? "-" : formatToHHMM(faydaliVal);
-    var aciklama = (a.aciklama || "").replace(/\n/g, "<br>");
+    var sCol = 4 + dates.length;
+    tempSheet.getRange(1, sCol, 1, 3).merge().setValue("TOPLAM G.FAAL").setBackground("#00b0f0").setFontColor("white").setFontWeight("bold").setHorizontalAlignment("center");
+    tempSheet.getRange(1, sCol + 3, 2, 1).merge().setValue("TOPLAM G.FAAL").setBackground("#00b0f0").setFontColor("white").setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle");
+    tempSheet.getRange(1, sCol + 4, 2, 1).merge().setValue("TOPLAM FAAL").setBackground("#ffc000").setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle");
+    tempSheet.getRange(1, sCol + 5, 2, 1).merge().setValue("FAALİYET %").setBackground("#f3f4f6").setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle");
 
-    var durumText = a.durum || "";
-    var alertText = a.durumAyrintisi && a.durumAyrintisi !== "-" ? a.durumAyrintisi : "";
+    var h2 = ["", "", ""];
+    dates.forEach(function() { h2.push(""); });
+    h2.push("Bakım", "Arıza", "Olmadığı", "", "", "");
+    tempSheet.getRange(2, 1, 1, h2.length).setValues([h2]);
+    tempSheet.getRange(2, sCol).setBackground("#ffff00").setFontWeight("bold");
+    tempSheet.getRange(2, sCol+1).setBackground("#ff0000").setFontColor("white").setFontWeight("bold");
+    tempSheet.getRange(2, sCol+2).setBackground("#7030a0").setFontColor("white").setFontWeight("bold");
 
-    html +=
-      "<tr>" +
-      '<td style="' + bgClass + ' font-weight: bold;">' +
-      (index + 1) +
-      "</td>" +
-      '<td style="' + bgClass + ' font-weight: bold;">' +
-      (a.cagriKodu || "") +
-      "</td>" +
-      '<td style="' + bgClass + ' font-weight: bold;">' +
-      (a.kuyrukNo || "") +
-      ' <span class="abbr-text">' +
-      abbr +
-      "</span></td>" +
-      '<td style="font-weight: bold; color: #FF6B00; mso-number-format:\'\\@\';">' +
-      (a.govdeUcusSaati || "-") +
-      "</td>" +
-      '<td class="' +
-      durumClass +
-      '">' +
-      durumText +
-      "</td>" +
-      '<td style="font-weight: bold; text-transform: uppercase;">' +
-      alertText +
-      "</td>" +
-      '<td style="font-weight: bold; text-transform: uppercase;">' +
-      (a.konum || "") +
-      "</td>" +
-      "<td style=\"mso-number-format:'\\@'; font-weight: bold; color: #1a73e8;\">" +
-      faydali +
-      "</td>" +
-      '<td class="aciklama-cell">' +
-      aciklama +
-      "</td></tr>";
-  });
+    aircrafts.forEach(function(k, idx) {
+      var r = 3 + idx, info = aircraftInfo[k], row = [k + getAbbreviation(k), info.cagri, info.tip];
+      var b = 0, a = 0, o = 0, f = 0;
+      dates.forEach(function(d) {
+        var c = grid[k][d] || ""; row.push(c === "F" ? "" : c);
+        if (['B', 'BB', 'KM'].indexOf(c) !== -1) b++;
+        else if (['A', 'PB', 'KK'].indexOf(c) !== -1) a++;
+        else if (c === 'X') o++;
+        else if (c === 'F') f++;
+      });
+      var totalGF = b + a + o, valDays = dates.length - o;
+      var perc = valDays > 0 ? Math.round(((valDays - (b + a)) / valDays) * 100) : 0;
+      row.push(b, a, o, totalGF, f, perc + "%");
+      tempSheet.getRange(r, 1, 1, row.length).setValues([row]).setBorder(true, true, true, true, true, true);
+      for (var c = 0; c < dates.length; c++) {
+        var cell = tempSheet.getRange(r, 4 + c), val = cell.getValue();
+        if (['B', 'BB', 'KM'].indexOf(val) !== -1) cell.setBackground("#ffff00");
+        else if (['A', 'PB', 'KK'].indexOf(val) !== -1) cell.setBackground("#ff0000").setFontColor("white");
+        else if (val === 'X') cell.setBackground("#7030a0").setFontColor("white");
+      }
+    });
 
-  html += "</table><br/>";
-  html += '<table style="width: 300px; border: none;">';
-  html += '<tr><td style="border: none; text-align: left; font-weight: bold; font-size: 11px; padding: 2px;">KISALTMALAR:</td></tr>';
-  html += '<tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(DA): DUAL AMFİBİ</td></tr>';
-  html += '<tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(SA): SINGLE AMFİBİ</td></tr>';
-  html += '<tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(DL): DUAL LAND</td></tr>';
-  html += '<tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(SL): SINGLE LAND</td></tr>';
-  html += '<tr><td style="border: none; text-align: left; font-size: 11px; padding: 2px;">(H): HELİTAK</td></tr>';
-  html += "</table></body></html>";
+    tempSheet.autoResizeColumns(1, h1.length);
+    SpreadsheetApp.flush();
+    var url = "https://docs.google.com/spreadsheets/d/" + tempSs.getId() + "/export?format=xlsx";
+    var token = ScriptApp.getOAuthToken();
+    var response = UrlFetchApp.fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+    var blob = response.getBlob().setName("Faaliyet_Cizelgesi.xlsx");
+    DriveApp.getFileById(tempSs.getId()).setTrashed(true);
+    return blob;
+  } catch (e) {
+    console.error("Faaliyet Excel Error: " + e.toString());
+    return null;
+  }
+}
 
-  return Utilities.newBlob(
-    html,
-    "application/vnd.ms-excel",
-    "ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU.xls",
-  );
+function getAbbreviation(kuyrukNo) {
+  var t = String(kuyrukNo).trim().toUpperCase();
+  if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].indexOf(t) !== -1) return ' (DA)';
+  if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].indexOf(t) !== -1) return ' (SA)';
+  if (t === 'OR-2036') return ' (DL)';
+  if (t === 'OR-2038') return ' (SL)';
+  if (t === 'OR-1020') return ' (H)';
+  return '';
 }
 
 function getMailRecipientsGS(ss) {

@@ -134,12 +134,27 @@ function doPost(e) {
     // -----------------------------------------------------
     if (action === "saveMailRecipient") {
       var mailSheet = findSheet(ss, "mail log");
+      var expectedHeaders = [
+        "ID",
+        "PERSONEL ADI",
+        "PERSONEL MAİL ADRESİ",
+        "MAİL GÖNDERME TÜRÜ",
+        "SAAT",
+        "GÜN SEÇENEĞİ",
+        "GÖNDERİLECEK MAİLİN EKİ",
+        "SON GÖNDERİM",
+      ];
+
       if (!mailSheet) {
         mailSheet = ss.insertSheet("mail log");
-        mailSheet.appendRow(["ID", "PERSONEL ADI", "PERSONEL MAİL ADRESİ", "MAİL GÖNDERME TÜRÜ", "SAAT", "GÜN SEÇENEĞİ", "GÖNDERİLECEK MAİLİN EKİ"]);
-        mailSheet.getRange("A1:G1").setFontWeight("bold").setBackground("#d9ead3").setBorder(true, true, true, true, true, true);
+        mailSheet.appendRow(expectedHeaders);
+        mailSheet
+          .getRange("A1:H1")
+          .setFontWeight("bold")
+          .setBackground("#d9ead3")
+          .setBorder(true, true, true, true, true, true);
       }
-      
+
       var id = params.id || Utilities.getUuid();
       var name = params.name || "";
       var email = params.email || "";
@@ -147,8 +162,25 @@ function doPost(e) {
       var time = params.time || "";
       var days = params.days || "";
       var attachments = params.attachments || "";
-      
-      mailSheet.appendRow([id, name, email, type, time, days, attachments]);
+
+      var data = mailSheet.getDataRange().getValues();
+      var foundRow = -1;
+      for (var i = 1; i < data.length; i++) {
+        if (data[i][0] == id) {
+          foundRow = i + 1;
+          break;
+        }
+      }
+
+      var rowData = [id, name, email, type, time, days, attachments, ""];
+      if (foundRow > 0) {
+        // Mevcut kaydı güncelle (SON GÖNDERİM'i koru)
+        rowData[7] = data[foundRow - 1][7];
+        mailSheet.getRange(foundRow, 1, 1, 8).setValues([rowData]);
+      } else {
+        // Yeni kayıt ekle
+        mailSheet.appendRow(rowData);
+      }
       return jsonSuccess({ id: id });
     }
 
@@ -216,7 +248,7 @@ function doPost(e) {
       var logSs = SpreadsheetApp.openById(logSsId);
       var faalLogSheet = findSheet(logSs, "Faaliyet Log");
       var intraDaySheet = findSheet(logSs, "Saatlik Faaliyet Günlüğü");
-      
+
       var results = [];
       if (faalLogSheet) {
         var data = faalLogSheet.getDataRange().getValues();
@@ -227,7 +259,11 @@ function doPost(e) {
           var tarihVal = row[1];
           var tarihStr = "";
           if (tarihVal instanceof Date) {
-            tarihStr = Utilities.formatDate(tarihVal, Session.getScriptTimeZone(), "dd.MM.yyyy");
+            tarihStr = Utilities.formatDate(
+              tarihVal,
+              ss.getSpreadsheetTimeZone(),
+              "dd.MM.yyyy",
+            );
           } else {
             tarihStr = String(tarihVal).trim();
           }
@@ -238,41 +274,28 @@ function doPost(e) {
             kuyrukNo: String(row[2] || "").trim(),
             tip: String(row[3] || "").trim(),
             durum: String(row[4] || "").trim(),
-            analizKodu: row[5] ? String(row[5]).trim() : ""
+            analizKodu: row[5] ? String(row[5]).trim() : "",
           });
         }
       }
 
       var intraDayResults = [];
       if (intraDaySheet) {
-        var iData = intraDaySheet.getDataRange().getValues();
-        for (var i = 1; i < iData.length; i++) {
-          var iRow = iData[i];
-          if (!iRow[1] && !iRow[2]) continue;
+        var intraData = intraDaySheet.getDataRange().getValues();
+        for (var j = 1; j < intraData.length; j++) {
+          var iRow = intraData[j];
+          if (!iRow[1] && !iRow[2]) continue; // Skip if both Tarih and Kuyruk No are empty
 
           var iTarihVal = iRow[1];
           var iTarihStr = "";
           if (iTarihVal instanceof Date) {
-            iTarihStr = Utilities.formatDate(iTarihVal, Session.getScriptTimeZone(), "yyyy-MM-dd");
+            iTarihStr = Utilities.formatDate(
+              iTarihVal,
+              ss.getSpreadsheetTimeZone(),
+              "yyyy-MM-dd",
+            );
           } else {
             iTarihStr = String(iTarihVal).trim();
-          }
-
-          var startTimeVal = iRow[4];
-          var endTimeVal = iRow[5];
-          var startTimeStr = "";
-          var endTimeStr = "";
-
-          if (startTimeVal instanceof Date) {
-            startTimeStr = Utilities.formatDate(startTimeVal, Session.getScriptTimeZone(), "HH:mm");
-          } else {
-            startTimeStr = String(startTimeVal || "").trim();
-          }
-
-          if (endTimeVal instanceof Date) {
-            endTimeStr = Utilities.formatDate(endTimeVal, Session.getScriptTimeZone(), "HH:mm");
-          } else {
-            endTimeStr = String(endTimeVal || "").trim();
           }
 
           intraDayResults.push({
@@ -280,17 +303,41 @@ function doPost(e) {
             tarih: iTarihStr,
             kuyrukNo: String(iRow[2] || "").trim(),
             tip: String(iRow[3] || "").trim(),
-            startTime: startTimeStr,
-            endTime: endTimeStr,
+            startTime: String(iRow[4] || "").trim(),
+            endTime: String(iRow[5] || "").trim(),
             status: String(iRow[6] || "").trim(),
-            description: String(iRow[7] || "").trim()
+            description: String(iRow[7] || "").trim(),
+          });
+        }
+      }
+
+      var envanterResults = [];
+      var envanterSheet = findSheet(logSs, "Envanter Log");
+      if (envanterSheet) {
+        var envData = envanterSheet.getDataRange().getDisplayValues();
+        for (var k = 1; k < envData.length; k++) {
+          var eRow = envData[k];
+          if (!eRow[1] && !eRow[2]) continue;
+
+          var eTarihStr = String(eRow[1]).trim();
+          envanterResults.push({
+            id: String(eRow[0]).trim(),
+            tarih: eTarihStr,
+            kuyrukNo: String(eRow[2] || "").trim(),
+            govdeUcusSaati: eRow[4],
+            faydaliSaat: eRow[5],
+            konum: String(eRow[6] || "").trim(),
+            durum: String(eRow[7] || "").trim(),
+            durumAyrintisi: String(eRow[8] || "").trim(),
+            aciklama: String(eRow[9] || "").trim(),
           });
         }
       }
 
       return jsonSuccess({
         faaliyetLog: results,
-        intraDayLog: intraDayResults
+        intraDayLog: intraDayResults,
+        envanterLog: envanterResults,
       });
     }
 
@@ -300,25 +347,35 @@ function doPost(e) {
       var faalLogSheet = findSheet(logSs, "Faaliyet Log");
       if (!faalLogSheet) return jsonError("Faaliyet Log sayfası bulunamadı.");
 
-      var kuyrukNo = params.kuyrukNo;
-      var dateStr = params.date; // dd.MM.yyyy
-      var newCode = params.newCode;
+      var kuyrukNo = String(params.kuyrukNo || "").trim();
+      var dateStr = String(params.date || "").trim(); // dd.MM.yyyy
+      var newCode = String(params.newCode || "").trim();
       var id = dateStr + "_" + kuyrukNo;
 
       var data = faalLogSheet.getRange("A:A").getValues();
       for (var i = 1; i < data.length; i++) {
-        if (data[i][0] == id) {
+        if (String(data[i][0]).trim() === id) {
           faalLogSheet.getRange(i + 1, 6).setValue(newCode);
-          return jsonSuccess("Log güncellendi.");
+          return jsonSuccess("Log güncellendi: " + id + " -> " + newCode);
         }
       }
-      
-      // Eğer log yoksa yeni satır ekle (Bugün için manuel override yapılmış olabilir)
+
       var bugun = new Date();
-      var bugunStr = Utilities.formatDate(bugun, Session.getScriptTimeZone(), "dd.MM.yyyy");
+      var bugunStr = Utilities.formatDate(
+        bugun,
+        Session.getScriptTimeZone(),
+        "dd.MM.yyyy",
+      );
       if (dateStr === bugunStr) {
-        faalLogSheet.appendRow([id, dateStr, kuyrukNo, params.tip || "", params.durum || "MANUEL GÜNCELLEME", newCode]);
-        return jsonSuccess("Yeni log girişi oluşturuldu.");
+        faalLogSheet.appendRow([
+          id,
+          dateStr,
+          kuyrukNo,
+          params.tip || "",
+          "MANUEL GÜNCELLEME",
+          newCode,
+        ]);
+        return jsonSuccess("Yeni log girişi oluşturuldu: " + id);
       }
 
       return jsonError("Güncellenecek log kaydı bulunamadı: " + id);
@@ -379,11 +436,14 @@ function doPost(e) {
 
     if (action === "sendManualEmail") {
       var recipientId = String(params.id || "").trim();
+      var customAttachments = params.customAttachments || [];
       var mailSheet = findSheet(ss, "mail log");
       if (!mailSheet) return jsonError("Alıcı listesi bulunamadı.");
-      
-      var data = mailSheet.getDataRange().getDisplayValues();
-      var headers = data[0];
+
+      var data = mailSheet.getDataRange().getValues();
+      var headers = data[0].map(function (h) {
+        return String(h).trim();
+      });
       var recipient = null;
       for (var i = 1; i < data.length; i++) {
         if (String(data[i][0]).trim() === recipientId) {
@@ -394,11 +454,31 @@ function doPost(e) {
           break;
         }
       }
-      
-      if (!recipient) return jsonError("Alıcı bulunamadı. Aranan ID: " + recipientId);
-      
-      sendReportEmail(recipient);
+
+      if (!recipient)
+        return jsonError("Alıcı bulunamadı. Aranan ID: " + recipientId);
+
+      sendReportEmail(recipient, customAttachments);
       return jsonSuccess("E-posta gönderildi.");
+    }
+
+    if (action === "testMail") {
+      var email = params.email;
+      if (!email) return jsonError("E-posta adresi belirtilmedi.");
+
+      // Test mailini ekli olarak gönder
+      var testRecipient = {
+        "PERSONEL ADI": "Test Kullanıcısı",
+        "PERSONEL MAİL ADRESİ": email,
+        "GÖNDERİLECEK MAİLİN EKİ": "ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU,FAALİYET ÇİZELGESİ",
+      };
+
+      try {
+        sendReportEmail(testRecipient);
+        return jsonSuccess("Test e-postası (ekli) gönderildi.");
+      } catch (e) {
+        return jsonError("Test maili hatası: " + e.toString());
+      }
     }
 
     // 🟢 ENVANTER AKSİYONU (App.tsx için)
@@ -929,24 +1009,35 @@ function timeToMinutes(timeStr) {
   return parseInt(parts[0]) * 60 + parseInt(parts[1]);
 }
 
-function sendReportEmail(recipient) {
-  var attachments = [];
+function sendReportEmail(recipient, customAttachments, ss) {
+  var attachments = Array.isArray(customAttachments) ? customAttachments : [];
   var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg"; // Merkezi Log Tablosu ID
-  var selectedReports = String(recipient["GÖNDERİLECEK MAİLİN EKİ"] || "").trim();
+  var selectedReports = String(recipient["GÖNDERİLECEK MAİLİN EKİ"] || "").trim().toUpperCase();
   
-  console.log("Sending email to: " + recipient["PERSONEL MAİL ADRESİ"]);
+  console.log("Sending email to: " + recipient["PERSONEL MAİL ADRESİ"] + " | Reports: " + selectedReports);
   
-  if (selectedReports.includes("ENVANTER RAPORU") || selectedReports.includes("ENVANTER HAVA ARACI DURUM RAPORU")) {
+  // 1. ENVANTER RAPORU (Daha esnek eşleşme: 'ENVANTER' ve 'RAPOR' geçiyorsa)
+  if (selectedReports.includes("ENVANTER") && (selectedReports.includes("RAPOR") || selectedReports.includes("DURUM"))) {
     var blob = generateFormattedEnvanterExcel(logSsId);
-    if (blob) attachments.push(blob);
+    if (blob) {
+      attachments.push(blob);
+    } else {
+      console.error("Envanter blob could not be generated.");
+    }
   }
 
-  if (selectedReports.includes("FAALİYET ÇİZELGESİ")) {
+  // 2. FAALİYET ÇİZELGESİ
+  if (selectedReports.includes("FAALİYET")) {
     var blob = generateFormattedFaaliyetExcel(logSsId);
-    if (blob) attachments.push(blob);
+    if (blob) {
+      attachments.push(blob);
+    } else {
+      console.error("Faaliyet blob could not be generated.");
+    }
   }
   
-  if (selectedReports.includes("HAVA ARACI EXCELİ (ONLİNE)")) {
+  // 3. ONLINE EXCEL DOSYALARI
+  if (selectedReports.includes("ONLİNE") || selectedReports.includes("HAVA ARACI EXCELİ")) {
     var platformConfigs = {
       "Bell-429": { id: "1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ", sheet: null },
       "AT-802": { id: "1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4", sheet: "GÜNLÜK DURUM" },
@@ -958,9 +1049,6 @@ function sendReportEmail(recipient) {
     for (var platform in platformConfigs) {
       try {
         var config = platformConfigs[platform];
-        
-        // EKLERİ GÖNDERMEDEN ÖNCE LOG SAYFALARINI SİLMEYİ DURDURDUK (VERİ KAYBI RİSKİ NEDENİYLE)
-        
         var blob = getSheetAsExcel(config.id, platform + "_Online_Excel.xlsx", config.sheet);
         if (blob) attachments.push(blob);
       } catch (e) {
@@ -969,10 +1057,15 @@ function sendReportEmail(recipient) {
     }
   }
   
-  console.log("Total attachments: " + attachments.length);
+  console.log("Total attachments to send: " + attachments.length);
   
-  var body = "Sayın " + recipient["PERSONEL ADI"] + ",\n\n" +
-             "Günlük hava aracı durum raporları ekte sunulmuştur.\n\n" +
+  if (attachments.length === 0) {
+    console.error("No attachments to send for: " + recipient["PERSONEL MAİL ADRESİ"] + ". Skipping email.");
+    return;
+  }
+  
+  var body = "Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",\n\n" +
+             "Günlük hava aracı operasyonel durum raporları ekte sunulmuştur.\n\n" +
              "İyi çalışmalar.";
              
   MailApp.sendEmail({
@@ -1324,11 +1417,11 @@ function generateFormattedEnvanterExcel(ssId) {
     
     // Fetch fresh data from all platforms to match the app's "EXCEL İNDİR" behavior
     var platformConfigs = [
-      { type: 'C-650', id: '1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE', range: 'A3:P10', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} },
-      { type: 'B-360', id: '1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0', range: 'A3:P10', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} },
-      { type: 'Bell-429', id: '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ', range: 'A3:O8', map: {kNo:0, durum:12, detail:13, desc:14, loc:11, gHour:4, fHour:8} },
-      { type: 'AT-802', id: '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4', sheet: 'GÜNLÜK DURUM', range: 'B3:AL16', map: {kNo:0, durum:1, detail:2, desc:36, loc:3, gHour:4, fHourStart:20, fHourEnd:33} },
-      { type: 'T-70', id: '10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw', range: 'A4:S6', map: {kNo:0, durum:16, detail:17, desc:18, loc:15, gHour:4, fHour:13} }
+      { type: 'C-650', id: '1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE', range: 'A3:P20', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} },
+      { type: 'B-360', id: '1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0', range: 'A3:P20', map: {kNo:0, durum:13, detail:14, desc:15, loc:12, gHour:4, fHour:8} },
+      { type: 'Bell-429', id: '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ', range: 'A3:O30', map: {kNo:0, durum:12, detail:13, desc:14, loc:11, gHour:4, fHour:8} },
+      { type: 'AT-802', id: '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4', sheet: 'GÜNLÜK DURUM', range: 'B3:AL200', map: {kNo:0, durum:1, detail:2, desc:36, loc:3, gHour:4, fHourStart:20, fHourEnd:33} },
+      { type: 'T-70', id: '10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw', range: 'A4:S30', map: {kNo:0, durum:16, detail:17, desc:18, loc:15, gHour:4, fHour:13} }
     ];
 
     var fleetData = [];
@@ -1340,7 +1433,16 @@ function generateFormattedEnvanterExcel(ssId) {
         var rawValues = pSheet.getRange(config.range).getValues();
         
         values.forEach(function(row, rIdx) {
-          var kNo = row[config.map.kNo];
+          var kNo = String(row[config.map.kNo] || "").trim();
+          var durum = String(row[config.map.durum] || "").trim();
+          
+          // Skip empty or placeholder rows
+          if (kNo === "" || kNo.toUpperCase().indexOf("XX") !== -1) return;
+          if (durum === "" || durum === "-") return;
+
+          var cagriKodu = getCallSignByTailGS(kNo);
+          if (String(cagriKodu || "").toUpperCase().indexOf("XX") !== -1) return;
+
           if (kNo && kNo.trim() !== "") {
             var faydaliSaat = null;
             if (config.type === 'AT-802') {
@@ -1590,7 +1692,8 @@ function getCallSignByTailGS(tail) {
     'OR-2025': 'ORMAN-25', 'OR-2026': 'ORMAN-26', 'OR-2027': 'ORMAN-27',
     'OR-2028': 'ORMAN-28', 'OR-2029': 'ORMAN-29', 'OR-2030': 'ORMAN-30',
     'OR-2031': 'ORMAN-31', 'OR-2036': 'ORMAN-36', 'OR-2037': 'ORMAN-37',
-    'OR-2038': 'ORMAN-38', 'OR-1018': 'ORMAN-18', 'OR-1019': 'ORMAN-19',
+    'OR-2038': 'ORMAN-38', 'OR-2039': 'ORMAN-39', 'OR-2040': 'ORMAN-40',
+    'OR-1018': 'ORMAN-18', 'OR-1019': 'ORMAN-19',
     'OR-1020': 'ORMAN-20'
   };
   return mapping[tail] || ("ORMAN-" + (tail.split('-')[1] || 'XX'));
