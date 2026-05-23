@@ -1723,6 +1723,13 @@ function getSheetAsExcel(ssId, name) {
 }
 
 function getCallSignByTail(tail) {
+  if (!tail) return "ORMAN-XX";
+  var cleanTail = String(tail).trim().toUpperCase();
+  
+  if (cleanTail === "" || cleanTail === "-" || cleanTail.indexOf("XX") !== -1 || cleanTail.indexOf("YENİ") !== -1) {
+    return "ORMAN-XX";
+  }
+
   var mapping = {
     "OR-0177": "ORMAN-01",
     "OR-1839": "ORMAN-02",
@@ -1752,7 +1759,14 @@ function getCallSignByTail(tail) {
     "OR-1019": "ORMAN-19",
     "OR-1020": "ORMAN-20",
   };
-  return mapping[tail] || "ORMAN-" + (tail.split("-")[1] || "XX");
+
+  var match = cleanTail.match(/OR-\d+/i);
+  if (match) {
+    var key = match[0].toUpperCase();
+    return mapping[key] || "ORMAN-" + key.split('-')[1];
+  }
+  
+  return "ORMAN-XX";
 }
 
 function analyzeStatusGS(item) {
@@ -2423,12 +2437,24 @@ function generateFormattedEnvanterExcel(ssId) {
             if (config.type === 'AT-802') {
               var minVal = null;
               for (var c = config.map.fHourStart; c <= config.map.fHourEnd; c++) {
-                var p = parseSingleCellToHour(rawValues[rIdx][c], config.type);
+                var p = parseSingleCellToHour(displayValues[rIdx][c], config.type);
+                if (p === null) p = parseSingleCellToHour(rawValues[rIdx][c], config.type);
+                if (p !== null && (minVal === null || p < minVal)) minVal = p;
+              }
+              faydaliSaatFormatted = formatToHHMM(minVal, config.type);
+            } else if (config.type === 'T-70') {
+              var minVal = null;
+              var t70Cols = [11, 13, 14]; // Columns L (11), N (13), O (14)
+              for (var i = 0; i < t70Cols.length; i++) {
+                var c = t70Cols[i];
+                var p = parseSingleCellToHour(displayValues[rIdx][c], config.type);
+                if (p === null) p = parseSingleCellToHour(rawValues[rIdx][c], config.type);
                 if (p !== null && (minVal === null || p < minVal)) minVal = p;
               }
               faydaliSaatFormatted = formatToHHMM(minVal, config.type);
             } else {
-              var p = parseSingleCellToHour(rawValues[rIdx][config.map.fHour], config.type);
+              var p = parseSingleCellToHour(displayValues[rIdx][config.map.fHour], config.type);
+              if (p === null) p = parseSingleCellToHour(rawValues[rIdx][config.map.fHour], config.type);
               faydaliSaatFormatted = formatToHHMM(p, config.type);
             }
 
@@ -2464,34 +2490,130 @@ function generateFormattedEnvanterExcel(ssId) {
 
     var tempSs = SpreadsheetApp.create("Envanter_Raporu_Temp");
     var tempSheet = tempSs.getSheets()[0];
-    var tariStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
-
-    tempSheet.getRange("G1").setValue(tariStr).setFontColor("red").setFontWeight("bold").setHorizontalAlignment("right");
-    tempSheet.getRange("A2:G2").merge().setValue("OGM HAVA ARAÇLARI DURUM ÖZETLERİ").setBackground("#f2f2f2").setFontWeight("bold").setHorizontalAlignment("center");
     
-    var h = ["ÇAĞRI KODU", "KUYRUK NUMARASI", "DURUM", "DURUM AYRINTISI", "KONUM", "FAYDALI SAAT", "AÇIKLAMA"];
-    tempSheet.getRange("A3:G3").setValues([h]).setBackground("#d9d9d9").setFontWeight("bold").setHorizontalAlignment("center").setBorder(true, true, true, true, true, true);
+    var tariStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
+    
+    // Set Font to Arial for all potential content cells
+    tempSheet.getRange("A1:I250").setFontFamily("Arial");
 
+    // Date Row (Merged H2:I2 for 9-column layout alignment)
+    tempSheet.getRange("H2:I2").merge().setValue(tariStr).setFontColor("#dc2626").setFontWeight("bold").setHorizontalAlignment("right").setFontSize(14);
+    
+    // Title Row (Merged A2:G2)
+    tempSheet.getRange("A2:G2").merge().setValue("ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU").setFontWeight("bold").setHorizontalAlignment("center").setFontSize(16).setFontColor("#1f2937");
+    
+    // Header Row (9 Columns to perfectly match standard status report)
+    var headers = ["SIRA NO", "ÇAĞRI KODU", "KUYRUK NUMARASI", "GÖVDE SAATİ", "DURUM", "DURUM AYRINTISI", "KONUM", "FAYDALI SAAT", "AÇIKLAMA"];
+    var headerRange = tempSheet.getRange("A3:I3");
+    headerRange.setValues([headers]).setBackground("#d9d9d9").setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle").setFontSize(10).setFontColor("black");
+    tempSheet.setRowHeight(3, 30);
+
+    var startRow = 4;
     fleetData.forEach(function(item, idx) {
-      var r = 4 + idx;
-      var isF = String(item.durum).toUpperCase().includes("FAAL") && !String(item.durum).toUpperCase().includes("GAYRİ") && !String(item.durum).toUpperCase().includes("GAYRI");
-      var abbr = getAbbreviation(item.kuyrukNo);
+      var currentRow = startRow + idx;
       
-      var kNoRT = SpreadsheetApp.newRichTextValue().setText(item.kuyrukNo + abbr);
-      if (abbr) kNoRT.setTextStyle(item.kuyrukNo.length, (item.kuyrukNo + abbr).length, SpreadsheetApp.newTextStyle().setForegroundColor("red").setBold(true).build());
+      // Calculate dynamic row height based on description text length to prevent clipping of description text
+      var textToMeasure = item.aciklama || "";
+      var textLines = textToMeasure.split("\n");
+      var calculatedLinesCount = 0;
+      textLines.forEach(function(line) {
+        calculatedLinesCount += Math.max(1, Math.ceil(line.length / 75));
+      });
+      var calculatedHeight = Math.max(25, calculatedLinesCount * 14 + 10);
+      tempSheet.setRowHeight(currentRow, calculatedHeight);
       
-      tempSheet.getRange(r, 1).setValue(item.cagriKodu).setBackground("#e6e6e6");
-      tempSheet.getRange(r, 2).setRichTextValue(kNoRT.build()).setBackground("#e6e6e6");
-      tempSheet.getRange(r, 3).setValue(item.durum).setBackground(isF ? "#c6efce" : "#ffc7ce").setFontColor(isF ? "#006100" : "#9c0006").setFontWeight("bold");
-      tempSheet.getRange(r, 4).setValue(item.durumAyrintisi);
-      tempSheet.getRange(r, 5).setValue(item.konum);
-      tempSheet.getRange(r, 6).setValue(item.faydaliSaat).setNumberFormat("@").setFontColor("#0000ff").setFontWeight("bold");
-      tempSheet.getRange(r, 7).setValue(item.aciklama).setFontStyle("italic").setFontSize(10).setWrap(true);
-      tempSheet.getRange(r, 1, 1, 7).setBorder(true, true, true, true, true, true);
-    });
+      var kNo = item.kuyrukNo;
+      var cagriKodu = item.cagriKodu;
+      
+      var durumStr = String(item.durum || "").toUpperCase();
+      var isFaal = durumStr.indexOf("FAAL") !== -1 && durumStr.indexOf("GAYRİ") === -1 && durumStr.indexOf("GAYRI") === -1;
+      var durumText = item.durum ? String(item.durum).toUpperCase() : (isFaal ? "FAAL" : "GAYRİ FAAL");
+      
+      var abbr = getAbbreviation(kNo);
+      var faydaliSaatFormatted = item.faydaliSaat; // Already formatted as string
+      
+      // Rich text with abbreviation in red and bold
+      var kNoValue = SpreadsheetApp.newRichTextValue()
+        .setText(kNo + abbr)
+        .build();
+      
+      if (abbr) {
+        kNoValue = SpreadsheetApp.newRichTextValue()
+          .setText(kNo + abbr)
+          .setTextStyle(kNo.length, (kNo + abbr).length, SpreadsheetApp.newTextStyle().setForegroundColor("#dc2626").setBold(true).build())
+          .build();
+      }
 
-    tempSheet.autoResizeColumns(1, 7);
-    tempSheet.setColumnWidth(7, 400);
+      var rowData = [
+        idx + 1,               // SIRA NO
+        cagriKodu,             // ÇAĞRI KODU
+        "",                    // Placeholder for Kuyruk Numarası
+        (!item.govdeUcusSaati || item.govdeUcusSaati === "-" || item.govdeUcusSaati === "0" || item.govdeUcusSaati === "") ? "-" : formatToHHMM(item.govdeUcusSaati, item.tip), // GÖVDE SAATİ
+        durumText,             // DURUM
+        item.durumAyrintisi && item.durumAyrintisi !== "-" ? String(item.durumAyrintisi).toUpperCase() : "", // DURUM AYRINTISI
+        String(item.konum || "").toUpperCase(), // KONUM
+        faydaliSaatFormatted,  // FAYDALI SAAT
+        item.aciklama          // AÇIKLAMA
+      ];
+      
+      var range = tempSheet.getRange(currentRow, 1, 1, 9);
+      range.setValues([rowData]);
+      range.setBorder(true, true, true, true, true, true);
+      range.setVerticalAlignment("middle").setHorizontalAlignment("center").setFontSize(10);
+      
+      // Set Rich Text for Kuyruk No with styling
+      tempSheet.getRange(currentRow, 3).setRichTextValue(kNoValue).setFontWeight("bold").setFontColor("#111827");
+      
+      // Style specific columns
+      tempSheet.getRange(currentRow, 1).setFontWeight("bold").setFontColor("#111827");
+      tempSheet.getRange(currentRow, 2).setFontWeight("bold").setFontColor("#111827");
+      
+      // Govde Saati Style (#FF6B00, bold, size 12)
+      tempSheet.getRange(currentRow, 4).setNumberFormat("@").setFontWeight("bold").setFontColor("#FF6B00").setFontSize(12);
+      
+      // Durum Cell Background & Typography color
+      var durumCell = tempSheet.getRange(currentRow, 5);
+      if (isFaal) {
+        durumCell.setBackground("#e8f5e9").setFontColor("#2e7d32").setFontWeight("bold");
+      } else {
+        durumCell.setBackground("#ffebee").setFontColor("#c62828").setFontWeight("bold");
+      }
+      
+      tempSheet.getRange(currentRow, 6).setFontWeight("bold").setFontColor("#111827");
+      tempSheet.getRange(currentRow, 7).setFontWeight("bold").setFontColor("#111827");
+      
+      // Faydali Saat Style (#1a73e8, bold, size 12)
+      var faydaliCell = tempSheet.getRange(currentRow, 8);
+      faydaliCell.setNumberFormat("@").setFontColor("#1a73e8").setFontWeight("bold").setFontSize(12);
+      
+      // Aciklama Cell (left aligned, italic, small, wrapped, top-aligned)
+      var aciklamaCell = tempSheet.getRange(currentRow, 9);
+      aciklamaCell.setFontStyle("italic").setFontSize(9).setFontColor("#4b5563").setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true);
+    });
+    
+    var lastDataRow = startRow + fleetData.length;
+    var footerRow = lastDataRow + 2;
+    
+    tempSheet.getRange(footerRow, 1, 1, 9).merge().setValue("KISALTMALAR:").setFontWeight("bold").setFontSize(11);
+    tempSheet.getRange(footerRow + 1, 1, 1, 9).merge().setValue("H: HELİTAK  |  SA: SINGLE AMFİBİ  |  DA: DUAL AMFİBİ  |  SL: SINGLE LAND  |  DL: DUAL LAND")
+      .setFontWeight("bold")
+      .setFontSize(10)
+      .setFontColor("#dc2626");
+
+    // Set precise column widths to prevent cell overflows or clipping
+    tempSheet.setColumnWidth(1, 65);   // SIRA NO
+    tempSheet.setColumnWidth(2, 110);  // ÇAĞRI KODU
+    tempSheet.setColumnWidth(3, 140);  // KUYRUK NUMARASI
+    tempSheet.setColumnWidth(4, 110);  // GÖVDE SAATİ
+    tempSheet.setColumnWidth(5, 110);  // DURUM
+    tempSheet.setColumnWidth(6, 145);  // DURUM AYRINTISI
+    tempSheet.setColumnWidth(7, 120);  // KONUM
+    tempSheet.setColumnWidth(8, 110);  // FAYDALI SAAT
+    tempSheet.setColumnWidth(9, 450);  // AÇIKLAMA
+
+    // Thick border style for the headers
+    headerRange.setBorder(true, true, true, true, true, true, "solid_medium", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+
     SpreadsheetApp.flush();
 
     var url = "https://docs.google.com/spreadsheets/d/" + tempSs.getId() + "/export?format=xlsx";

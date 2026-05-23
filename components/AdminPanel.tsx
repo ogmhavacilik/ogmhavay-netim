@@ -541,7 +541,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
                                  </div>
                               </td>
                               <td className="px-6 py-6 italic text-gray-400">
-                                 <div className="text-xs truncate max-w-sm">"{row.aciklama}"</div>
+                                 <div className="text-xs whitespace-pre-wrap break-words max-w-xl font-medium">"{row.aciklama}"</div>
                               </td>
                               <td className="px-6 py-6">
                                  <button 

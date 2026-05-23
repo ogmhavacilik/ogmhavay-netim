@@ -9,15 +9,25 @@ export const formatToHHMM = (decimalHours: number | string, aircraftType?: strin
                         cleanType.indexOf('C650') !== -1 || 
                         cleanType.indexOf('BELL429') !== -1;
 
-  if (isDecimalType) {
-    const val = parseFloat(decimalHours.toString());
-    if (isNaN(val)) return decimalHours.toString();
-    // Return decimal with 1 digits, replacing . with , for Turkish locale preference if needed, or keep as is
-    return val.toFixed(1).replace('.', ',');
+  let hours = 0;
+  if (typeof decimalHours === 'number') {
+    hours = decimalHours;
+  } else {
+    const s = String(decimalHours).trim().replace(',', '.');
+    if (s.includes(':')) {
+      const parts = s.split(':').map(Number);
+      hours = (parts[0] || 0) + (parts[1] || 0) / 60;
+    } else {
+      hours = parseFloat(s) || 0;
+    }
   }
 
-  const hours = parseFloat(decimalHours.toString());
-  if (isNaN(hours)) return decimalHours.toString();
+  if (isNaN(hours)) return String(decimalHours);
+
+  if (isDecimalType) {
+    return hours.toFixed(1).replace('.', ',');
+  }
+
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   return `${h}:${m.toString().padStart(2, '0')}`;
@@ -132,7 +142,7 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
         <td style="font-weight: bold; color: #111827;">${index + 1}</td>
         <td style="font-weight: bold; color: #111827;">${aircraft.cagriKodu || ''}</td>
         <td style="font-weight: bold; color: #111827;">${aircraft.kuyrukNo || ''} <span class="abbr-text">${abbr}</span></td>
-        <td style="mso-number-format:'\\@'; font-weight: bold; color: #FF6B00; font-size: 16px;">${aircraft.govdeUcusSaati || '-'}</td>
+        <td style="mso-number-format:'\\@'; font-weight: bold; color: #FF6B00; font-size: 16px;">${(!aircraft.govdeUcusSaati || aircraft.govdeUcusSaati === '-' || aircraft.govdeUcusSaati === '0') ? '-' : formatToHHMM(aircraft.govdeUcusSaati, aircraft.tip)}</td>
         <td class="${durumClass}">${durumText}</td>
         <td style="font-weight: bold; color: #111827;">${alertText}</td>
         <td style="font-weight: bold; color: #111827; text-transform: uppercase;">${aircraft.konum || ''}</td>
