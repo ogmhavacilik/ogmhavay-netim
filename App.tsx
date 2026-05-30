@@ -1471,6 +1471,7 @@ const App = () => {
         envanterLog={envanterLog}
         onBack={() => setCurrentView('landing')}
         onSaveIntraDay={handleSaveIntraDay}
+        onTriggerSync={runGlobalSync}
         onSuccess={(type) => {
           setFilterType(type);
           runGlobalSync();

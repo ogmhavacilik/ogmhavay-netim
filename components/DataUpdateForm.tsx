@@ -19,6 +19,7 @@ interface DataUpdateFormProps {
     description: string;
     date: string;
   }) => Promise<boolean>;
+  onTriggerSync?: () => Promise<void>;
 }
 
 const formatForDateInput = (val: string | undefined | null) => {
@@ -124,7 +125,7 @@ const formatT70DateForDisplay = (val: string | undefined | null) => {
   return s;
 };
 
-const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onBack, onSuccess, onSaveIntraDay }) => {
+const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onBack, onSuccess, onSaveIntraDay, onTriggerSync }) => {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [isAuth, setIsAuth] = useState(false);
@@ -132,6 +133,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
   const [selectedKuyruk, setSelectedKuyruk] = useState('');
   const [selectedAircraft, setSelectedAircraft] = useState<Aircraft | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
 
@@ -366,29 +368,6 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           setMessage({ 
             type: 'error', 
             text: `Hata: Girilen saat (${inputFormatted}), önceki kayıttaki saatten (${prevFormatted}) az olamaz!` 
-          });
-          setIsSubmitting(false);
-          return;
-        }
-      }
-
-      // Next logs check (Future data cannot be less)
-      const nextLog = envanterLog
-        ?.filter(log => {
-          const lK = String(log.kuyrukNo || "").trim().toUpperCase();
-          const lT = String(log.tarih || "").trim();
-          return lK === searchKuyruk && lT > searchDate;
-        })
-        .sort((a, b) => (a.tarih || "").localeCompare(b.tarih || ""))[0];
-
-      if (nextLog) {
-        const nextHoursValue = parseSingleCellToHour(nextLog.govdeUcusSaati, selectedAircraft.tip);
-        if (nextHoursValue !== null && inputHours > (nextHoursValue + 0.001)) {
-          const nextFormatted = formatGovdeHour(nextLog.govdeUcusSaati, selectedAircraft.tip);
-          const inputFormatted = formatGovdeHour(govdeInput, selectedAircraft.tip);
-          setMessage({ 
-            type: 'error', 
-            text: `Hata: Girilen saat (${inputFormatted}), sonraki kayıttaki saatten (${nextFormatted}) fazla olamaz!` 
           });
           setIsSubmitting(false);
           return;
@@ -732,21 +711,6 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     // This prevents background fleet refreshes from overwriting what the user is typing.
     if (initializationRef.current === currentInitKey) return;
     
-    // Check local storage for drafts first
-    const storageKey = `draft_${selectedKuyruk}_${formData.islemTarihi}`;
-    const savedDraft = localStorage.getItem(storageKey);
-    if (savedDraft) {
-      try {
-        const parsed = JSON.parse(savedDraft);
-        setFormData(parsed.formData);
-        if (parsed.at802Data) setAt802Data(parsed.at802Data);
-        initializationRef.current = currentInitKey;
-        return;
-      } catch (e) {
-        console.error("Draft load error:", e);
-      }
-    }
-    
     if (isPastDate) {
         if (!envanterLog || envanterLog.length === 0) return;
         
@@ -836,6 +800,16 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       }
   }, [formData.islemTarihi, selectedKuyruk, envanterLog, isPastDate, selectedType, selectedAircraft]);
 
+  // Trigger a fresh live fetch of flight hours and log data from Apps Script when tail or date changes
+  useEffect(() => {
+    if (selectedKuyruk && onTriggerSync) {
+      setIsRefreshing(true);
+      onTriggerSync().finally(() => {
+        setIsRefreshing(false);
+      });
+    }
+  }, [selectedKuyruk, formData.islemTarihi, onTriggerSync]);
+
   return (
     <div className="min-h-screen bg-[#021a0c] p-4 md:p-12">
       <div className="max-w-4xl mx-auto">
@@ -850,7 +824,22 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         </button>
 
         <div className="bg-white/5 border border-white/10 rounded-[2rem] md:rounded-[3rem] p-6 md:p-12 shadow-2xl backdrop-blur-xl">
-          <h2 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter italic mb-8">HAVA ARACI GÜNLÜK DURUM GÜNCELLE</h2>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/10 pb-6 mb-8">
+            <h2 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter italic">HAVA ARACI GÜNLÜK DURUM GÜNCELLE</h2>
+            <div className="flex items-center space-x-2 bg-black/40 border border-white/10 px-4 py-2 rounded-2xl shrink-0">
+              {isRefreshing ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                  <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider">CANLI BAĞLANTI...</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">BAĞLANTI AKTİF</span>
+                </>
+              )}
+            </div>
+          </div>
           
           {!selectedType ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">

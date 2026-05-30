@@ -846,7 +846,6 @@ function doPost(e) {
 
       if (foundRowIndex > 0) {
         setLogTimeValue(logSheet, foundRowIndex, 5, newHours, tip);
-        return jsonSuccess("Geçmiş gün verisi güncellendi (" + date + " - " + kuyrukNo + ")");
       } else {
         var id = date + "_" + kuyrukNo;
         
@@ -862,9 +861,80 @@ function doPost(e) {
           "-",
           "GERİYE DÖNÜK GİRİŞ"
         ]);
-        setLogTimeValue(logSheet, logSheet.getLastRow(), 5, newHours, tip);
-        return jsonSuccess("Yeni geriye dönük log kaydı oluşturuldu (" + date + " - " + kuyrukNo + ")");
+        foundRowIndex = logSheet.getLastRow();
+        setLogTimeValue(logSheet, foundRowIndex, 5, newHours, tip);
       }
+
+      // --- GERİYE DÖNÜK SAAT DEĞİŞİMİNDEN SONRAKİ GÜNLERİ GÜNCELLEME MANTIĞI ---
+      // Eğer past saat değiştiyse, sonraki günlerdeki saat ondan az olamaz.
+      // Eğer sonraki günün saati az ise, o girilen geçmiş saatle eşitlenir.
+      // Eğer fazla ise, hiçbir değişiklik yapılmaz. This means personnel entered today first, then yesterday.
+      
+      var newHoursVal = 0;
+      if (newHours !== undefined && newHours !== null && newHours !== "") {
+        var hStr = String(newHours).replace(',', '.');
+        if (hStr.indexOf(':') !== -1) {
+          var pts = hStr.split(':').map(Number);
+          newHoursVal = (pts[0] || 0) + (pts[1] || 0) / 60;
+        } else {
+          newHoursVal = parseFloat(hStr) || 0;
+        }
+      }
+
+      var parseDateLocal = function(tVal) {
+        if (tVal instanceof Date) return tVal;
+        var tStr = String(tVal).trim();
+        var parts = tStr.split('.');
+        if (parts.length === 3) {
+          return new Date(parts[2], parts[1] - 1, parts[0]);
+        }
+        var parts2 = tStr.split('-');
+        if (parts2.length === 3) {
+          if (parts2[0].length === 4) {
+            return new Date(parts2[0], parts2[1] - 1, parts2[2]);
+          } else {
+            return new Date(parts2[2], parts2[1] - 1, parts2[0]);
+          }
+        }
+        return new Date(tStr);
+      };
+
+      var targetDateObj = parseDateLocal(date);
+      var targetKuyruk = String(kuyrukNo).trim().toUpperCase();
+
+      // Refresh data to get appended rows
+      var refreshedData = logSheet.getDataRange().getValues();
+      for (var r = 1; r < refreshedData.length; r++) {
+        var rowKuyruk = String(refreshedData[r][2]).trim().toUpperCase();
+        if (rowKuyruk !== targetKuyruk) continue;
+
+        var rowDateVal = refreshedData[r][1];
+        var rowDateObj = parseDateLocal(rowDateVal);
+
+        if (rowDateObj.getTime() > targetDateObj.getTime()) {
+          var rowHoursRaw = refreshedData[r][4];
+          var rowHoursVal = 0;
+          if (rowHoursRaw !== undefined && rowHoursRaw !== null && rowHoursRaw !== "") {
+            if (rowHoursRaw instanceof Date) {
+              rowHoursVal = rowHoursRaw.getHours() + rowHoursRaw.getMinutes() / 60;
+            } else {
+              var rStr = String(rowHoursRaw).replace(',', '.');
+              if (rStr.indexOf(':') !== -1) {
+                var pts = rStr.split(':').map(Number);
+                rowHoursVal = (pts[0] || 0) + (pts[1] || 0) / 60;
+              } else {
+                rowHoursVal = parseFloat(rStr) || 0;
+              }
+            }
+          }
+
+          if (rowHoursVal < newHoursVal) {
+            setLogTimeValue(logSheet, r + 1, 5, newHours, tip);
+          }
+        }
+      }
+
+      return jsonSuccess("Geçmiş gün verisi ve takip eden günlerin saatleri başarıyla eşitlendi/güncellendi (" + date + " - " + kuyrukNo + ")");
     }
 
     if (action === "updateAircraftData") {
