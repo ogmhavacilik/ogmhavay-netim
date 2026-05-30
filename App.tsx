@@ -38,8 +38,12 @@ const parseTimeToMinutes = (timeStr: string) => {
 };
 
 const App = () => {
-  const [isSplashVisible, setIsSplashVisible] = useState(true);
-  const [currentView, setCurrentView] = useState<'landing' | 'dashboard' | 'update'>('landing');
+  const [isSplashVisible, setIsSplashVisible] = useState(() => {
+    return !localStorage.getItem('redirect_view');
+  });
+  const [currentView, setCurrentView] = useState<'landing' | 'dashboard' | 'update'>(() => {
+    return (localStorage.getItem('redirect_view') as any) || 'landing';
+  });
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
@@ -57,7 +61,9 @@ const App = () => {
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
   const [oplCheckStatus, setOplCheckStatus] = useState<Record<string, 'pending' | 'checking' | 'done'>>({});
   
-  const [filterType, setFilterType] = useState('Tümü');
+  const [filterType, setFilterType] = useState(() => {
+    return localStorage.getItem('redirect_filter') || 'Tümü';
+  });
   const [filterTail, setFilterTail] = useState('');
   
   const [filterDate, setFilterDate] = useState(() => {
@@ -1193,6 +1199,12 @@ const App = () => {
   }, []);
 
   useEffect(() => {
+    // Clear redirect flags after they have been initialized in state on page load
+    localStorage.removeItem('redirect_view');
+    localStorage.removeItem('redirect_filter');
+  }, []);
+
+  useEffect(() => {
     if (fleet.length > 0) {
       fleet.forEach(a => {
         if (!oplCheckStatus[a.kuyrukNo] && a.tip !== 'Bell-429' && a.tip !== 'T-70' && a.tip !== 'B-360' && a.tip !== 'C-650') {
@@ -1473,9 +1485,15 @@ const App = () => {
         onSaveIntraDay={handleSaveIntraDay}
         onTriggerSync={runGlobalSync}
         onSuccess={(type) => {
-          setFilterType(type);
-          runGlobalSync();
-          setCurrentView('dashboard');
+          if (type === 'Bell-429') {
+            localStorage.setItem('redirect_view', 'dashboard');
+            localStorage.setItem('redirect_filter', 'Bell-429');
+            window.location.reload();
+          } else {
+            setFilterType(type);
+            runGlobalSync();
+            setCurrentView('dashboard');
+          }
         }}
       />
     );

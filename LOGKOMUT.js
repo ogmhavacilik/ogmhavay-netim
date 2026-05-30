@@ -881,25 +881,49 @@ function doPost(e) {
         }
       }
 
-      var parseDateLocal = function(tVal) {
-        if (tVal instanceof Date) return tVal;
-        var tStr = String(tVal).trim();
-        var parts = tStr.split('.');
-        if (parts.length === 3) {
-          return new Date(parts[2], parts[1] - 1, parts[0]);
+      var getYYYYMMDDLocal = function(val) {
+        if (!val) return "";
+        if (val instanceof Date) {
+          var y = val.getFullYear();
+          var m = (val.getMonth() + 1).toString();
+          var d = val.getDate().toString();
+          if (m.length === 1) m = "0" + m;
+          if (d.length === 1) d = "0" + d;
+          return "" + y + m + d;
         }
-        var parts2 = tStr.split('-');
-        if (parts2.length === 3) {
-          if (parts2[0].length === 4) {
-            return new Date(parts2[0], parts2[1] - 1, parts2[2]);
+        
+        var str = String(val).trim();
+        var p = str.split('.');
+        if (p.length === 3) {
+          var d = p[0];
+          var m = p[1];
+          var y = p[2];
+          if (d.length === 1) d = "0" + d;
+          if (m.length === 1) m = "0" + m;
+          return "" + y + m + d;
+        }
+        var p2 = str.split('-');
+        if (p2.length === 3) {
+          if (p2[0].length === 4) {
+            var y = p2[0];
+            var m = p2[1];
+            var d = p2[2];
+            if (d.length === 1) d = "0" + d;
+            if (m.length === 1) m = "0" + m;
+            return "" + y + m + d;
           } else {
-            return new Date(parts2[2], parts2[1] - 1, parts2[0]);
+            var d = p2[0];
+            var m = p2[1];
+            var y = p2[2];
+            if (d.length === 1) d = "0" + d;
+            if (m.length === 1) m = "0" + m;
+            return "" + y + m + d;
           }
         }
-        return new Date(tStr);
+        return "";
       };
 
-      var targetDateObj = parseDateLocal(date);
+      var targetYMD = getYYYYMMDDLocal(date);
       var targetKuyruk = String(kuyrukNo).trim().toUpperCase();
 
       // Refresh data to get appended rows
@@ -909,9 +933,9 @@ function doPost(e) {
         if (rowKuyruk !== targetKuyruk) continue;
 
         var rowDateVal = refreshedData[r][1];
-        var rowDateObj = parseDateLocal(rowDateVal);
+        var rowYMD = getYYYYMMDDLocal(rowDateVal);
 
-        if (rowDateObj.getTime() > targetDateObj.getTime()) {
+        if (rowYMD > targetYMD) {
           var rowHoursRaw = refreshedData[r][4];
           var rowHoursVal = 0;
           if (rowHoursRaw !== undefined && rowHoursRaw !== null && rowHoursRaw !== "") {

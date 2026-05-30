@@ -198,22 +198,12 @@ function getLatestLogs() {
         var kNo = String(logData[i][2]).trim().toUpperCase();
         if (!kNo) continue;
         
-        var rDate = logData[i][1];
-        var dateObj;
-        if (rDate instanceof Date) {
-          dateObj = rDate;
-        } else {
-          var p = String(rDate).split('.');
-          if (p.length === 3) {
-            dateObj = new Date(p[2], p[1] - 1, p[0]);
-          } else {
-            dateObj = new Date(rDate);
-          }
-        }
+        var ymd = getYYYYMMDD(logData[i][1]);
+        if (!ymd) continue;
         
-        if (!latestLogs[kNo] || dateObj > latestLogs[kNo].dateObj) {
+        if (!latestLogs[kNo] || ymd >= latestLogs[kNo].ymd) {
           latestLogs[kNo] = {
-            dateObj: dateObj,
+            ymd: ymd,
             govdeUcusSaati: logData[i][4],
             faydaliSaat: logData[i][5],
             konum: logData[i][6],
@@ -228,6 +218,51 @@ function getLatestLogs() {
     Logger.log("getLatestLogs error: " + err.toString());
   }
   return latestLogs;
+}
+
+// Tarih hücresini güvenli bir şekilde YYYYMMDD string formatına dönüştüren yardımcı fonksiyondur
+function getYYYYMMDD(val) {
+  if (!val) return "";
+  if (val instanceof Date) {
+    var y = val.getFullYear();
+    var m = (val.getMonth() + 1).toString();
+    var d = val.getDate().toString();
+    if (m.length === 1) m = "0" + m;
+    if (d.length === 1) d = "0" + d;
+    return "" + y + m + d;
+  }
+  
+  var str = String(val).trim();
+  // gg.aa.yyyy formatı
+  var p = str.split('.');
+  if (p.length === 3) {
+    var d = p[0];
+    var m = p[1];
+    var y = p[2];
+    if (d.length === 1) d = "0" + d;
+    if (m.length === 1) m = "0" + m;
+    return "" + y + m + d;
+  }
+  // yyyy-aa-gg formatı
+  var p2 = str.split('-');
+  if (p2.length === 3) {
+    if (p2[0].length === 4) {
+      var y = p2[0];
+      var m = p2[1];
+      var d = p2[2];
+      if (d.length === 1) d = "0" + d;
+      if (m.length === 1) m = "0" + m;
+      return "" + y + m + d;
+    } else {
+      var d = p2[0];
+      var m = p2[1];
+      var y = p2[2];
+      if (d.length === 1) d = "0" + d;
+      if (m.length === 1) m = "0" + m;
+      return "" + y + m + d;
+    }
+  }
+  return "";
 }
 
 function doGet(e) {
