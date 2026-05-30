@@ -846,7 +846,6 @@ function doPost(e) {
 
       if (foundRowIndex > 0) {
         setLogTimeValue(logSheet, foundRowIndex, 5, newHours, tip);
-        return jsonSuccess("Geçmiş gün verisi güncellendi (" + date + " - " + kuyrukNo + ")");
       } else {
         var id = date + "_" + kuyrukNo;
         
@@ -862,9 +861,104 @@ function doPost(e) {
           "-",
           "GERİYE DÖNÜK GİRİŞ"
         ]);
-        setLogTimeValue(logSheet, logSheet.getLastRow(), 5, newHours, tip);
-        return jsonSuccess("Yeni geriye dönük log kaydı oluşturuldu (" + date + " - " + kuyrukNo + ")");
+        foundRowIndex = logSheet.getLastRow();
+        setLogTimeValue(logSheet, foundRowIndex, 5, newHours, tip);
       }
+
+      // --- GERİYE DÖNÜK SAAT DEĞİŞİMİNDEN SONRAKİ GÜNLERİ GÜNCELLEME MANTIĞI ---
+      // Eğer past saat değiştiyse, sonraki günlerdeki saat ondan az olamaz.
+      // Eğer sonraki günün saati az ise, o girilen geçmiş saatle eşitlenir.
+      // Eğer fazla ise, hiçbir değişiklik yapılmaz. This means personnel entered today first, then yesterday.
+      
+      var newHoursVal = 0;
+      if (newHours !== undefined && newHours !== null && newHours !== "") {
+        var hStr = String(newHours).replace(',', '.');
+        if (hStr.indexOf(':') !== -1) {
+          var pts = hStr.split(':').map(Number);
+          newHoursVal = (pts[0] || 0) + (pts[1] || 0) / 60;
+        } else {
+          newHoursVal = parseFloat(hStr) || 0;
+        }
+      }
+
+      var getYYYYMMDDLocal = function(val) {
+        if (!val) return "";
+        if (val instanceof Date) {
+          var y = val.getFullYear();
+          var m = (val.getMonth() + 1).toString();
+          var d = val.getDate().toString();
+          if (m.length === 1) m = "0" + m;
+          if (d.length === 1) d = "0" + d;
+          return "" + y + m + d;
+        }
+        
+        var str = String(val).trim();
+        var p = str.split('.');
+        if (p.length === 3) {
+          var d = p[0];
+          var m = p[1];
+          var y = p[2];
+          if (d.length === 1) d = "0" + d;
+          if (m.length === 1) m = "0" + m;
+          return "" + y + m + d;
+        }
+        var p2 = str.split('-');
+        if (p2.length === 3) {
+          if (p2[0].length === 4) {
+            var y = p2[0];
+            var m = p2[1];
+            var d = p2[2];
+            if (d.length === 1) d = "0" + d;
+            if (m.length === 1) m = "0" + m;
+            return "" + y + m + d;
+          } else {
+            var d = p2[0];
+            var m = p2[1];
+            var y = p2[2];
+            if (d.length === 1) d = "0" + d;
+            if (m.length === 1) m = "0" + m;
+            return "" + y + m + d;
+          }
+        }
+        return "";
+      };
+
+      var targetYMD = getYYYYMMDDLocal(date);
+      var targetKuyruk = String(kuyrukNo).trim().toUpperCase();
+
+      // Refresh data to get appended rows
+      var refreshedData = logSheet.getDataRange().getValues();
+      for (var r = 1; r < refreshedData.length; r++) {
+        var rowKuyruk = String(refreshedData[r][2]).trim().toUpperCase();
+        if (rowKuyruk !== targetKuyruk) continue;
+
+        var rowDateVal = refreshedData[r][1];
+        var rowYMD = getYYYYMMDDLocal(rowDateVal);
+
+        if (rowYMD > targetYMD) {
+          var rowHoursRaw = refreshedData[r][4];
+          var rowHoursVal = 0;
+          if (rowHoursRaw !== undefined && rowHoursRaw !== null && rowHoursRaw !== "") {
+            if (rowHoursRaw instanceof Date) {
+              rowHoursVal = rowHoursRaw.getHours() + rowHoursRaw.getMinutes() / 60;
+            } else {
+              var rStr = String(rowHoursRaw).replace(',', '.');
+              if (rStr.indexOf(':') !== -1) {
+                var pts = rStr.split(':').map(Number);
+                rowHoursVal = (pts[0] || 0) + (pts[1] || 0) / 60;
+              } else {
+                rowHoursVal = parseFloat(rStr) || 0;
+              }
+            }
+          }
+
+          if (rowHoursVal < newHoursVal) {
+            setLogTimeValue(logSheet, r + 1, 5, newHours, tip);
+          }
+        }
+      }
+
+      return jsonSuccess("Geçmiş gün verisi ve takip eden günlerin saatleri başarıyla eşitlendi/güncellendi (" + date + " - " + kuyrukNo + ")");
     }
 
     if (action === "updateAircraftData") {

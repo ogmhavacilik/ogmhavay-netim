@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Aircraft, Status, DailyStatusCode } from '../types';
-import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour, parseSingleCellToHour } from '../services/sheetService';
+import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour, parseSingleCellToHour, proxyFetch } from '../services/sheetService';
 import { LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID } from '../constants';
 
 interface DataUpdateFormProps {
@@ -19,6 +19,7 @@ interface DataUpdateFormProps {
     description: string;
     date: string;
   }) => Promise<boolean>;
+  onTriggerSync?: () => Promise<void>;
 }
 
 const formatForDateInput = (val: string | undefined | null) => {
@@ -124,7 +125,7 @@ const formatT70DateForDisplay = (val: string | undefined | null) => {
   return s;
 };
 
-const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onBack, onSuccess, onSaveIntraDay }) => {
+const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onBack, onSuccess, onSaveIntraDay, onTriggerSync }) => {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [isAuth, setIsAuth] = useState(false);
@@ -132,6 +133,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
   const [selectedKuyruk, setSelectedKuyruk] = useState('');
   const [selectedAircraft, setSelectedAircraft] = useState<Aircraft | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
 
@@ -349,14 +351,14 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       const searchDate = formData.islemTarihi;
       const searchKuyruk = (selectedAircraft.kuyrukNo || "").trim().toUpperCase();
       
-      // Previous logs check
+      // Previous logs check - Sort descending to get closest prior date as first element
       const prevLog = envanterLog
         ?.filter(log => {
           const lK = String(log.kuyrukNo || "").trim().toUpperCase();
           const lT = String(log.tarih || "").trim();
           return lK === searchKuyruk && lT < searchDate;
         })
-        .sort((a, b) => (a.tarih || "").localeCompare(b.tarih || ""))[0];
+        .sort((a, b) => (b.tarih || "").localeCompare(a.tarih || ""))[0];
 
       if (prevLog) {
         const prevHoursValue = parseSingleCellToHour(prevLog.govdeUcusSaati, selectedAircraft.tip);
@@ -372,7 +374,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         }
       }
 
-      // Next logs check (Future data cannot be less)
+      // Subsequent logs check (records that exist AFTER the selected date) - Sort ascending to get closest next date
       const nextLog = envanterLog
         ?.filter(log => {
           const lK = String(log.kuyrukNo || "").trim().toUpperCase();
@@ -585,18 +587,22 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       };
       const analysis = analyzeStatus(statusToAnalyze);
 
-      const mainUpdateResult = await updateAircraftData(
-        selectedAircraft.appsScriptUrl || '',
-        selectedAircraft.sheetId || '',
-        selectedAircraft.kuyrukNo,
-        { 
-          ...finalData, 
-          assignedCode: analysis.code // Send assignedCode to prevent auto-reanalysis on server
-        },
-        selectedAircraft.mapping,
-        selectedAircraft.sheetName,
-        selectedAircraft.tip
-      );
+      let mainUpdateResult = { success: true, message: '' };
+      if (!isPastDate) {
+        const uRes = await updateAircraftData(
+          selectedAircraft.appsScriptUrl || '',
+          selectedAircraft.sheetId || '',
+          selectedAircraft.kuyrukNo,
+          { 
+            ...finalData, 
+            assignedCode: analysis.code // Send assignedCode to prevent auto-reanalysis on server
+          },
+          selectedAircraft.mapping,
+          selectedAircraft.sheetName,
+          selectedAircraft.tip
+        );
+        mainUpdateResult = { success: uRes.success, message: uRes.message };
+      }
 
       if (!mainUpdateResult.success) {
         setMessage({ type: 'error', text: mainUpdateResult.message || 'Hava aracı dosyası güncellenirken hata oluştu.' });
@@ -619,25 +625,12 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           );
 
           if (pastLogResult.success) {
-            // YENİ: Ayrıca BUGÜNÜN kaydını da güncelle (User request)
-            const today = new Date();
-            const formattedToday = `${today.getDate().toString().padStart(2, '0')}.${(today.getMonth() + 1).toString().padStart(2, '0')}.${today.getFullYear()}`;
-            
-            await updatePastEnvanterLog(
-              LOG_SCRIPT_URL,
-              MAIL_LOG_SHEET_ID,
-              selectedAircraft.kuyrukNo,
-              formattedToday,
-              pastHours,
-              selectedAircraft.tip
-            );
-
-            setMessage({ type: 'success', text: 'Hava aracı dosyası, geçmiş envanter logu ve güncel log başarıyla güncellendi.' });
+            setMessage({ type: 'success', text: 'Geçmiş gün verisi merkezi envanter logunda başarıyla düzeltildi.' });
           } else {
-            setMessage({ type: 'warning', text: 'Hava aracı dosyası güncellendi ancak geçmiş log güncellenemedi: ' + pastLogResult.message });
+            setMessage({ type: 'warning', text: 'Geçmiş gün verisi güncellenemedi: ' + pastLogResult.message });
           }
         } else {
-          setMessage({ type: 'success', text: 'Hava aracı dosyası güncellendi (Log için saat girilmedi).' });
+          setMessage({ type: 'warning', text: 'Geçmiş gün verisi için güncellenecek gövde saati girilmedi.' });
         }
       } else {
         // GÜNCEL TARİH (BUGÜN): Mevcut merkezi loglama tetiklenir
@@ -671,25 +664,20 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           const logGovdeSaat = getFormattedHourForLog(finalData.govdeUcusSaati || finalData.acTT || selectedAircraft.govdeUcusSaati || 0);
           const logFaydaliSaat = getFormattedHourForLog(finalData.faydaliSaat || selectedAircraft.faydaliSaat || 0);
 
-          await fetch(LOG_SCRIPT_URL, {
-            method: 'POST',
-            redirect: 'follow',
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({
-              action: 'logSingleAircraftActivity',
-              data: {
-                date: formattedDate,
-                kuyrukNo: selectedAircraft.kuyrukNo,
-                tip: selectedAircraft.tip,
-                govdeUcusSaati: logGovdeSaat,
-                faydaliSaat: logFaydaliSaat,
-                konum: formData.konum,
-                durum: formData.durum,
-                durumAyrintisi: formData.durumAyrintisi,
-                aciklama: formData.aciklama,
-                analizKodu: analysis.code
-              }
-            })
+          await proxyFetch(LOG_SCRIPT_URL, {
+            action: 'logSingleAircraftActivity',
+            data: {
+              date: formattedDate,
+              kuyrukNo: selectedAircraft.kuyrukNo,
+              tip: selectedAircraft.tip,
+              govdeUcusSaati: logGovdeSaat,
+              faydaliSaat: logFaydaliSaat,
+              konum: formData.konum,
+              durum: formData.durum,
+              durumAyrintisi: formData.durumAyrintisi,
+              aciklama: formData.aciklama,
+              analizKodu: analysis.code
+            }
           });
           setMessage({ type: 'success', text: 'Veriler ve merkezi log başarıyla güncellendi.' });
         } catch (logError) {
@@ -723,7 +711,11 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
   const initializationRef = React.useRef<string>('');
 
   useEffect(() => {
-    if (!selectedKuyruk) return;
+    if (!selectedKuyruk) {
+      initializationRef.current = '';
+      return;
+    }
+    if (!selectedAircraft || selectedAircraft.kuyrukNo !== selectedKuyruk) return;
     
     // Create a unique key for the current selection: Kuyruk No + Selected Date
     const currentInitKey = `${selectedKuyruk}_${formData.islemTarihi}`;
@@ -731,21 +723,6 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     // If we already initialized for this specific aircraft and date, do NOT reset the form
     // This prevents background fleet refreshes from overwriting what the user is typing.
     if (initializationRef.current === currentInitKey) return;
-    
-    // Check local storage for drafts first
-    const storageKey = `draft_${selectedKuyruk}_${formData.islemTarihi}`;
-    const savedDraft = localStorage.getItem(storageKey);
-    if (savedDraft) {
-      try {
-        const parsed = JSON.parse(savedDraft);
-        setFormData(parsed.formData);
-        if (parsed.at802Data) setAt802Data(parsed.at802Data);
-        initializationRef.current = currentInitKey;
-        return;
-      } catch (e) {
-        console.error("Draft load error:", e);
-      }
-    }
     
     if (isPastDate) {
         if (!envanterLog || envanterLog.length === 0) return;
@@ -836,6 +813,16 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       }
   }, [formData.islemTarihi, selectedKuyruk, envanterLog, isPastDate, selectedType, selectedAircraft]);
 
+  // Trigger a fresh live fetch of flight hours and log data from Apps Script when tail or date changes
+  useEffect(() => {
+    if (selectedKuyruk && onTriggerSync) {
+      setIsRefreshing(true);
+      onTriggerSync().finally(() => {
+        setIsRefreshing(false);
+      });
+    }
+  }, [selectedKuyruk, formData.islemTarihi, onTriggerSync]);
+
   return (
     <div className="min-h-screen bg-[#021a0c] p-4 md:p-12">
       <div className="max-w-4xl mx-auto">
@@ -850,7 +837,22 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         </button>
 
         <div className="bg-white/5 border border-white/10 rounded-[2rem] md:rounded-[3rem] p-6 md:p-12 shadow-2xl backdrop-blur-xl">
-          <h2 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter italic mb-8">HAVA ARACI GÜNLÜK DURUM GÜNCELLE</h2>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/10 pb-6 mb-8">
+            <h2 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter italic">HAVA ARACI GÜNLÜK DURUM GÜNCELLE</h2>
+            <div className="flex items-center space-x-2 bg-black/40 border border-white/10 px-4 py-2 rounded-2xl shrink-0">
+              {isRefreshing ? (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                  <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider">CANLI BAĞLANTI...</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">BAĞLANTI AKTİF</span>
+                </>
+              )}
+            </div>
+          </div>
           
           {!selectedType ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
