@@ -55,8 +55,31 @@ function doPost(e) {
       // O (15): Açıklama
       // P (16): Saat Esaslı Bakım (50H)
       // Q (17): Takvim Esaslı Bakım (Tarih)
+
+      var isPastDate = false;
+      if (updates.islemTarihi) {
+        var todayStr = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), "yyyy-MM-dd");
+        if (updates.islemTarihi < todayStr) {
+          isPastDate = true;
+        }
+      }
       
-      if (updates.govdeUcusSaati !== undefined) sheet.getRange(rowIndex, 5).setValue(updates.govdeUcusSaati);
+      if (updates.govdeUcusSaati !== undefined) {
+        if (!isPastDate) {
+          sheet.getRange(rowIndex, 5).setValue(updates.govdeUcusSaati);
+        } else {
+          // Geriye dönük güncelleme ise, Column E'yi geçmiş saat değeriyle ezmiyoruz.
+          // Envanter Log'daki en son/güncel değeri koruyoruz.
+          var latestLogs = getLatestLogs();
+          var kNoClean = String(kuyrukNo).trim().toUpperCase();
+          if (latestLogs[kNoClean]) {
+            var latestHours = latestLogs[kNoClean].govdeUcusSaati;
+            if (latestHours !== undefined && latestHours !== "" && latestHours !== null) {
+              sheet.getRange(rowIndex, 5).setValue(latestHours);
+            }
+          }
+        }
+      }
       if (updates.konum !== undefined) sheet.getRange(rowIndex, 12).setValue(updates.konum);
       if (updates.durum !== undefined) sheet.getRange(rowIndex, 13).setValue(updates.durum);
       if (updates.durumAyrintisi !== undefined) sheet.getRange(rowIndex, 14).setValue(updates.durumAyrintisi);
@@ -82,6 +105,15 @@ function doPost(e) {
       }
     }
 
+    var latestLogs = getLatestLogs();
+    var startRow = 3;
+    if (mapping && mapping.kuyrukNo) {
+      var match = mapping.kuyrukNo.match(/\d+/);
+      if (match) {
+        startRow = parseInt(match[0]);
+      }
+    }
+
     var results = [];
     for (var i = 0; i < maxRows; i++) {
       var item = {};
@@ -100,6 +132,48 @@ function doPost(e) {
       }
       
       if (hasKuyruk) {
+        var kNoClean = String(item.kuyrukNo).trim().toUpperCase();
+        if (latestLogs[kNoClean]) {
+          var logInfo = latestLogs[kNoClean];
+          if (logInfo.govdeUcusSaati !== undefined && logInfo.govdeUcusSaati !== "" && logInfo.govdeUcusSaati !== null) {
+            item.govdeUcusSaati = logInfo.govdeUcusSaati;
+            // E-Bölümünü de senkronize tut
+            var cellVal = sheet.getRange(i + startRow, 5).getValue();
+            if (String(cellVal) !== String(logInfo.govdeUcusSaati)) {
+              sheet.getRange(i + startRow, 5).setValue(logInfo.govdeUcusSaati);
+            }
+          }
+          if (logInfo.durum !== undefined && logInfo.durum !== "" && logInfo.durum !== null) {
+            item.durum = logInfo.durum;
+            var cellVal = sheet.getRange(i + startRow, 13).getValue();
+            if (String(cellVal) !== String(logInfo.durum)) {
+              sheet.getRange(i + startRow, 13).setValue(logInfo.durum);
+            }
+          }
+          if (logInfo.durumAyrintisi !== undefined && logInfo.durumAyrintisi !== "" && logInfo.durumAyrintisi !== null) {
+            if (String(logInfo.durumAyrintisi).trim() !== "") {
+              item.durumAyrintisi = logInfo.durumAyrintisi;
+              var cellVal = sheet.getRange(i + startRow, 14).getValue();
+              if (String(cellVal) !== String(logInfo.durumAyrintisi)) {
+                sheet.getRange(i + startRow, 14).setValue(logInfo.durumAyrintisi);
+              }
+            }
+          }
+          if (logInfo.konum !== undefined && logInfo.konum !== "" && logInfo.konum !== null) {
+            item.konum = logInfo.konum;
+            var cellVal = sheet.getRange(i + startRow, 12).getValue();
+            if (String(cellVal) !== String(logInfo.konum)) {
+              sheet.getRange(i + startRow, 12).setValue(logInfo.konum);
+            }
+          }
+          if (logInfo.aciklama !== undefined && logInfo.aciklama !== null) {
+            item.aciklama = logInfo.aciklama;
+            var cellVal = sheet.getRange(i + startRow, 15).getValue();
+            if (String(cellVal) !== String(logInfo.aciklama)) {
+              sheet.getRange(i + startRow, 15).setValue(logInfo.aciklama);
+            }
+          }
+        }
         results.push(item);
       }
     }
@@ -110,6 +184,50 @@ function doPost(e) {
     return ContentService.createTextOutput(JSON.stringify({ error: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// Envanter Log dosyasından en güncel uçar/uçuş durum/saat kayıtlarını çeker
+function getLatestLogs() {
+  var latestLogs = {};
+  try {
+    var logSs = SpreadsheetApp.openById("1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg");
+    var logSheet = logSs.getSheetByName("Envanter Log");
+    if (logSheet) {
+      var logData = logSheet.getDataRange().getValues();
+      for (var i = 1; i < logData.length; i++) {
+        var kNo = String(logData[i][2]).trim().toUpperCase();
+        if (!kNo) continue;
+        
+        var rDate = logData[i][1];
+        var dateObj;
+        if (rDate instanceof Date) {
+          dateObj = rDate;
+        } else {
+          var p = String(rDate).split('.');
+          if (p.length === 3) {
+            dateObj = new Date(p[2], p[1] - 1, p[0]);
+          } else {
+            dateObj = new Date(rDate);
+          }
+        }
+        
+        if (!latestLogs[kNo] || dateObj > latestLogs[kNo].dateObj) {
+          latestLogs[kNo] = {
+            dateObj: dateObj,
+            govdeUcusSaati: logData[i][4],
+            faydaliSaat: logData[i][5],
+            konum: logData[i][6],
+            durum: logData[i][7],
+            durumAyrintisi: logData[i][8],
+            aciklama: logData[i][9]
+          };
+        }
+      }
+    }
+  } catch (err) {
+    Logger.log("getLatestLogs error: " + err.toString());
+  }
+  return latestLogs;
 }
 
 function doGet(e) {

@@ -1,7 +1,7 @@
 
 import { PlatformType, Status, StatusType, Aircraft, AircraftActivity } from './types';
 
-export const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzAM6TW5q6t67ju-h0EEci55gTQOVj3l_ULsG1hnbinOtX49Ci8NK0n3CTEvAlrkF3P/exec";
+export const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwNA0RJkHvr4J-D8_duBlnnom2b_uK2gUcSi44dKVx3rTq6aEGvi2U032cgtIdKRRjt/exec";
 export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxVsSiKLrY4TUXptMaSFlThbPiXQY0M2uhZWfRExprExqDSbY93KbpXypeug3M_oewKpA/exec";
 export const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwvC8peKrqCpy1g13HQPzy4L9w3vC_ZG9IvVt8UBmyVE5wdJU5y8TJDKfzC1C6VIOCfEQ/exec"; 
 export const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrbIvbXLDJBC2_s9PeevqjIiIIWkDZ6kd2AoYG-4qnsFHatVT8AG9hVFb-3M_e-QJ8Gg/exec";
