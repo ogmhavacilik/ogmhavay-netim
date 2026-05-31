@@ -1098,7 +1098,7 @@ function doPost(e) {
         logSheet = ss.insertSheet("Envanter Log");
         logSheet.appendRow([
           "ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", 
-          "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Analiz Kodu", "Açıklama"
+          "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Açıklama"
         ]);
       }
 
@@ -1218,7 +1218,7 @@ function doPost(e) {
 
         if (!logEntry) {
           var targetRow = nextLogFullRow;
-          logSheet.getRange(targetRow, 1, 1, 11).setValues([[
+          logSheet.getRange(targetRow, 1, 1, 10).setValues([[
             logId, 
             dateStr, 
             kuyrukNo, 
@@ -1228,7 +1228,6 @@ function doPost(e) {
             data.konum,
             data.durum,
             data.durumAyrintisi,
-            finalAnaliz,
             data.aciklama ? "'" + String(data.aciklama) : ""
           ]]);
           
@@ -1240,7 +1239,7 @@ function doPost(e) {
             data: [
               logId, dateStr, kuyrukNo, data.tip, 
               newGovdeRaw, faydaliVal, data.konum, data.durum, 
-              data.durumAyrintisi, finalAnaliz, data.aciklama
+              data.durumAyrintisi, data.aciklama
             ] 
           };
           nextLogFullRow++;
@@ -1257,10 +1256,8 @@ function doPost(e) {
           var newDurum = String(data.durum || "").trim().toUpperCase();
           
           var oldAyrinti = String(oldRow[8]).trim().toUpperCase();
-          var oldAnaliz = String(oldRow[9] || "").trim().toUpperCase();
-          var newAnaliz = String(finalAnaliz || "").trim().toUpperCase();
           
-          var oldAciklama = String(oldRow[10] || "").trim();
+          var oldAciklama = String(oldRow[9] || "").trim();
           if (oldAciklama.indexOf("'") === 0) oldAciklama = oldAciklama.substring(1);
           var newAciklama = String(data.aciklama || "").trim();
           
@@ -1277,14 +1274,13 @@ function doPost(e) {
           // Check if significant changes exist
           if (Math.abs(oldFaydali - finalFaydaliToUpdate) > 0.01 || oldKonum !== newKonum || 
               oldDurum !== newDurum || oldAyrinti !== newAyrinti || 
-              oldAnaliz !== newAnaliz || oldAciklama !== newAciklama || oldGovde !== formatToHHMM(finalGovdeToUpdate, data.tip)) {
+              oldAciklama !== newAciklama || oldGovde !== formatToHHMM(finalGovdeToUpdate, data.tip)) {
             
-            logSheet.getRange(logEntry.row, 6, 1, 6).setValues([[
+            logSheet.getRange(logEntry.row, 6, 1, 5).setValues([[
               finalFaydaliToUpdate,
               data.konum,
               data.durum,
               data.durumAyrintisi,
-              newAnaliz,
               data.aciklama ? "'" + String(data.aciklama) : ""
             ]]);
             logSheet.getRange(logEntry.row, 6).setNumberFormat("0.0#");
@@ -1296,8 +1292,7 @@ function doPost(e) {
             logEntry.data[6] = data.konum;
             logEntry.data[7] = data.durum;
             logEntry.data[8] = data.durumAyrintisi;
-            logEntry.data[9] = newAnaliz;
-            logEntry.data[10] = data.aciklama;
+            logEntry.data[9] = data.aciklama;
             updatedCount++;
           }
         }
@@ -1361,13 +1356,12 @@ function doPost(e) {
         logSheet = ss.insertSheet("Envanter Log");
         logSheet.appendRow([
           "ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", 
-          "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Analiz Kodu", "Açıklama"
+          "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Açıklama"
         ]);
       }
       
       var faydaliVal = data.faydaliSaat;
       if (typeof faydaliVal === 'string') faydaliVal = parseFloat(faydaliVal.replace(',', '.')) || 0;
-      var finalAnaliz = data.analizKodu || '?';
 
       var logData = logSheet.getRange("A:A").getValues();
       var foundLog = false;
@@ -1375,20 +1369,19 @@ function doPost(e) {
         if (String(logData[i][0]).trim() === id) {
           logSheet.getRange(i + 1, 1, 1, 4).setValues([[id, dateStr, kuyrukNo, data.tip]]);
           logSheet
-            .getRange(i + 1, 6, 1, 6)
+            .getRange(i + 1, 6, 1, 5)
             .setValues([
               [
                 faydaliVal,
                 data.konum,
                 data.durum,
                 data.durumAyrintisi,
-                finalAnaliz,
                 data.aciklama ? "'" + String(data.aciklama) : "",
               ],
             ]);
           setLogTimeValue(logSheet, i + 1, 5, data.govdeUcusSaati, data.tip);
           logSheet.getRange(i + 1, 6).setNumberFormat("0.0#");
-          logSheet.getRange(i + 1, 11).setNumberFormat("@");
+          logSheet.getRange(i + 1, 10).setNumberFormat("@");
           foundLog = true;
           break;
         }
@@ -1404,13 +1397,12 @@ function doPost(e) {
           data.konum,
           data.durum,
           data.durumAyrintisi,
-          finalAnaliz,
           data.aciklama ? "'" + String(data.aciklama) : "",
         ]);
         var lastRowIdx = logSheet.getLastRow();
         setLogTimeValue(logSheet, lastRowIdx, 5, data.govdeUcusSaati, data.tip);
         logSheet.getRange(lastRowIdx, 6).setNumberFormat("0.0#");
-        logSheet.getRange(lastRowIdx, 11).setNumberFormat("@");
+        logSheet.getRange(lastRowIdx, 10).setNumberFormat("@");
       }
 
       var faalLogSheet = findSheet(ss, "Faaliyet Log");

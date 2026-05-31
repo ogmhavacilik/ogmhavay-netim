@@ -20,6 +20,27 @@ interface DataUpdateFormProps {
     date: string;
   }) => Promise<boolean>;
   onTriggerSync?: () => Promise<void>;
+  onUpdateLocalState?: (
+    kuyrukNo: string,
+    islemTarihi: string,
+    updates: {
+      govdeUcusSaati?: string;
+      faydaliSaat?: string;
+      konum?: string;
+      durum?: string;
+      durumAyrintisi?: string;
+      aciklama?: string;
+      assignedCode?: string;
+      bakim50H?: string;
+      bakimTakvim?: string;
+      bakim40H?: string;
+      bakim120H?: string;
+      bakim480H?: string;
+      bakimTakvimTarih?: string;
+      bakim200H?: string;
+    },
+    isPastDate: boolean
+  ) => void;
 }
 
 const formatForDateInput = (val: string | undefined | null) => {
@@ -125,7 +146,7 @@ const formatT70DateForDisplay = (val: string | undefined | null) => {
   return s;
 };
 
-const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onBack, onSuccess, onSaveIntraDay, onTriggerSync }) => {
+const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onBack, onSuccess, onSaveIntraDay, onTriggerSync, onUpdateLocalState }) => {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [isAuth, setIsAuth] = useState(false);
@@ -232,66 +253,9 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     return 'text-red-400';
   };
 
-  const prevKuyrukRef = React.useRef<string>('');
-
   useEffect(() => {
-    if (selectedKuyruk === prevKuyrukRef.current) return; // Sadece kuyruk değiştiğinde çalıştır
-    prevKuyrukRef.current = selectedKuyruk;
-
     const aircraft = fleet.find(a => a.kuyrukNo === selectedKuyruk);
-    if (aircraft) {
-      setSelectedAircraft(aircraft);
-      setFormData({
-        govdeUcusSaati: aircraft.govdeUcusSaati && aircraft.govdeUcusSaati !== '-' ? aircraft.govdeUcusSaati : '',
-        bakim50H: aircraft.bakim50H && aircraft.bakim50H !== '-' ? aircraft.bakim50H : '',
-        bakimTakvim: formatForDateInput(aircraft.bakimTakvim),
-        bakim40H: aircraft.bakim40H && aircraft.bakim40H !== '-' ? aircraft.bakim40H : '',
-        bakim120H: aircraft.bakim120H && aircraft.bakim120H !== '-' ? aircraft.bakim120H : '',
-        bakim480H: aircraft.bakim480H && aircraft.bakim480H !== '-' ? aircraft.bakim480H : '',
-        bakim200H: aircraft.bakim200H && aircraft.bakim200H !== '-' ? aircraft.bakim200H : '',
-        landings: aircraft.landings && aircraft.landings !== '-' ? aircraft.landings : '',
-        bakimTakvimTarih: selectedType === 'T-70' ? formatT70DateForDisplay(aircraft.bakimTakvimTarih) : formatForDateInput(aircraft.bakimTakvimTarih),
-        faydaliSaat: aircraft.faydaliSaat !== null ? aircraft.faydaliSaat.toString() : '',
-        konum: aircraft.konum && aircraft.konum !== '-' ? aircraft.konum : '',
-        durum: aircraft.durum || '',
-        durumAyrintisi: aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? aircraft.durumAyrintisi : '',
-        aciklama: aircraft.aciklama && aircraft.aciklama !== '-' ? aircraft.aciklama : '',
-        intraDayStartTime: aircraft.durumBaslangic && aircraft.durumBaslangic !== '-' ? aircraft.durumBaslangic : '',
-        intraDayEndTime: aircraft.durumBitis && aircraft.durumBitis !== '-' ? aircraft.durumBitis : '',
-        islemTarihi: new Date().toISOString().split('T')[0]
-      });
-
-      if (aircraft.tip === 'AT-802') {
-        setAt802Step(1);
-        setAt802Data({
-          acTT: aircraft.acTT && aircraft.acTT !== '-' ? aircraft.acTT : '',
-          landings: aircraft.landings && aircraft.landings !== '-' ? aircraft.landings : '',
-          starts: aircraft.engineStarts && aircraft.engineStarts !== '-' ? aircraft.engineStarts : '',
-          flights: aircraft.engineFlights && aircraft.engineFlights !== '-' ? aircraft.engineFlights : '',
-          frdsTest: formatForDateInput(aircraft.frdsTestDate),
-          motorCalisma: formatForDateInput(aircraft.motorRunDate),
-        });
-        
-        setIsLoadingSpecific(true);
-        fetchAircraftSpecificData(aircraft.appsScriptUrl || '', aircraft.sheetId || '', aircraft.kuyrukNo)
-          .then(res => {
-            if (res.success && res.data) {
-              setAt802Data({
-                acTT: res.data.acTT || aircraft.acTT || '',
-                landings: res.data.landings || aircraft.landings || '',
-                starts: res.data.starts || aircraft.engineStarts || '',
-                flights: res.data.flights || aircraft.engineFlights || '',
-                frdsTest: formatForDateInput(res.data.frdsTest || aircraft.frdsTestDate),
-                motorCalisma: formatForDateInput(res.data.motorCalisma || aircraft.motorRunDate)
-              });
-            }
-          })
-          .catch(() => {})
-          .finally(() => setIsLoadingSpecific(false));
-      }
-    } else {
-      setSelectedAircraft(null);
-    }
+    setSelectedAircraft(aircraft || null);
   }, [selectedKuyruk, fleet]);
 
   const handleInputChange = (field: string, value: string) => {
@@ -351,28 +315,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       const searchDate = formData.islemTarihi;
       const searchKuyruk = (selectedAircraft.kuyrukNo || "").trim().toUpperCase();
       
-      // Previous logs check - Sort descending to get closest prior date as first element
-      const prevLog = envanterLog
-        ?.filter(log => {
-          const lK = String(log.kuyrukNo || "").trim().toUpperCase();
-          const lT = String(log.tarih || "").trim();
-          return lK === searchKuyruk && lT < searchDate;
-        })
-        .sort((a, b) => (b.tarih || "").localeCompare(a.tarih || ""))[0];
-
-      if (prevLog) {
-        const prevHoursValue = parseSingleCellToHour(prevLog.govdeUcusSaati, selectedAircraft.tip);
-        if (prevHoursValue !== null && inputHours < (prevHoursValue - 0.001)) { // Allow tiny floating point diff
-          const prevFormatted = formatGovdeHour(prevLog.govdeUcusSaati, selectedAircraft.tip);
-          const inputFormatted = formatGovdeHour(govdeInput, selectedAircraft.tip);
-          setMessage({ 
-            type: 'error', 
-            text: `Hata: Girilen saat (${inputFormatted}), önceki kayıttaki saatten (${prevFormatted}) az olamaz!` 
-          });
-          setIsSubmitting(false);
-          return;
-        }
-      }
+      // Previous logs check has been removed per user request to allow retroactive updates and corrections of past day flight hours.
 
       // Subsequent logs check (records that exist AFTER the selected date) - Sort ascending to get closest next date
       const nextLog = envanterLog
@@ -626,6 +569,21 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
 
           if (pastLogResult.success) {
             setMessage({ type: 'success', text: 'Geçmiş gün verisi merkezi envanter logunda başarıyla düzeltildi.' });
+            if (onUpdateLocalState) {
+              onUpdateLocalState(
+                selectedAircraft.kuyrukNo,
+                formData.islemTarihi,
+                {
+                  govdeUcusSaati: pastHours,
+                  faydaliSaat: formData.faydaliSaat,
+                  konum: formData.konum,
+                  durum: formData.durum,
+                  durumAyrintisi: formData.durumAyrintisi,
+                  aciklama: formData.aciklama
+                },
+                true
+              );
+            }
           } else {
             setMessage({ type: 'warning', text: 'Geçmiş gün verisi güncellenemedi: ' + pastLogResult.message });
           }
@@ -635,9 +593,54 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       } else {
         // GÜNCEL TARİH (BUGÜN): Mevcut merkezi loglama tetiklenir
         try {
+          // --- USER REQUEST: Read the freshly updated values from the individual aircraft sheet first ---
+          let updatedAcGovdeSaat = finalData.govdeUcusSaati || finalData.acTT || selectedAircraft.govdeUcusSaati || 0;
+          let updatedAcFaydaliSaat = finalData.faydaliSaat || selectedAircraft.faydaliSaat || 0;
+
+          try {
+            const fetchedResult = await proxyFetch(selectedAircraft.appsScriptUrl || '', {
+              sheetId: selectedAircraft.sheetId,
+              sheetName: selectedAircraft.sheetName || '',
+              mapping: selectedAircraft.mapping,
+              action: 'getAircraftData',
+              fetchTechnicalDetails: selectedAircraft.tip === 'AT-802'
+            });
+
+            if (fetchedResult && fetchedResult.success && Array.isArray(fetchedResult.data)) {
+              const targetAc = fetchedResult.data.find((a: any) => 
+                String(a.kuyrukNo || "").trim().toUpperCase() === String(selectedAircraft.kuyrukNo).trim().toUpperCase()
+              );
+              if (targetAc) {
+                // Prevent Google Sheets replication lag/reversion:
+                // Only overwrite our local updated hours if the fetched spreadsheet hours are strictly greater than or equal to our local hours.
+                let fetchedGovdeVal = selectedAircraft.tip === 'AT-802' ? (targetAc.acTT || targetAc.govdeUcusSaati) : targetAc.govdeUcusSaati;
+                
+                if (fetchedGovdeVal) {
+                  const fetchedGovdeRaw = parseSingleCellToHour(fetchedGovdeVal, selectedAircraft.tip);
+                  const localGovdeRaw = parseSingleCellToHour(updatedAcGovdeSaat, selectedAircraft.tip);
+                  
+                  if (fetchedGovdeRaw !== null && localGovdeRaw !== null) {
+                    if (fetchedGovdeRaw >= localGovdeRaw) {
+                      updatedAcGovdeSaat = fetchedGovdeVal;
+                    } else {
+                      console.warn(`[LAG DETECTION] Ignored lagging/smaller flight hours (${fetchedGovdeRaw}) from fetched spreadsheet. Kept fresh input/form values (${localGovdeRaw}).`);
+                    }
+                  } else {
+                    updatedAcGovdeSaat = fetchedGovdeVal;
+                  }
+                }
+
+                updatedAcFaydaliSaat = targetAc.faydaliSaat !== undefined && targetAc.faydaliSaat !== null ? targetAc.faydaliSaat : updatedAcFaydaliSaat;
+                console.log("Newly read aircraft values from Excel (with lag protection):", { updatedAcGovdeSaat, updatedAcFaydaliSaat });
+              }
+            }
+          } catch (readError) {
+             console.warn("Could not read freshly updated Excel data, falling back to local form values:", readError);
+          }
+
           // Log flight hours with decimal support for specific types
           const getFormattedHourForLog = (val: any) => {
-            if (!val) return null;
+            if (!val && val !== 0 && val !== '0') return null;
             const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
             if (decimalTypes.includes(selectedAircraft.tip)) {
               const parsed = parseSingleCellToHour(val, selectedAircraft.tip);
@@ -654,15 +657,8 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
             return val;
           };
 
-          const statusToAnalyze = {
-            durum: formData.durum,
-            durumAyrintisi: formData.durumAyrintisi,
-            aciklama: formData.aciklama
-          };
-          const analysis = analyzeStatus(statusToAnalyze);
-
-          const logGovdeSaat = getFormattedHourForLog(finalData.govdeUcusSaati || finalData.acTT || selectedAircraft.govdeUcusSaati || 0);
-          const logFaydaliSaat = getFormattedHourForLog(finalData.faydaliSaat || selectedAircraft.faydaliSaat || 0);
+          const logGovdeSaat = getFormattedHourForLog(updatedAcGovdeSaat);
+          const logFaydaliSaat = getFormattedHourForLog(updatedAcFaydaliSaat);
 
           await proxyFetch(LOG_SCRIPT_URL, {
             action: 'logSingleAircraftActivity',
@@ -683,6 +679,30 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         } catch (logError) {
           console.error("Merkezi log güncellenirken hata oluştu:", logError);
           setMessage({ type: 'warning', text: 'Hava aracı dosyası güncellendi ancak merkezi log yapılamadı.' });
+        }
+        
+        if (onUpdateLocalState) {
+          onUpdateLocalState(
+            selectedAircraft.kuyrukNo,
+            formData.islemTarihi,
+            {
+              govdeUcusSaati: finalData.govdeUcusSaati || finalData.acTT || selectedAircraft.govdeUcusSaati || '',
+              faydaliSaat: formData.faydaliSaat,
+              konum: formData.konum,
+              durum: formData.durum,
+              durumAyrintisi: formData.durumAyrintisi,
+              aciklama: formData.aciklama,
+              assignedCode: analysis.code,
+              bakim50H: formData.bakim50H,
+              bakimTakvim: formData.bakimTakvim,
+              bakim40H: formData.bakim40H,
+              bakim120H: formData.bakim120H,
+              bakim480H: formData.bakim480H,
+              bakimTakvimTarih: formData.bakimTakvimTarih,
+              bakim200H: formData.bakim200H
+            },
+            false
+          );
         }
       }
 
@@ -721,7 +741,6 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     const currentInitKey = `${selectedKuyruk}_${formData.islemTarihi}`;
     
     // If we already initialized for this specific aircraft and date, do NOT reset the form
-    // This prevents background fleet refreshes from overwriting what the user is typing.
     if (initializationRef.current === currentInitKey) return;
     
     if (isPastDate) {
@@ -753,33 +772,36 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           }
         }
         
-        if (logEntry) {
-          const hours = logEntry.govdeUcusSaati ? formatGovdeHour(logEntry.govdeUcusSaati, selectedAircraft.tip) : '';
-          setFormData(prev => ({
-            ...prev,
-            govdeUcusSaati: hours || prev.govdeUcusSaati,
-            faydaliSaat: logEntry.faydaliSaat ? String(logEntry.faydaliSaat).replace('.', ',') : prev.faydaliSaat,
-            konum: logEntry.konum || prev.konum,
-            durum: logEntry.durum || prev.durum,
-            durumAyrintisi: logEntry.durumAyrintisi || prev.durumAyrintisi,
-            aciklama: logEntry.aciklama || prev.aciklama
-          }));
-          initializationRef.current = currentInitKey;
-          if (selectedType === 'AT-802') {
-            setAt802Data(prev => ({
-              ...prev,
-              acTT: hours || prev.acTT,
-              // Keep today's values for these if not in log (Envanter Log doesn't have them)
-              landings: prev.landings,
-              starts: prev.starts,
-              flights: prev.flights,
-              frdsTest: prev.frdsTest,
-              motorCalisma: prev.motorCalisma,
-            }));
-          }
+        // Populate form using logEntry if found, otherwise use selectedAircraft as fallback
+        const hours = logEntry?.govdeUcusSaati 
+          ? formatGovdeHour(logEntry.govdeUcusSaati, selectedAircraft.tip) 
+          : (selectedAircraft.govdeUcusSaati ? formatGovdeHour(selectedAircraft.govdeUcusSaati, selectedAircraft.tip) : '');
+
+        setFormData(prev => ({
+          ...prev,
+          govdeUcusSaati: hours,
+          faydaliSaat: logEntry?.faydaliSaat ? String(logEntry.faydaliSaat).replace('.', ',') : '',
+          konum: logEntry?.konum || '',
+          durum: logEntry?.durum || '',
+          durumAyrintisi: logEntry?.durumAyrintisi || '',
+          aciklama: logEntry?.aciklama || ''
+        }));
+        
+        initializationRef.current = currentInitKey;
+
+        if (selectedAircraft.tip === 'AT-802') {
+          setAt802Step(1);
+          setAt802Data({
+            acTT: hours,
+            landings: logEntry?.landings || selectedAircraft.landings || '',
+            starts: '',
+            flights: '',
+            frdsTest: formatForDateInput(selectedAircraft.frdsTestDate),
+            motorCalisma: formatForDateInput(selectedAircraft.motorRunDate),
+          });
         }
-      } else if (!isPastDate && selectedAircraft) {
-        // Bugün ise mevcut uçak verilerini getir
+      } else {
+        // Bugün veya gelecek tarih ise mevcut uçak verilerini getir
         const hours = selectedAircraft.govdeUcusSaati ? formatGovdeHour(selectedAircraft.govdeUcusSaati, selectedAircraft.tip) : '';
         setFormData(prev => ({
           ...prev,
@@ -796,19 +818,42 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           konum: selectedAircraft.konum || '',
           durum: selectedAircraft.durum || '',
           durumAyrintisi: selectedAircraft.durumAyrintisi || '',
-          aciklama: selectedAircraft.aciklama || ''
+          aciklama: selectedAircraft.aciklama || '',
+          intraDayStartTime: selectedAircraft.durumBaslangic && selectedAircraft.durumBaslangic !== '-' ? selectedAircraft.durumBaslangic : '',
+          intraDayEndTime: selectedAircraft.durumBitis && selectedAircraft.durumBitis !== '-' ? selectedAircraft.durumBitis : '',
         }));
+
         initializationRef.current = currentInitKey;
-        if (selectedType === 'AT-802') {
+
+        if (selectedAircraft.tip === 'AT-802') {
+          setAt802Step(1);
           setAt802Data({
             acTT: hours,
             landings: selectedAircraft.landings || '',
-            starts: '',
-            flights: '',
+            starts: selectedAircraft.engineStarts || '',
+            flights: selectedAircraft.engineFlights || '',
             frdsTest: formatForDateInput(selectedAircraft.frdsTestDate),
             motorCalisma: formatForDateInput(selectedAircraft.motorRunDate),
-            bakimTakvimTarih: formatForDateInput(selectedAircraft.bakimTakvimTarih)
           });
+
+          // Fetch the real-time tech log details asynchronously
+          setIsLoadingSpecific(true);
+          fetchAircraftSpecificData(selectedAircraft.appsScriptUrl || '', selectedAircraft.sheetId || '', selectedAircraft.kuyrukNo)
+            .then(res => {
+              if (res.success && res.data) {
+                setAt802Data(prev => ({
+                  ...prev,
+                  acTT: res.data.acTT || selectedAircraft.acTT || prev.acTT || '',
+                  landings: res.data.landings || selectedAircraft.landings || prev.landings || '',
+                  starts: res.data.starts || selectedAircraft.engineStarts || prev.starts || '',
+                  flights: res.data.flights || selectedAircraft.engineFlights || prev.flights || '',
+                  frdsTest: formatForDateInput(res.data.frdsTest || selectedAircraft.frdsTestDate),
+                  motorCalisma: formatForDateInput(res.data.motorCalisma || selectedAircraft.motorRunDate)
+                }));
+              }
+            })
+            .catch(() => {})
+            .finally(() => setIsLoadingSpecific(false));
         }
       }
   }, [formData.islemTarihi, selectedKuyruk, envanterLog, isPastDate, selectedType, selectedAircraft]);

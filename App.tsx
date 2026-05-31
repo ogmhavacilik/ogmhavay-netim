@@ -133,6 +133,127 @@ const App = () => {
     }
   };
 
+  const handleUpdateLocalState = useCallback((
+    kuyrukNo: string,
+    islemTarihi: string,
+    updates: {
+      govdeUcusSaati?: string;
+      faydaliSaat?: string;
+      konum?: string;
+      durum?: string;
+      durumAyrintisi?: string;
+      aciklama?: string;
+      assignedCode?: string;
+      bakim50H?: string;
+      bakimTakvim?: string;
+      bakim40H?: string;
+      bakim120H?: string;
+      bakim480H?: string;
+      bakimTakvimTarih?: string;
+      bakim200H?: string;
+    },
+    isPastDate: boolean
+  ) => {
+    const searchKNoClean = kuyrukNo.trim().toUpperCase();
+
+    if (!isPastDate) {
+      setFleet(prevFleet => {
+        return prevFleet.map(a => {
+          if (String(a.kuyrukNo).trim().toUpperCase() === searchKNoClean) {
+            const updatedAc = { ...a };
+            if (updates.govdeUcusSaati !== undefined) {
+              const parsedVal = parseSingleCellToHour(updates.govdeUcusSaati, a.tip);
+              if (parsedVal !== null) {
+                updatedAc.govdeUcusSaati = updates.govdeUcusSaati;
+              }
+            }
+            if (updates.faydaliSaat !== undefined) {
+              const numVal = parseFloat(String(updates.faydaliSaat).replace(',', '.'));
+              updatedAc.faydaliSaat = !isNaN(numVal) ? numVal : undefined;
+            }
+            if (updates.konum !== undefined) updatedAc.konum = updates.konum;
+            if (updates.durum !== undefined) updatedAc.durum = updates.durum;
+            if (updates.durumAyrintisi !== undefined) updatedAc.durumAyrintisi = updates.durumAyrintisi;
+            if (updates.aciklama !== undefined) updatedAc.aciklama = updates.aciklama;
+            if (updates.assignedCode !== undefined) updatedAc.assignedCode = updates.assignedCode;
+            
+            if (updates.bakim50H !== undefined) updatedAc.bakim50H = updates.bakim50H;
+            if (updates.bakimTakvim !== undefined) updatedAc.bakimTakvim = updates.bakimTakvim;
+            if (updates.bakim40H !== undefined) updatedAc.bakim40H = updates.bakim40H;
+            if (updates.bakim120H !== undefined) updatedAc.bakim120H = updates.bakim120H;
+            if (updates.bakim480H !== undefined) updatedAc.bakim480H = updates.bakim480H;
+            if (updates.bakimTakvimTarih !== undefined) updatedAc.bakimTakvimTarih = updates.bakimTakvimTarih;
+            if (updates.bakim200H !== undefined) updatedAc.bakim200H = updates.bakim200H;
+
+            return updatedAc;
+          }
+          return a;
+        });
+      });
+    }
+
+    setEnvanterLog(prevLogs => {
+      let updatedLogs = [...prevLogs];
+      const index = updatedLogs.findIndex(log => {
+        const logK = String(log.kuyrukNo || "").trim().toUpperCase();
+        let logT = String(log.tarih || "").trim();
+        if (logT.match(/^\d{2}\.\d{2}\.\d{4}$/)) {
+          const parts = logT.split('.');
+          logT = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+        return logK === searchKNoClean && logT === islemTarihi;
+      });
+
+      const entryHours = updates.govdeUcusSaati !== undefined ? updates.govdeUcusSaati : "";
+      const parsedFaydali = updates.faydaliSaat !== undefined ? parseFloat(String(updates.faydaliSaat).replace(',', '.')) : NaN;
+
+      if (index !== -1) {
+        updatedLogs[index] = {
+          ...updatedLogs[index],
+          ...(updates.govdeUcusSaati !== undefined ? { govdeUcusSaati: entryHours } : {}),
+          ...(updates.faydaliSaat !== undefined ? { faydaliSaat: !isNaN(parsedFaydali) ? parsedFaydali : '' } : {}),
+          ...(updates.konum !== undefined ? { konum: updates.konum } : {}),
+          ...(updates.durum !== undefined ? { durum: updates.durum } : {}),
+          ...(updates.durumAyrintisi !== undefined ? { durumAyrintisi: updates.durumAyrintisi } : {}),
+          ...(updates.aciklama !== undefined ? { aciklama: updates.aciklama } : {})
+        };
+      } else {
+        const targetTip = fleet.find(a => String(a.kuyrukNo).trim().toUpperCase() === searchKNoClean)?.tip || "";
+        updatedLogs.push({
+          kuyrukNo,
+          tarih: islemTarihi,
+          tip: targetTip,
+          govdeUcusSaati: entryHours,
+          faydaliSaat: !isNaN(parsedFaydali) ? parsedFaydali : '',
+          konum: updates.konum || '',
+          durum: updates.durum || 'FAAL',
+          durumAyrintisi: updates.durumAyrintisi || '-',
+          aciklama: updates.aciklama || 'GERİYE DÖNÜK GİRİŞ'
+        });
+      }
+
+      const targetTip = fleet.find(a => String(a.kuyrukNo).trim().toUpperCase() === searchKNoClean)?.tip || "";
+      if (updates.govdeUcusSaati !== undefined && targetTip) {
+        const newHoursVal = parseSingleCellToHour(updates.govdeUcusSaati, targetTip) || 0;
+
+        updatedLogs = updatedLogs.map(item => {
+          if (String(item.kuyrukNo).trim().toUpperCase() === searchKNoClean && item.tarih > islemTarihi) {
+            const rowHoursVal = parseSingleCellToHour(item.govdeUcusSaati, targetTip) || 0;
+            if (rowHoursVal < newHoursVal) {
+              return {
+                ...item,
+                govdeUcusSaati: updates.govdeUcusSaati
+              };
+            }
+          }
+          return item;
+        });
+      }
+
+      return updatedLogs;
+    });
+  }, [fleet]);
+
   const [authenticatedTypes, setAuthenticatedTypes] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<{ type: string, action: () => void } | null>(null);
   const [authError, setAuthError] = useState('');
@@ -1484,16 +1605,11 @@ const App = () => {
         onBack={() => setCurrentView('landing')}
         onSaveIntraDay={handleSaveIntraDay}
         onTriggerSync={runGlobalSync}
+        onUpdateLocalState={handleUpdateLocalState}
         onSuccess={(type) => {
-          if (type === 'Bell-429') {
-            localStorage.setItem('redirect_view', 'dashboard');
-            localStorage.setItem('redirect_filter', 'Bell-429');
-            window.location.reload();
-          } else {
-            setFilterType(type);
-            runGlobalSync();
-            setCurrentView('dashboard');
-          }
+          setFilterType(type);
+          runGlobalSync();
+          setCurrentView('dashboard');
         }}
       />
     );

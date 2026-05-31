@@ -66,7 +66,18 @@ function doPost(e) {
       
       if (updates.govdeUcusSaati !== undefined) {
         if (!isPastDate) {
-          sheet.getRange(rowIndex, 5).setValue(updates.govdeUcusSaati);
+          var valGovde = updates.govdeUcusSaati;
+          if (valGovde !== null && valGovde !== undefined && valGovde !== "") {
+            var formattedGovde = String(valGovde).trim().replace(',', '.');
+            var nGovde = parseFloat(formattedGovde);
+            if (!isNaN(nGovde)) {
+              sheet.getRange(rowIndex, 5).setValue(nGovde);
+            } else {
+              sheet.getRange(rowIndex, 5).setValue(valGovde);
+            }
+          } else {
+            sheet.getRange(rowIndex, 5).setValue("");
+          }
         } else {
           // Geriye dönük güncelleme ise, Column E'yi geçmiş saat değeriyle ezmiyoruz.
           // Envanter Log'daki en son/güncel değeri koruyoruz.
@@ -84,8 +95,57 @@ function doPost(e) {
       if (updates.durum !== undefined) sheet.getRange(rowIndex, 13).setValue(updates.durum);
       if (updates.durumAyrintisi !== undefined) sheet.getRange(rowIndex, 14).setValue(updates.durumAyrintisi);
       if (updates.aciklama !== undefined) sheet.getRange(rowIndex, 15).setValue(updates.aciklama);
-      if (updates.bakim50H !== undefined) sheet.getRange(rowIndex, 16).setValue(updates.bakim50H);
-      if (updates.bakimTakvim !== undefined) sheet.getRange(rowIndex, 17).setValue(updates.bakimTakvim);
+      
+      // Corrected to save directly to Column H (8) for Saat Esaslı Bakım (50H)
+      if (updates.bakim50H !== undefined) {
+        var val50H = updates.bakim50H;
+        if (val50H !== null && val50H !== undefined && val50H !== "") {
+          var formatted50H = String(val50H).trim().replace(',', '.');
+          var n50H = parseFloat(formatted50H);
+          if (!isNaN(n50H)) {
+            sheet.getRange(rowIndex, 8).setValue(n50H);
+          } else {
+            sheet.getRange(rowIndex, 8).setValue(val50H);
+          }
+        } else {
+          sheet.getRange(rowIndex, 8).setValue("");
+        }
+      }
+
+      // Corrected to save directly to Column J (10) for Takvim Esaslı Bakım (Tarih) as proper Date object
+      if (updates.bakimTakvim !== undefined) {
+        var dateVal = updates.bakimTakvim;
+        var cell = sheet.getRange(rowIndex, 10);
+        if (dateVal && dateVal !== "" && dateVal !== "-") {
+          var parts = String(dateVal).split(/[-./]/);
+          if (parts.length === 3) {
+            var day, month, year;
+            if (parts[0].length === 4) { // YYYY-MM-DD
+              year = parseInt(parts[0], 10);
+              month = parseInt(parts[1], 10) - 1;
+              day = parseInt(parts[2], 10);
+            } else { // DD-MM-YY or DD-MM-YYYY
+              day = parseInt(parts[0], 10);
+              month = parseInt(parts[1], 10) - 1;
+              var yStr = parts[2];
+              year = parseInt(yStr, 10);
+              if (yStr.length === 2) year += 2000;
+            }
+            
+            var d = new Date(year, month, day, 12, 0, 0);
+            if (!isNaN(d.getTime())) {
+              cell.setValue(d);
+              cell.setNumberFormat("dd.MM.yyyy");
+            } else {
+              cell.setValue(dateVal);
+            }
+          } else {
+            cell.setValue(dateVal);
+          }
+        } else {
+          cell.setValue("");
+        }
+      }
       
       return ContentService.createTextOutput(JSON.stringify({ success: true, message: "Veriler başarıyla Google E-Tablo'ya işlendi." }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -132,48 +192,6 @@ function doPost(e) {
       }
       
       if (hasKuyruk) {
-        var kNoClean = String(item.kuyrukNo).trim().toUpperCase();
-        if (latestLogs[kNoClean]) {
-          var logInfo = latestLogs[kNoClean];
-          if (logInfo.govdeUcusSaati !== undefined && logInfo.govdeUcusSaati !== "" && logInfo.govdeUcusSaati !== null) {
-            item.govdeUcusSaati = logInfo.govdeUcusSaati;
-            // E-Bölümünü de senkronize tut
-            var cellVal = sheet.getRange(i + startRow, 5).getValue();
-            if (String(cellVal) !== String(logInfo.govdeUcusSaati)) {
-              sheet.getRange(i + startRow, 5).setValue(logInfo.govdeUcusSaati);
-            }
-          }
-          if (logInfo.durum !== undefined && logInfo.durum !== "" && logInfo.durum !== null) {
-            item.durum = logInfo.durum;
-            var cellVal = sheet.getRange(i + startRow, 13).getValue();
-            if (String(cellVal) !== String(logInfo.durum)) {
-              sheet.getRange(i + startRow, 13).setValue(logInfo.durum);
-            }
-          }
-          if (logInfo.durumAyrintisi !== undefined && logInfo.durumAyrintisi !== "" && logInfo.durumAyrintisi !== null) {
-            if (String(logInfo.durumAyrintisi).trim() !== "") {
-              item.durumAyrintisi = logInfo.durumAyrintisi;
-              var cellVal = sheet.getRange(i + startRow, 14).getValue();
-              if (String(cellVal) !== String(logInfo.durumAyrintisi)) {
-                sheet.getRange(i + startRow, 14).setValue(logInfo.durumAyrintisi);
-              }
-            }
-          }
-          if (logInfo.konum !== undefined && logInfo.konum !== "" && logInfo.konum !== null) {
-            item.konum = logInfo.konum;
-            var cellVal = sheet.getRange(i + startRow, 12).getValue();
-            if (String(cellVal) !== String(logInfo.konum)) {
-              sheet.getRange(i + startRow, 12).setValue(logInfo.konum);
-            }
-          }
-          if (logInfo.aciklama !== undefined && logInfo.aciklama !== null) {
-            item.aciklama = logInfo.aciklama;
-            var cellVal = sheet.getRange(i + startRow, 15).getValue();
-            if (String(cellVal) !== String(logInfo.aciklama)) {
-              sheet.getRange(i + startRow, 15).setValue(logInfo.aciklama);
-            }
-          }
-        }
         results.push(item);
       }
     }

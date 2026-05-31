@@ -1238,8 +1238,8 @@ function saveLogsToSheets(ss, fleetData, customDateStr) {
   var envLogSheet = findSheet(ss, "Envanter Log");
   if (!envLogSheet) {
     envLogSheet = ss.insertSheet("Envanter Log");
-    envLogSheet.appendRow(["ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Analiz Kodu", "Açıklama"]);
-    envLogSheet.getRange("A1:K1").setFontWeight("bold").setBackground("#cfe2f3").setBorder(true, true, true, true, true, true);
+    envLogSheet.appendRow(["ID", "Tarih", "Kuyruk No", "Tip", "Gövde Uçuş Saati", "Faydalı Saat", "Konum", "Durum", "Durum Ayrıntısı", "Açıklama"]);
+    envLogSheet.getRange("A1:J1").setFontWeight("bold").setBackground("#cfe2f3").setBorder(true, true, true, true, true, true);
   }
 
   var faalLogSheet = findSheet(ss, "Faaliyet Log");
@@ -1295,16 +1295,16 @@ function saveLogsToSheets(ss, fleetData, customDateStr) {
     }
 
     if (!envEntry) {
-      envLogSheet.getRange(nextEnvRow, 1, 1, 11).setValues([[
+      envLogSheet.getRange(nextEnvRow, 1, 1, 10).setValues([[
         logId, tarihStr, kNo, aircraft.tip || "", "", 
         faydaliVal, aircraft.konum || "", aircraft.durum || "", 
-        aircraft.durumAyrintisi || "", assignedCode, aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
+        aircraft.durumAyrintisi || "", aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
       ]]);
       setLogTimeValueGS(envLogSheet, nextEnvRow, 5, aircraft.govdeUcusSaati, aircraft.tip);
       envLogSheet.getRange(nextEnvRow, 6).setNumberFormat("0.0#");
       
       // Update map to avoid duplicates if same tail processed twice (unlikely but safe)
-      envIdMap[logId] = { row: nextEnvRow, data: [logId, tarihStr, kNo, aircraft.tip, aircraft.govdeUcusSaati, faydaliVal] };
+      envIdMap[logId] = { row: nextEnvRow, data: [logId, tarihStr, kNo, aircraft.tip, aircraft.govdeUcusSaati, faydaliVal, aircraft.konum || "", aircraft.durum || "", aircraft.durumAyrintisi || "", aircraft.aciklama] };
       nextEnvRow++;
     } else {
       // Surgical Update - Only if changed
@@ -1316,12 +1316,14 @@ function saveLogsToSheets(ss, fleetData, customDateStr) {
       var newAyrinti = String(aircraft.durumAyrintisi || "").trim().toUpperCase();
       var oldKonum = String(oldRow[6] || "").trim().toUpperCase();
       var newKonum = String(aircraft.konum || "").trim().toUpperCase();
+      var oldAciklama = String(oldRow[9] || "").trim();
+      var newAciklama = String(aircraft.aciklama || "").trim();
       
-      if (Math.abs(oldFaydali - faydaliVal) > 0.001 || oldDurum !== newDurum || oldAyrinti !== newAyrinti || oldKonum !== newKonum || String(oldRow[9]) !== String(assignedCode)) {
+      if (Math.abs(oldFaydali - faydaliVal) > 0.001 || oldDurum !== newDurum || oldAyrinti !== newAyrinti || oldKonum !== newKonum || oldAciklama !== newAciklama) {
         envLogSheet.getRange(envEntry.row, 1, 1, 4).setValues([[logId, tarihStr, kNo, aircraft.tip || ""]]);
-        envLogSheet.getRange(envEntry.row, 6, 1, 6).setValues([[
+        envLogSheet.getRange(envEntry.row, 6, 1, 5).setValues([[
           faydaliVal, aircraft.konum || "", aircraft.durum || "", 
-          aircraft.durumAyrintisi || "", assignedCode, aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
+          aircraft.durumAyrintisi || "", aircraft.aciklama ? "'" + String(aircraft.aciklama) : ""
         ]]);
         setLogTimeValueGS(envLogSheet, envEntry.row, 5, aircraft.govdeUcusSaati, aircraft.tip);
         envLogSheet.getRange(envEntry.row, 6).setNumberFormat("0.0#");
