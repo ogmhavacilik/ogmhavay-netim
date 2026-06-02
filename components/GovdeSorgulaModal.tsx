@@ -216,13 +216,13 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
       <body>
         <table>
           <tr>
-            <td colspan="4" style="border: none; text-align: right; color: gray; font-size: 10px;">Veri Çekiliş Tarihi: ${dateStr}</td>
+            <td colspan="7" style="border: none; text-align: right; color: gray; font-size: 10px;">Veri Çekiliş Tarihi: ${dateStr}</td>
           </tr>
           <tr>
-            <td colspan="4" class="title-row" style="text-align: center;">GÖVDE UÇUŞ SAATİ SORGULAMA SONUÇLARI (${type})</td>
+            <td colspan="7" class="title-row" style="text-align: center;">GÖVDE UÇUŞ SAATİ SORGULAMA SONUÇLARI (${type})</td>
           </tr>
           <tr>
-            <td colspan="4" style="text-align: center; font-weight: bold; color: #475569; background-color: #f8fafc;">Başlangıç: ${startDate} | Bitiş: ${endDate}</td>
+            <td colspan="7" style="text-align: center; font-weight: bold; color: #475569; background-color: #f8fafc;">Başlangıç: ${startDate} | Bitiş: ${endDate}</td>
           </tr>
           <tr class="header-row">
             <th>KUYRUK NO</th>
@@ -231,6 +231,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
             <th>BİTİŞ (ONDALIK)</th>
             <th>BİTİŞ (SAAT)</th>
             <th>TOPLAM UÇUŞ</th>
+            <th>TOPLAM UÇUŞ (ONDALIK)</th>
           </tr>
     `;
 
@@ -247,6 +248,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
           <td class="saat-col" style="mso-number-format:'\@';">${bitisDec}</td>
           <td class="saat-col" style="mso-number-format:'\@';">${formatAsHour(r.bitisSaat)}</td>
           <td class="fark-col" style="mso-number-format:'\@';">${formatAsHour(r.fark)}</td>
+          <td class="fark-col" style="mso-number-format:'\@';">${formatAsDecimal(r.fark)}</td>
         </tr>
       `;
     });
@@ -256,6 +258,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
         <tr style="background-color: #f0fdf4; font-weight: bold;">
           <td colspan="5" style="text-align: right; padding-right: 20px; color: #064e3b; font-size: 14px;">TOPLAM UÇUŞ SÜRESİ:</td>
           <td class="fark-col" style="mso-number-format:'\@'; color: #1e40af; font-size: 16px;">${formatAsHour(totalFark)}</td>
+          <td class="fark-col" style="mso-number-format:'\@'; color: #1e40af; font-size: 16px;">${formatAsDecimal(totalFark)}</td>
         </tr>
     `;
 
@@ -350,7 +353,8 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
                     <th className="px-2 py-4 text-center text-[10px] font-black uppercase tracking-widest border-r border-emerald-800">BAŞL. (SAAT)</th>
                     <th className="px-2 py-4 text-center text-[10px] font-black uppercase tracking-widest border-r border-emerald-800">BİTİŞ (ONDALIK)</th>
                     <th className="px-2 py-4 text-center text-[10px] font-black uppercase tracking-widest border-r border-emerald-800">BİTİŞ (SAAT)</th>
-                    <th className="px-2 py-4 text-center text-[10px] font-black uppercase tracking-widest">TOPLAM UÇUŞ</th>
+                    <th className="px-2 py-4 text-center text-[10px] font-black uppercase tracking-widest border-r border-emerald-800">TOPLAM UÇUŞ</th>
+                    <th className="px-2 py-4 text-center text-[10px] font-black uppercase tracking-widest">TOPLAM UÇUŞ (ONDALIK)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -374,8 +378,11 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
                         <td className="px-2 py-4 text-center font-bold text-slate-600 text-sm border-r border-slate-100">
                           {formatAsHour(r.bitisSaat)}
                         </td>
-                        <td className="px-2 py-4 text-center font-black text-blue-600 text-base bg-blue-50/30">
+                        <td className="px-2 py-4 text-center font-black text-blue-600 text-base bg-blue-50/30 border-r border-slate-100">
                           {formatAsHour(r.fark)}
+                        </td>
+                        <td className="px-2 py-4 text-center font-bold text-blue-600 text-sm bg-blue-50/30">
+                          {formatAsDecimal(r.fark)}
                         </td>
                       </tr>
                     );
@@ -386,8 +393,11 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
                     <td colSpan={5} className="px-6 py-6 text-right font-black text-emerald-900 uppercase tracking-widest text-sm">
                       TOPLAM UÇUŞ SÜRESİ:
                     </td>
-                    <td className="px-4 py-6 text-center font-black text-blue-700 text-xl bg-blue-100/50">
+                    <td className="px-4 py-6 text-center font-black text-blue-700 text-xl bg-blue-100/50 border-r border-emerald-200">
                       {formatAsHour(results.reduce((acc, curr) => acc + curr.fark, 0))}
+                    </td>
+                    <td className="px-4 py-6 text-center font-black text-blue-700 text-lg bg-blue-100/50">
+                      {formatAsDecimal(results.reduce((acc, curr) => acc + curr.fark, 0))}
                     </td>
                   </tr>
                 </tfoot>

@@ -28,12 +28,28 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
     return { code: 'F', interpretation: 'FAAL' };
   }
 
+  const normalizeTurkish = (str: string): string => {
+    return str
+      .replace(/İ/g, "I")
+      .replace(/ı/g, "I")
+      .replace(/Ğ/g, "G")
+      .replace(/ğ/g, "G")
+      .replace(/Ü/g, "U")
+      .replace(/ü/g, "U")
+      .replace(/Ş/g, "S")
+      .replace(/ş/g, "S")
+      .replace(/Ö/g, "O")
+      .replace(/ö/g, "O")
+      .replace(/Ç/g, "C")
+      .replace(/ç/g, "C");
+  };
+
   const findCodeInText = (text: string): { code: DailyStatusCode, interpretation: string } | null => {
     const t = text.toLocaleUpperCase('tr-TR');
     if (!t) return null;
     
-    // Normalize string for matching: replace dotted İ with dotless I for comparison
-    const n = t.replace(/İ/g, "I").replace(/ı/g, "I");
+    // Normalize string for matching: replace all Turkish accented letters
+    const n = normalizeTurkish(t);
 
     // Exact Code Match (Highest Priority)
     const exactMap: Record<string, { code: DailyStatusCode, interpretation: string }> = {

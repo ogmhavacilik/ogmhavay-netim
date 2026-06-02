@@ -1700,14 +1700,26 @@ function sendReportEmail(recipient, customAttachments, ss) {
     return;
   }
 
+  var liveAppUrl = "https://filodurumlar-bakimsube.netlify.app/";
   var body = "Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",\n\n" +
-             "Günlük hava aracı operasyonel durum raporları ekte sunulmuştur.\n\n" +
-             "İyi çalışmalar.";
+             "Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.\n\n" +
+             "Bununla birlikte, aşağıdaki bağlantıya tıklayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:\n\n" +
+             "👉 Buraya tıklayarak en güncel durum raporunu canlı olarak izleyebilirsiniz:\n" + liveAppUrl + "\n\n" +
+             "İyi çalışmalar dilerim.";
+
+  var htmlBody = "<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>" +
+                 "<p>Sayın <strong>" + (recipient["PERSONEL ADI"] || "Yetkili") + "</strong>,</p>" +
+                 "<p>Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.</p>" +
+                 "<p>Bununla birlikte, aşağıdaki bağlantıya tıklayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:</p>" +
+                 "<p style='margin: 20px 0;'>👉 <strong><a href='" + liveAppUrl + "' target='_blank' style='color: #059669; text-decoration: underline;'>Buraya tıklayarak en güncel durum raporunu canlı olarak izleyebilirsiniz.</a></strong></p>" +
+                 "<p>İyi çalışmalar dilerim.</p>" +
+                 "</div>";
 
   MailApp.sendEmail({
     to: targetEmail,
     subject: "OGM Hava Aracı Durum Raporu - " + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy"),
     body: body,
+    htmlBody: htmlBody,
     attachments: attachments,
   });
 }
@@ -1885,11 +1897,27 @@ function analyzeStatusGS(item) {
     return "F";
   }
 
+  var normalizeTurkish = function(str) {
+    return str
+      .replace(/İ/g, "I")
+      .replace(/ı/g, "I")
+      .replace(/Ğ/g, "G")
+      .replace(/ğ/g, "G")
+      .replace(/Ü/g, "U")
+      .replace(/ü/g, "U")
+      .replace(/Ş/g, "S")
+      .replace(/ş/g, "S")
+      .replace(/Ö/g, "O")
+      .replace(/ö/g, "O")
+      .replace(/Ç/g, "C")
+      .replace(/ç/g, "C");
+  };
+
   var findCodeInText = function(t) {
     if (!t) return null;
     
-    // Normalize string for matching: replace dotted İ with dotless I for comparison
-    var n = t.replace(/İ/g, "I").replace(/ı/g, "I");
+    // Normalize string for matching: replace all Turkish accented letters
+    var n = normalizeTurkish(t);
 
     // Exact Code Match (Highest Priority)
     var exactCodes = ['B', 'BB', 'TBU', 'KM', 'A', 'PB', 'KK', 'X', 'TB'];
@@ -2230,7 +2258,6 @@ function performDailyMidnightLogging() {
       item.konum,
       item.durum,
       item.durumAyrintisi,
-      item.analizKodu || '?',
       item.aciklama ? "'" + String(item.aciklama) : "",
     ];
 
@@ -2240,7 +2267,7 @@ function performDailyMidnightLogging() {
       var lastR = logSheet.getLastRow();
       setLogTimeValue(logSheet, lastR, 5, item.govdeUcusSaati, item.tip);
       logSheet.getRange(lastR, 6).setNumberFormat("0.0#");
-      logSheet.getRange(lastR, 11).setNumberFormat("@");
+      logSheet.getRange(lastR, 10).setNumberFormat("@");
       logMap[id] = { row: lastR, data: newLogValues };
     } else {
       var entry = logMap[id];
@@ -2249,12 +2276,12 @@ function performDailyMidnightLogging() {
 
       var hasChanged = false;
       // Check for changes (Tip to Aciklama)
-      for (var i = 3; i < 11; i++) { 
+      for (var i = 3; i < 10; i++) { 
          if (i === 4) continue; // Govde handled separately
          var existingVal = String(existingData[i] || "");
          var newVal = String(newLogValues[i] || "");
-         if (i === 10 && newVal.indexOf("'") === 0) newVal = newVal.substring(1);
-         if (i === 10 && existingVal.indexOf("'") === 0) existingVal = existingVal.substring(1);
+         if (i === 9 && newVal.indexOf("'") === 0) newVal = newVal.substring(1);
+         if (i === 9 && existingVal.indexOf("'") === 0) existingVal = existingVal.substring(1);
 
          if (existingVal !== newVal) {
            hasChanged = true;
@@ -2267,17 +2294,16 @@ function performDailyMidnightLogging() {
 
       if (hasChanged) {
         logSheet.getRange(targetRow, 1, 1, 4).setValues([[id, dateStr, item.kuyrukNo, item.tip]]);
-        logSheet.getRange(targetRow, 6, 1, 6).setValues([[
+        logSheet.getRange(targetRow, 6, 1, 5).setValues([[
           faydaliVal,
           item.konum,
           item.durum,
           item.durumAyrintisi,
-          item.analizKodu || '?',
           item.aciklama ? "'" + String(item.aciklama) : ""
         ]]);
         setLogTimeValue(logSheet, targetRow, 5, item.govdeUcusSaati, item.tip);
         logSheet.getRange(targetRow, 6).setNumberFormat("0.0#");
-        logSheet.getRange(targetRow, 11).setNumberFormat("@");
+        logSheet.getRange(targetRow, 10).setNumberFormat("@");
       }
     }
 
