@@ -307,39 +307,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     const today = new Date().toISOString().split('T')[0];
     const isPastDate = formData.islemTarihi < today;
 
-    // Validation: New hours cannot be less than previous hours OR more than subsequent hours
-    const govdeInput = selectedAircraft.tip === 'AT-802' ? at802Data.acTT : formData.govdeUcusSaati;
-    const inputHours = parseSingleCellToHour(govdeInput, selectedAircraft.tip);
-    
-    if (inputHours !== null) {
-      const searchDate = formData.islemTarihi;
-      const searchKuyruk = (selectedAircraft.kuyrukNo || "").trim().toUpperCase();
-      
-      // Previous logs check has been removed per user request to allow retroactive updates and corrections of past day flight hours.
-
-      // Subsequent logs check (records that exist AFTER the selected date) - Sort ascending to get closest next date
-      const nextLog = envanterLog
-        ?.filter(log => {
-          const lK = String(log.kuyrukNo || "").trim().toUpperCase();
-          const lT = String(log.tarih || "").trim();
-          return lK === searchKuyruk && lT > searchDate;
-        })
-        .sort((a, b) => (a.tarih || "").localeCompare(b.tarih || ""))[0];
-
-      if (nextLog) {
-        const nextHoursValue = parseSingleCellToHour(nextLog.govdeUcusSaati, selectedAircraft.tip);
-        if (nextHoursValue !== null && inputHours > (nextHoursValue + 0.001)) {
-          const nextFormatted = formatGovdeHour(nextLog.govdeUcusSaati, selectedAircraft.tip);
-          const inputFormatted = formatGovdeHour(govdeInput, selectedAircraft.tip);
-          setMessage({ 
-            type: 'error', 
-            text: `Hata: Girilen saat (${inputFormatted}), sonraki kayıttaki saatten (${nextFormatted}) fazla olamaz!` 
-          });
-          setIsSubmitting(false);
-          return;
-        }
-      }
-    }
+    // Validation checks for flight hours (previous and subsequent limits) have been removed per user request to allow retroactive updates and corrections of past day flight hours freely.
 
     setIsSubmitting(true);
     setMessage(null);
