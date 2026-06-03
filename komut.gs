@@ -1064,18 +1064,18 @@ function sendReportEmail(recipient, customAttachments, ss) {
     return;
   }
   
-  var liveAppUrl = "https://filodurumlar-bakimsube.netlify.app/";
-  var body = "Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",\n\n" +
-             "Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.\n\n" +
-             "Bununla birlikte, aşağıdaki bağlantıya tıklayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:\n\n" +
-             "👉 Buraya tıklayarak en güncel durum raporunu canlı olarak izleyebilirsiniz:\n" + liveAppUrl + "\n\n" +
+  var liveAppUrl = "https://filodurumlar-bakimsube.netlify.app";
+  var body = "Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",\n" +
+             "Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.\n" +
+             "Bununla birlikte, aşağıdaki adresi tarayıcınıza kopyalayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:\n" +
+             "👉 filodurumlar-bakimsube.netlify.app\n" +
              "İyi çalışmalar dilerim.";
 
   var htmlBody = "<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>" +
-                 "<p>Sayın <strong>" + (recipient["PERSONEL ADI"] || "Yetkili") + "</strong>,</p>" +
+                 "<p>Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",</p>" +
                  "<p>Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.</p>" +
-                 "<p>Bununla birlikte, aşağıdaki bağlantıya tıklayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:</p>" +
-                 "<p style='margin: 20px 0;'>👉 <strong><a href='" + liveAppUrl + "' target='_blank' style='color: #059669; text-decoration: underline;'>Buraya tıklayarak en güncel durum raporunu canlı olarak izleyebilirsiniz.</a></strong></p>" +
+                 "<p>Bununla birlikte, aşağıdaki adresi tarayıcınıza kopyalayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:<br>" +
+                 "👉 <strong><a href='" + liveAppUrl + "' target='_blank' style='color: #059669; text-decoration: underline;'>filodurumlar-bakimsube.netlify.app</a></strong></p>" +
                  "<p>İyi çalışmalar dilerim.</p>" +
                  "</div>";
 
