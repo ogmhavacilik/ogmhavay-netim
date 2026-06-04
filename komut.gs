@@ -1075,7 +1075,7 @@ function sendReportEmail(recipient, customAttachments, ss) {
                  "<p>Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",</p>" +
                  "<p>Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.</p>" +
                  "<p>Bununla birlikte, aşağıdaki adresi tarayıcınıza kopyalayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:<br>" +
-                 "👉 <strong><a href='" + liveAppUrl + "' target='_blank' style='color: #059669; text-decoration: underline;'>filodurumlar-bakimsube.netlify.app</a></strong></p>" +
+                 "👉 <strong>filodurumlar-bakimsube.netlify.app</strong></p>" +
                  "<p>İyi çalışmalar dilerim.</p>" +
                  "</div>";
 
