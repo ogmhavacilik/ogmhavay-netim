@@ -1068,14 +1068,14 @@ function sendReportEmail(recipient, customAttachments, ss) {
   var body = "Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",\n" +
              "Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.\n" +
              "Bununla birlikte, aşağıdaki adresi tarayıcınıza kopyalayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:\n" +
-             "👉 filodurumlar-bakimsube.netlify.app\n" +
+             "👉 filodurumlar-bakimsube\u200B.netlify\u200B.app\n" +
              "İyi çalışmalar dilerim.";
 
   var htmlBody = "<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>" +
                  "<p>Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",</p>" +
                  "<p>Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.</p>" +
                  "<p>Bununla birlikte, aşağıdaki adresi tarayıcınıza kopyalayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:<br>" +
-                 "👉 <strong style='color: #333333; text-decoration: none;'>filodurumlar-bakimsube.netlify.app</strong></p>" +
+                 "👉 <strong style='color: #222222; text-decoration: none;'>filodurumlar-bakimsube\u200B.netlify\u200B.app</strong></p>" +
                  "<p>İyi çalışmalar dilerim.</p>" +
                  "</div>";
 
