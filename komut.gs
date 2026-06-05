@@ -1010,7 +1010,27 @@ function timeToMinutes(timeStr) {
 }
 
 function sendReportEmail(recipient, customAttachments, ss) {
-  var attachments = Array.isArray(customAttachments) ? customAttachments : [];
+  var attachments = [];
+  if (Array.isArray(customAttachments)) {
+    for (var i = 0; i < customAttachments.length; i++) {
+      var att = customAttachments[i];
+      if (att && att.data) {
+        try {
+          if (typeof att.getBytes === 'function') {
+            attachments.push(att);
+          } else {
+            var decodedData = Utilities.base64Decode(att.data);
+            var blob = Utilities.newBlob(decodedData, att.mimeType || 'application/octet-stream', att.name || 'attachment');
+            attachments.push(blob);
+          }
+        } catch (e) {
+          console.error("Error parsing custom attachment: " + e.toString());
+        }
+      } else if (att) {
+        attachments.push(att);
+      }
+    }
+  }
   var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg"; // Merkezi Log Tablosu ID
   var selectedReports = String(recipient["GÖNDERİLECEK MAİLİN EKİ"] || "").trim().toUpperCase();
   
@@ -1065,17 +1085,17 @@ function sendReportEmail(recipient, customAttachments, ss) {
   }
   
   var liveAppUrl = "https://filodurumlar-bakimsube.netlify.app";
-  var body = "Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",\n" +
-             "Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.\n" +
+  var body = "Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",\n\n" +
+             "Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.\n\n" +
              "Bununla birlikte, aşağıdaki adresi tarayıcınıza kopyalayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:\n" +
-             "👉 filodurumlar-bakimsube\u200B.netlify\u200B.app\n" +
+             "filodurumlar-bakimsube.netlify.app\n\n" +
              "İyi çalışmalar dilerim.";
 
   var htmlBody = "<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>" +
                  "<p>Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",</p>" +
                  "<p>Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.</p>" +
-                 "<p>Bununla birlikte, aşağıdaki adresi tarayıcınıza kopyalayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:<br>" +
-                 "👉 <strong style='color: #222222; text-decoration: none;'>filodurumlar-bakimsube\u200B.netlify\u200B.app</strong></p>" +
+                 "<p>Bununla birlikte, aşağıdaki adresi tarayıcınıza kopyalayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:</p>" +
+                 "<p><strong>filodurumlar-bakimsube<b>.</b>netlify<b>.</b>app</strong></p>" +
                  "<p>İyi çalışmalar dilerim.</p>" +
                  "</div>";
 

@@ -107,29 +107,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onSave, onOverride, onSyncLogs,
     const recipient = recipients.find(r => r.id === id);
     if (!recipient) return;
 
-    if (!recipient.attachments) {
-      if (!confirm('Bu alıcının seçili raporu yok. Yine de boş mail göndermek istiyor musunuz?')) {
-        return;
-      }
-    }
-
     setSendingId(id);
-    
-    const customAttachments: { name: string, data: string, mimeType: string }[] = [];
-    
-    if (recipient.attachments && (recipient.attachments.includes('ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU') || recipient.attachments.includes('ENVANTER RAPORU'))) {
-      const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-      const html = generateFleetExcelHtml(previewData as Aircraft[], dateStr);
-      const base64Data = btoa(unescape(encodeURIComponent(html)));
-      
-      customAttachments.push({
-        name: 'ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU.xls',
-        data: base64Data,
-        mimeType: 'application/vnd.ms-excel'
-      });
-    }
-
-    const success = await sendManualEmail(id, customAttachments);
+    const success = await sendManualEmail(id);
     setSendingId(null);
     if (success) {
       alert('Raporlar başarıyla gönderildi.');

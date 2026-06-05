@@ -47,7 +47,7 @@ const App = () => {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [showActivity, setShowActivity] = useState(true);
+  const [showActivity, setShowActivity] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'checking' | 'updated' | 'no-change' | 'error'>('idle');
   const lastSyncSignatureRef = useRef<string>('');
@@ -1622,30 +1622,31 @@ const App = () => {
          <h1 className="text-3xl md:text-5xl font-black text-white tracking-widest uppercase text-center">HAVA ARAÇLARI YÖNETİM SİSTEMİ</h1>
       </div>
 
-      <div className="flex justify-between items-center mb-12">
-         <div className="flex items-center space-x-6">
+      <div className="flex flex-col lg:flex-row gap-6 justify-between items-stretch lg:items-center mb-12">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:space-x-6">
             <button 
               onClick={() => setCurrentView('landing')}
-              className="bg-white/5 border border-white/10 p-4 rounded-2xl text-emerald-500 hover:bg-white/10 transition-all"
+              className="bg-white/5 border border-white/10 p-4 rounded-2xl text-emerald-500 hover:bg-white/10 transition-all flex items-center justify-center"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 mr-2 sm:mr-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
               </svg>
+              <span className="sm:hidden font-black text-xs uppercase tracking-wider">Ana Sayfaya Dön</span>
             </button>
-            <div className={`bg-emerald-500/10 border border-emerald-500/30 px-6 py-4 rounded-[1.8rem] flex items-center shadow-2xl backdrop-blur-md ${isSyncing ? 'bg-yellow-500/10 border-yellow-500/30' : (syncStatus === 'no-change' ? 'bg-blue-500/10 border-blue-500/30' : 'bg-emerald-500/10 border-emerald-500/30')}`}>
-               <div className={`w-3 h-3 rounded-full mr-4 shadow-[0_0_10px_#10b981] ${isSyncing ? 'bg-yellow-400 animate-spin shadow-[0_0_10px_#facc15]' : (syncStatus === 'no-change' ? 'bg-blue-400 shadow-[0_0_10px_#3b82f6]' : 'bg-emerald-500 animate-pulse shadow-[0_0_10px_#10b981]')}`}></div>
-               <span className={`font-black text-[11px] uppercase tracking-[0.5em] ${isSyncing ? 'text-yellow-400' : (syncStatus === 'no-change' ? 'text-blue-400' : 'text-emerald-400')}`}>
-                  {isSyncing ? 'VERİLER KONTROL EDİLİYOR...' : (syncStatus === 'no-change' ? 'OTOMATİK VERİ TAKİBİ: DEĞİŞİKLİK YOK' : 'OTOMATİK VERİ TAKİBİ AKTİF')}
+            <div className={`bg-emerald-500/10 border border-emerald-500/30 px-6 py-4 rounded-[1.8rem] flex items-center justify-center shadow-2xl backdrop-blur-md ${isSyncing ? 'bg-yellow-500/10 border-yellow-500/30' : (syncStatus === 'no-change' ? 'bg-blue-500/10 border-blue-500/30' : 'bg-emerald-500/10 border-emerald-500/30')}`}>
+               <div className={`w-3 h-3 rounded-full mr-4 shrink-0 shadow-[0_0_10px_#10b981] ${isSyncing ? 'bg-yellow-400 animate-spin shadow-[0_0_10px_#facc15]' : (syncStatus === 'no-change' ? 'bg-blue-400 shadow-[0_0_10px_#3b82f6]' : 'bg-emerald-500 animate-pulse shadow-[0_0_10px_#10b981]')}`}></div>
+               <span className={`font-black text-[10px] sm:text-[11px] uppercase tracking-[0.2em] sm:tracking-[0.5em] text-center ${isSyncing ? 'text-yellow-400' : (syncStatus === 'no-change' ? 'text-blue-400' : 'text-emerald-400')}`}>
+                  {isSyncing ? 'VERİLER KONTROL EDİLİYOR...' : (syncStatus === 'no-change' ? 'OTOMATİK VERİ: DEĞİŞİKLİK YOK' : 'OTOMATİK VERİ TAKİBİ AKTİF')}
                </span>
             </div>
           </div>
-          <div className="flex space-x-5">
-            <button onClick={() => setShowActivity(!showActivity)} className={`px-10 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.4em] transition-all shadow-2xl border-2 ${showActivity ? 'bg-blue-600 text-white border-blue-500' : 'bg-white/10 text-white border-white/20'}`}>
-              {showActivity ? "ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU" : "FAALİYET ÇİZELGESİ"}
+          <div className="flex flex-col sm:flex-row gap-4 sm:space-x-5">
+            <button onClick={() => setShowActivity(!showActivity)} className={`px-6 sm:px-10 py-4 sm:py-5 rounded-[2rem] font-black text-[10px] sm:text-[11px] uppercase tracking-[0.1em] sm:tracking-[0.4em] transition-all shadow-2xl border-2 w-full sm:w-auto ${showActivity ? 'bg-blue-600 text-white border-blue-500' : 'bg-white/10 text-white border-white/20'}`}>
+               {showActivity ? "ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU" : "FAALİYET ÇİZELGESİ"}
             </button>
             <button 
               onClick={handleAdminClick} 
-              className={`relative px-10 py-5 rounded-[2rem] font-black text-[11px] border-2 uppercase tracking-[0.4em] transition-all shadow-lg flex items-center ${notifications.length > 0 ? 'bg-red-900 border-red-500 text-white animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'bg-[#021a0c] hover:bg-emerald-900 text-white border-emerald-800/50'}`}
+              className={`relative px-6 sm:px-10 py-4 sm:py-5 rounded-[2rem] font-black text-[10px] sm:text-[11px] border-2 uppercase tracking-[0.1em] sm:tracking-[0.4em] transition-all shadow-lg flex items-center justify-center w-full sm:w-auto ${notifications.length > 0 ? 'bg-red-900 border-red-500 text-white animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'bg-[#021a0c] hover:bg-emerald-900 text-white border-emerald-800/50'}`}
             >
               YÖNETİM & GELEN KUTUSU
               {notifications.length > 0 && (
@@ -1747,25 +1748,25 @@ const App = () => {
         </div>
       ) : (
         <div className="mb-24 animate-in fade-in duration-1000">
-          <div className="flex justify-between items-end mb-12 px-6">
-             <div>
-                <h2 className="text-6xl font-black text-white uppercase tracking-tighter italic">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</h2>
+          <div className="flex flex-col lg:flex-row gap-6 lg:justify-between lg:items-end mb-12 px-4 md:px-6">
+             <div className="w-full lg:w-3/5">
+                <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white uppercase tracking-tighter italic leading-tight">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</h2>
                 {historicalFleet !== null && (
                   <div className="mt-4 bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-2 rounded-xl inline-block font-black text-xs uppercase tracking-widest">
-                    Bu rapor geçmiş tarihli veridir.
+                     Bu rapor geçmiş tarihli veridir.
                   </div>
                 )}
-                <p className="text-emerald-500 text-[10px] font-black uppercase tracking-[0.8em] mt-4 border-l-4 border-emerald-500 pl-4">Platform Bazlı Durum ve Gövde Uçuş Saati</p>
+                <p className="text-emerald-500 text-[10px] sm:text-xs font-black uppercase tracking-[0.4em] sm:tracking-[0.8em] mt-4 border-l-4 border-emerald-500 pl-4">Platform Bazlı Durum ve Gövde Uçuş Saati</p>
              </div>
-             <div className="flex items-center space-x-6">
+             <div className="flex flex-col sm:flex-row sm:items-center gap-4 w-full lg:w-auto">
                 {filterType === 'AT-802' && (
-                  <div className="flex space-x-3">
+                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                     <button 
                       onClick={async () => {
                         const res = await exportAT802DailyStatusToPDF(AT802_SCRIPT_URL, '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4');
                         if (!res.success) alert(res.message);
                       }}
-                      className="bg-red-700 hover:bg-red-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center"
+                      className="bg-red-700 hover:bg-red-600 text-white px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center justify-center w-full sm:w-auto"
                     >
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeWidth={3}/></svg>
                       GÜNLÜK DURUM (PDF)
@@ -1775,46 +1776,46 @@ const App = () => {
                         const res = await exportAT802CiktiPDF(AT802_SCRIPT_URL, '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4');
                         if (!res.success) alert(res.message);
                       }}
-                      className="bg-orange-600 hover:bg-orange-500 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center"
+                      className="bg-orange-600 hover:bg-orange-500 text-white px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center justify-center w-full sm:w-auto"
                     >
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeWidth={3}/></svg>
                       100 SAAT TAKİP (PDF)
                     </button>
                   </div>
                 )}
-                <button onClick={exportFleetToExcel} className="bg-emerald-700 hover:bg-emerald-600 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center">
-                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth={3}/></svg>
-                   EXCEL İNDİR
+                <button onClick={exportFleetToExcel} className="bg-emerald-700 hover:bg-emerald-600 text-white px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl flex items-center justify-center w-full sm:w-auto">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeWidth={3}/></svg>
+                    EXCEL İNDİR
                 </button>
-                <div className="relative">
-                  <input type="text" placeholder="Kuyruk, Tip veya Konum Ara..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-[400px] px-12 py-4 bg-black/60 text-white rounded-[2rem] border-2 border-white/10 outline-none font-bold focus:border-emerald-500 transition-all shadow-2xl backdrop-blur-xl" />
+                <div className="relative w-full sm:w-[260px] md:w-[320px] lg:w-[400px]">
+                  <input type="text" placeholder="Kuyruk, Tip veya Konum Ara..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full px-12 py-4 bg-black/60 text-white rounded-[2rem] border-2 border-white/10 outline-none font-bold focus:border-emerald-500 transition-all shadow-2xl backdrop-blur-xl" />
                   <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth={3}/></svg>
                 </div>
              </div>
           </div>
 
-          <div id="summary-container" className="bg-white p-8 rounded-sm shadow-2xl overflow-hidden font-sans border border-gray-300">
-            <div className="flex justify-between items-center mb-6 relative">
-               <div className="w-1/4"></div>
-               <h2 className="text-center text-2xl font-black text-gray-800 uppercase tracking-tight flex-grow">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</h2>
-               <div className="w-1/4 text-right text-red-600 font-black text-xl">
+          <div id="summary-container" className="bg-white p-3 sm:p-8 rounded-sm shadow-2xl overflow-hidden font-sans border border-gray-300">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6 relative">
+               <div className="hidden sm:block sm:w-1/4"></div>
+               <h2 className="text-center text-lg sm:text-2xl font-black text-gray-800 uppercase tracking-tight flex-grow">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</h2>
+               <div className="w-full sm:w-1/4 text-center sm:text-right text-red-600 font-black text-xl">
                   {new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table id="inventory-table" className="w-full border-collapse border-[1.5px] border-black text-[12px]">
+            <div className="overflow-x-auto w-full">
+              <table id="inventory-table" className="min-w-[1200px] lg:w-full border-collapse border-[1.5px] border-black text-[12px] table-fixed">
                 <thead>
                   <tr className="bg-[#d9d9d9]">
-                    <th className="border border-black px-2 py-3 text-center font-black w-12">SIRA NO</th>
-                    <th className="border border-black px-3 py-3 text-center font-black w-28">ÇAĞRI KODU</th>
-                    <th className="border border-black px-3 py-3 text-center font-black w-44">KUYRUK NUMARASI</th>
+                    <th className="border border-black px-2 py-3 text-center font-black w-14">SIRA NO</th>
+                    <th className="border border-black px-3 py-3 text-center font-black w-24">ÇAĞRI KODU</th>
+                    <th className="border border-black px-3 py-3 text-center font-black w-36">KUYRUK NUMARASI</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">GÖVDE SAATİ</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">DURUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-36">DURUM AYRINTISI</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-28">KONUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">FAYDALI SAAT</th>
-                    <th className="border border-black px-3 py-3 text-left font-black">AÇIKLAMA</th>
+                    <th className="border border-black px-3 py-3 text-left font-black w-[400px] min-w-[340px]">AÇIKLAMA</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white">
