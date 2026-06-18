@@ -1810,10 +1810,10 @@ const App = () => {
                     <th className="border border-black px-2 py-3 text-center font-black w-14">SIRA NO</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">ÇAĞRI KODU</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-36">KUYRUK NUMARASI</th>
-                    <th className="border border-black px-3 py-3 text-center font-black w-24">GÖVDE SAATİ</th>
+                    <th className="border border-black px-3 py-3 text-center font-black w-28">KONUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">DURUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-36">DURUM AYRINTISI</th>
-                    <th className="border border-black px-3 py-3 text-center font-black w-28">KONUM</th>
+                    <th className="border border-black px-3 py-3 text-center font-black w-24">GÖVDE SAATİ</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">FAYDALI SAAT</th>
                     <th className="border border-black px-3 py-3 text-left font-black w-[400px] min-w-[340px]">AÇIKLAMA</th>
                   </tr>
@@ -1826,7 +1826,21 @@ const App = () => {
                     const isFaal = String(a.durum).toUpperCase().includes("FAAL") && !String(a.durum).toUpperCase().includes("GAYRİ") && !String(a.durum).toUpperCase().includes("GAYRI");
                     return (
                       <tr key={i} className={`hover:bg-gray-100 transition-colors cursor-pointer group ${hasOplAlert ? (isWeeklyAlertOnly ? 'animate-yellow-blink' : 'animate-intense-blink') : ''} ${historicalFleet !== null ? 'opacity-60 cursor-default' : 'active:scale-[0.99]'}`} onClick={() => historicalFleet === null && setSelectedAircraft(a)}>
-                        <td className="border border-black px-2 py-2.5 text-center font-black text-gray-900">{i + 1}</td>
+                        <td className="border border-black px-2 py-2.5 text-center font-black text-gray-900 relative overflow-hidden">
+                          <div className="relative w-full h-full flex items-center justify-center min-h-[1.5rem]">
+                            {/* Sıra numarası normalde görünür, hover esnasında küçülüp kaybolur */}
+                            <span className="transition-all duration-300 transform group-hover:scale-0 group-hover:opacity-0 block font-black text-xs">
+                              {i + 1}
+                            </span>
+                            {/* Göz simgesi / detayı göster ikonu hover esnasında pürüzsüzce belirir */}
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300 text-emerald-600">
+                              <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </div>
+                          </div>
+                        </td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900">{a.cagriKodu}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900">
                           {a.kuyrukNo} 
@@ -1842,17 +1856,30 @@ const App = () => {
                             })()}
                           </span>
                           {hasOplAlert && !isWeeklyAlertOnly && (
-                            <span className="ml-2 bg-red-600 text-white text-[8px] px-1.5 py-0.5 rounded-full animate-bounce shadow-[0_0_15px_rgba(220,38,38,0.8)]">
-                              ALERT!
-                            </span>
+                            <>
+                              <br />
+                              <div className="inline-flex items-center justify-center text-red-600 animate-bounce mt-1">
+                                <svg className="w-5 h-5 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M12 2L1 21h22L12 2z" />
+                                  <path d="M12 17a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm1-4h-2V9h2v4z" fill="white" />
+                                </svg>
+                              </div>
+                            </>
                           )}
                         </td>
-                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#FF6B00] text-base">{a.govdeUcusSaati || '-'}</td>
+                        <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900 uppercase">{a.konum}</td>
                         <td className={`border border-black px-3 py-2.5 text-center font-black ${isFaal ? 'bg-[#e8f5e9] text-[#2e7d32]' : 'bg-[#ffebee] text-[#c62828]'}`}>{a.durum.toUpperCase()}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-gray-900 uppercase">{a.durumAyrintisi !== '-' ? a.durumAyrintisi : ''}</td>
-                        <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900 uppercase">{a.konum}</td>
+                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#FF6B00] text-base">{a.govdeUcusSaati || '-'}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">{formatToHHMM(a.faydaliSaat, a.tip)}</td>
-                        <td className="border border-black px-4 py-2 text-left text-[11px] leading-tight text-gray-600 italic whitespace-pre-wrap">{a.aciklama}</td>
+                        <td className="border border-black px-4 py-2 text-left text-[11px] leading-tight text-gray-600 italic whitespace-pre-wrap relative">
+                          <div className="flex justify-between items-center w-full min-h-[1.5rem]">
+                            <span className="flex-1 pr-14">{a.aciklama}</span>
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 translate-x-3 group-hover:translate-x-0 transition-all duration-300 bg-emerald-700 text-white font-black text-[9px] px-2.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 shrink-0 uppercase tracking-widest not-italic">
+                              DETAY <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3} navigation-index=""><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
+                            </span>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -1860,12 +1887,35 @@ const App = () => {
               </table>
             </div>
 
-            <div className="mt-8 flex flex-wrap gap-x-10 gap-y-3 text-[12px] font-black border-t-2 border-black/10 pt-6">
-               <div><span className="text-red-600 mr-1 font-black">H:</span> HELİTAK</div>
-               <div><span className="text-red-600 mr-1 font-black">SA:</span> SINGLE AMFİBİ</div>
-               <div><span className="text-red-600 mr-1 font-black">DA:</span> DUAL AMFİBİ</div>
-               <div><span className="text-red-600 mr-1 font-black">SL:</span> SINGLE LAND</div>
-               <div><span className="text-red-600 mr-1 font-black">DL:</span> DUAL LAND</div>
+            <div className="mt-8 border-t-2 border-black/10 pt-6">
+              <div className="flex flex-col xl:flex-row xl:justify-between xl:items-center gap-6 text-[12px] font-black">
+                {/* Sol Taraf: Hava Aracı Tipleri */}
+                <div className="flex flex-wrap gap-x-8 gap-y-3 shrink-0">
+                  <div><span className="text-red-600 mr-1 font-black">H:</span> HELİTAK</div>
+                  <div><span className="text-red-600 mr-1 font-black">SA:</span> SINGLE AMFİBİ</div>
+                  <div><span className="text-red-600 mr-1 font-black">DA:</span> DUAL AMFİBİ</div>
+                  <div><span className="text-red-600 mr-1 font-black">SL:</span> SINGLE LAND</div>
+                  <div><span className="text-red-600 mr-1 font-black">DL:</span> DUAL LAND</div>
+                </div>
+
+                {/* Sağ Taraf: Renkli Dolgu İkaz Açıklamaları */}
+                <div className="flex flex-col md:flex-row gap-6 xl:border-l-2 xl:border-black/10 xl:pl-8 w-full xl:w-auto">
+                  <div className="flex items-center space-x-3 text-left">
+                    <div className="w-5 h-5 bg-[#fee2e2] border border-red-300 rounded shrink-0" />
+                    <div className="text-[11px] leading-tight text-gray-700">
+                      <span className="font-black text-red-600 uppercase block">Kırmızı Dolgulu Satır / Kırmızı İkaz</span>
+                      Ömürlü parçaların takibine yönelik aktif ikazların bulunduğunu belirtir.
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3 text-left">
+                    <div className="w-5 h-5 bg-[#fef9c3] border border-yellow-300 rounded shrink-0" />
+                    <div className="text-[11px] leading-tight text-gray-700">
+                      <span className="font-black text-amber-500 uppercase block font-semibold">Sarı Dolgulu Satır (İKAZ)</span>
+                      FRDS TEST ve MOTOR ÇALIŞTIRMA tarihlerinin yaklaştığını belirten ikazdır.
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

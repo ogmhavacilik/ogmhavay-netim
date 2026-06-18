@@ -381,7 +381,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     uretimYili: 2021,
     base: 'Etimesgut',
     maintenanceHours: [],
-    photos: []
+    photos: ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s']
   },
   {
     cagriKodu: 'ORMAN-31',
@@ -401,7 +401,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     uretimYili: 2021,
     base: 'Etimesgut',
     maintenanceHours: [],
-    photos: []
+    photos: ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s']
   },
   {
     cagriKodu: 'ORMAN-36',
@@ -481,7 +481,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     uretimYili: 2024,
     base: '-',
     maintenanceHours: [],
-    photos: []
+    photos: ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s']
   },
   {
     cagriKodu: 'ORMAN-40',
@@ -501,7 +501,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     uretimYili: 2024,
     base: '-',
     maintenanceHours: [],
-    photos: []
+    photos: ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s']
   },
   {
     cagriKodu: 'ORMAN-08',

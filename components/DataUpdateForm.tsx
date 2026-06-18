@@ -155,6 +155,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
   const [selectedAircraft, setSelectedAircraft] = useState<Aircraft | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isUpdateCompleted, setIsUpdateCompleted] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
 
@@ -197,6 +198,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     setSelectedKuyruk('');
     setSelectedAircraft(null);
     setValidationErrors({});
+    setIsUpdateCompleted(false);
     initializationRef.current = '';
   };
 
@@ -674,11 +676,9 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         }
       }
 
-      setTimeout(() => {
-        // Clear draft on success
-        localStorage.removeItem(`draft_${selectedAircraft.kuyrukNo}_${formData.islemTarihi}`);
-        onSuccess(selectedAircraft.tip);
-      }, 1500);
+      // Clear draft on success
+      localStorage.removeItem(`draft_${selectedAircraft.kuyrukNo}_${formData.islemTarihi}`);
+      setIsUpdateCompleted(true);
 
     } catch (error) {
       setMessage({ type: 'error', text: 'Bağlantı hatası oluştu.' });
@@ -934,7 +934,44 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                 </div>
               </div>
 
-              {selectedAircraft ? (
+              {isUpdateCompleted ? (
+                <div className="bg-white/5 border border-emerald-500/30 p-8 rounded-3xl text-center flex flex-col items-center justify-center space-y-6 md:space-y-8 animate-in fade-in zoom-in-95 duration-500 my-10 shadow-[0_0_50px_rgba(16,185,129,0.1)]">
+                  <div className="w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-500/35 flex items-center justify-center text-emerald-500 shadow-xl mb-2">
+                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <h3 className="text-3xl font-black text-emerald-400 uppercase tracking-tighter italic">GÜNCELLEME TAMAMLANDI</h3>
+                    <p className="text-white/80 font-bold max-w-md mx-auto text-sm leading-relaxed">
+                      {selectedAircraft?.kuyrukNo} kuyruk numaralı hava aracına ait veriler ve merkezi uçuş log kayıtları başarıyla güncellendi.
+                    </p>
+                  </div>
+
+                  <div className="w-full max-w-md flex flex-col gap-4 pt-4">
+                    <button
+                      onClick={() => selectedAircraft && onSuccess(selectedAircraft.tip)}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-black py-5 px-6 rounded-2xl uppercase tracking-[0.2em] shadow-lg transition-all text-xs"
+                    >
+                      Ana Sayfaya Dön
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        setIsUpdateCompleted(false);
+                        setSelectedKuyruk('');
+                        setSelectedAircraft(null);
+                        setMessage(null);
+                        setAt802Step(1);
+                      }}
+                      className="w-full bg-white/10 hover:bg-white/20 active:scale-[0.98] text-emerald-400 border border-emerald-500/20 font-black py-5 px-6 rounded-2xl uppercase tracking-[0.2em] transition-all text-xs"
+                    >
+                      Başka Hava Aracı Güncelle
+                    </button>
+                  </div>
+                </div>
+              ) : selectedAircraft ? (
                 isBell429 ? (
                   <form onSubmit={handleSubmit} className="space-y-8 md:space-y-10">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
@@ -1227,12 +1264,12 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                                   <input type="text" placeholder="Gövde Saati" value={at802Data.acTT} onChange={e => setAt802Data({...at802Data, acTT: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                 </div>
                                 <div className={`space-y-2${disabledClass}`}>
-                                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">LANDINGS</label>
-                                  <input disabled={isPastDate} type="text" value={at802Data.landings} onChange={e => setAt802Data({...at802Data, landings: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
-                                </div>
-                                <div className={`space-y-2${disabledClass}`}>
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">ENGINE STARTS</label>
                                   <input disabled={isPastDate} type="text" value={at802Data.starts} onChange={e => setAt802Data({...at802Data, starts: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
+                                </div>
+                                <div className={`space-y-2${disabledClass}`}>
+                                  <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">LANDINGS</label>
+                                  <input disabled={isPastDate} type="text" value={at802Data.landings} onChange={e => setAt802Data({...at802Data, landings: e.target.value})} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all" />
                                 </div>
                                 <div className={`space-y-2${disabledClass}`}>
                                   <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">ENGINE FLIGHTS</label>
