@@ -528,6 +528,12 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
           if (cleanKuyrukNo === 'OR-2036') return ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT_AAtp-RURmWZw2ErwXRPtQ9_mMFkoyZDVYQ&s'];
           if (cleanKuyrukNo === 'OR-2037') return ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR4UdGU4EmGc6clWyUgjrKbgV20gj1MhxhB2g&s'];
           if (cleanKuyrukNo === 'OR-2038') return ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSBa8tE1C4927j_K-P1iyvIS7H_39G3ZBI9RQ&s'];
+          if (cleanKuyrukNo === 'OR-2030') return ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s'];
+          if (cleanKuyrukNo === 'OR-2031') return ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s'];
+          if (cleanKuyrukNo === 'OR-2039') return ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s'];
+          if (cleanKuyrukNo === 'OR-2040') return ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s'];
+
+
 
           // T-70
           if (cleanKuyrukNo === 'OR-1018') return ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSi1OwUDKJ49qRHjiBDnrDS0XCGgYBLKUFaqw&s'];
@@ -548,7 +554,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
           if (config.aircraftType === 'AT-802') {
              const tail = cleanKuyrukNo;
              if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return 'DA';
-             if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return 'SA';
+             if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031', 'OR-2039', 'OR-2040'].includes(tail)) return 'SA';
              if (tail === 'OR-2036') return 'DL';
              if (tail === 'OR-2038') return 'SL';
              return 'SA';
@@ -572,7 +578,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
           const match = val.match(/\d{4}/);
           return match ? parseInt(match[0]) : (Number(item.uretimYili) || 0);
         })(),
-        gelisTarihi: arrivalMap.get(cleanKuyrukNo) || '-'
+        gelisTarihi: arrivalMap.get(cleanKuyrukNo) || (item.gelisTarihi ? formatDateIfISO(item.gelisTarihi) : '-')
       };
 
       if (config.aircraftType === 'Bell-429') {

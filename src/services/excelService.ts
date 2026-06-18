@@ -83,7 +83,7 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
   const getAbbreviation = (kuyrukNo: string) => {
     const tail = String(kuyrukNo).trim().toUpperCase();
     if (['OR-2021', 'OR-2022', 'OR-2023', 'OR-2037'].includes(tail)) return ' (DA)';
-    if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031'].includes(tail)) return ' (SA)';
+    if (['OR-2024', 'OR-2025', 'OR-2026', 'OR-2027', 'OR-2028', 'OR-2029', 'OR-2030', 'OR-2031', 'OR-2039', 'OR-2040'].includes(tail)) return ' (SA)';
     if (tail === 'OR-2036') return ' (DL)';
     if (tail === 'OR-2038') return ' (SL)';
     if (tail === 'OR-1020') return ' (H)';
