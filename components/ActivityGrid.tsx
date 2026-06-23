@@ -11,9 +11,10 @@ interface ActivityGridProps {
   title: string;
   onExport?: () => void;
   onDayClick?: (date: Date) => void;
+  sortByCagriKodu?: boolean;
 }
 
-const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endDate, title, onExport, onDayClick }) => {
+const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endDate, title, onExport, onDayClick, sortByCagriKodu = false }) => {
   const [selectedDayView, setSelectedDayView] = useState<{ activity: AircraftActivity, date: Date } | null>(null);
 
   const isHourlyView = useMemo(() => {
@@ -204,6 +205,17 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
 
   // TİP bazlı gruplandırma ve sıralama
   const groupedActivities = useMemo(() => {
+    const getOrder = (cagriKodu: string) => {
+      const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
+      if (match) return parseInt(match[1]);
+      return 999;
+    };
+
+    if (sortByCagriKodu) {
+      const sorted = [...activities].sort((a, b) => getOrder(a.cagriKodu) - getOrder(b.cagriKodu));
+      return { 'TÜMÜ': sorted };
+    }
+
     const groups: { [key: string]: AircraftActivity[] } = {};
     activities.forEach(act => {
       if (!groups[act.tip]) groups[act.tip] = [];
@@ -213,12 +225,6 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     // Sıralama: C-650, B-360, Bell-429, AT-802, T-70
     const order = ['C-650', 'B-360', 'Bell-429', 'AT-802', 'T-70'];
     const sortedGroups: { [key: string]: AircraftActivity[] } = {};
-    
-    const getOrder = (cagriKodu: string) => {
-      const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
-      if (match) return parseInt(match[1]);
-      return 999;
-    };
 
     order.forEach(tip => {
       if (groups[tip]) {
@@ -242,7 +248,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     });
     
     return sortedGroups;
-  }, [activities]);
+  }, [activities, sortByCagriKodu]);
 
   if (activities.length === 0) return null;
 
@@ -258,8 +264,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
             <tr className="bg-white">
               <th rowSpan={2} className="border border-black px-1 py-1 w-10 uppercase font-black text-[9px]">SIRA NO</th>
               <th rowSpan={2} className="border border-black px-1 py-1 w-[110px] uppercase font-black text-[9px]">KUYRUK NO</th>
-              <th rowSpan={2} className="border border-black px-1 py-1 w-[100px] uppercase font-black text-[9px]">ÇAĞRI KODU</th>
               <th rowSpan={2} className="border border-black px-1 py-1 w-[120px] uppercase font-black text-[9px]">HAVA ARACI TİPİ</th>
+              <th rowSpan={2} className="border border-black px-1 py-1 w-[100px] uppercase font-black text-[9px]">ÇAĞRI KODU</th>
               {isHourlyView ? (
                 hours.map((hour, idx) => (
                   <th key={idx} rowSpan={2} className="border border-black w-8 text-center font-bold min-w-[32px] text-[8px] bg-white h-16">
@@ -312,6 +318,20 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                 let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupEffectiveFaal = 0, groupMissing = 0;
                 grandTotalActs += groupActs.length;
 
+                const groupRowSpans: number[] = [];
+                let idxRow = 0;
+                while (idxRow < groupActs.length) {
+                  let span = 1;
+                  while (idxRow + span < groupActs.length && groupActs[idxRow + span].tip === groupActs[idxRow].tip) {
+                    span++;
+                  }
+                  groupRowSpans.push(span);
+                  for (let s = 1; s < span; s++) {
+                    groupRowSpans.push(0);
+                  }
+                  idxRow += span;
+                }
+
                 return (
                   <React.Fragment key={gIdx}>
                     {groupActs.map((act, idx) => {
@@ -334,6 +354,9 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                       grandEffectiveFaal += s.effectiveFaal;
                       grandMissing += s.missing;
 
+                      const showTypeTd = groupRowSpans[idx] > 0;
+                      const typeSpan = groupRowSpans[idx];
+
                       return (
                         <tr key={idx} className="h-7 hover:bg-gray-50">
                           <td className="border border-black text-center font-black px-1 text-gray-900">
@@ -353,8 +376,12 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
                             })()}
                           </span>
                         </td>
+                        {showTypeTd && (
+                          <td rowSpan={typeSpan} className="border border-black text-center px-1 font-bold bg-gray-50 uppercase">
+                            {act.tip}
+                          </td>
+                        )}
                         <td className="border border-black text-center font-bold px-1">{act.cagriKodu}</td>
-                        <td className="border border-black text-center px-1 font-bold">{act.tip}</td>
                         {isHourlyView ? (
                           hours.map((hour, hIdx) => {
                             const dateStrKey = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;

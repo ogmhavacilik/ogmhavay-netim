@@ -449,7 +449,14 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
     return data.map((item: any): Partial<Aircraft> | null => {
       if (!item || typeof item !== 'object') return null;
       const analysis = analyzeStatus(item);
-      const kuyrukNo = String(item.kuyrukNo || '').trim();
+      let kuyrukNo = String(item.kuyrukNo || '').trim();
+      
+      // Clean tail number to remove model numbers and Spanish tescil (ignore parenthetical additions)
+      const orMatch = kuyrukNo.match(/OR-\d+/i);
+      if (orMatch && config.aircraftType === 'AT-802') {
+        kuyrukNo = orMatch[0].toUpperCase();
+      }
+      
       const cleanKuyrukNo = kuyrukNo.toUpperCase();
       
       let finalMinHour: number | null = null;
@@ -772,7 +779,11 @@ export const updatePastEnvanterLog = async (
   kuyrukNo: string,
   date: string,
   newHours: string,
-  tip?: string
+  tip?: string,
+  konum?: string,
+  durum?: string,
+  durumAyrintisi?: string,
+  aciklama?: string
 ): Promise<{ success: boolean; message: string }> => {
   const cleanUrl = url?.trim();
   if (!cleanUrl || !cleanUrl.includes('script.google.com/macros/')) return { success: false, message: 'Geçersiz URL formatı.' };
@@ -783,7 +794,11 @@ export const updatePastEnvanterLog = async (
       kuyrukNo,
       date,
       newHours,
-      tip
+      tip,
+      konum,
+      durum,
+      durumAyrintisi,
+      aciklama
     });
     const message = typeof result.data === 'string' ? result.data : (result.data?.message || result.message || result.error);
     return {

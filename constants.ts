@@ -2,7 +2,7 @@
 import { PlatformType, Status, StatusType, Aircraft, AircraftActivity } from './types';
 
 export const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwKCVlYan-Yc977Bb9-QHYk-dmg5ZFF_y-QTTI0zbWkov6COh5FgVZBedAGmDBtVnLF/exec";
-export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwZY1Ltd0E2wa-m0v9fLBebFvlOSRT3Wr6khuumdCrxkaKMvYa2snQ4zyMGXtfPGneJbg/exec";
+export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbya8Pdp4XnljC082NF5XB_uEa4UfYxNHJJePkVUYg2d9-ostQam20I8EfgU1oMCMMmbNA/exec";
 export const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwvC8peKrqCpy1g13HQPzy4L9w3vC_ZG9IvVt8UBmyVE5wdJU5y8TJDKfzC1C6VIOCfEQ/exec"; 
 export const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrbIvbXLDJBC2_s9PeevqjIiIIWkDZ6kd2AoYG-4qnsFHatVT8AG9hVFb-3M_e-QJ8Gg/exec";
 export const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjm3OUnrM_Ki6fyVG_PqpqEkNtoc18fgf3lEPtZRtC-T2-e_ecyneHduXjfygoLjr5/exec";
@@ -199,6 +199,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2021',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '22.04.2024',
     base: 'Antalya',
     maintenanceHours: [{ bakimTuru: '500H', kalanSaat: 59 }],
     photos: ['https://picsum.photos/seed/or2021/800/600']
@@ -219,6 +220,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2022',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '28.04.2023',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: []
@@ -239,6 +241,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2023',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '30.04.2023',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: []
@@ -259,6 +262,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2024',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '28.04.2023',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: []
@@ -279,6 +283,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2025',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '28.04.2023',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: []
@@ -299,6 +304,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2026',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '17.05.2024',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: []
@@ -319,6 +325,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2027',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '30.05.2025',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: []
@@ -339,6 +346,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2028',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '20.06.2025',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: []
@@ -359,6 +367,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2029',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '30.05.2025',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: []
@@ -379,6 +388,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2030',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '13.03.2026',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s']
@@ -399,6 +409,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2031',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '13.03.2026',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s']
@@ -419,6 +430,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2036',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '28.05.2024',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: ['data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxASEhUSEhIVFRUXFRYVFxUXFhoVFxgXFRUXFxUVFRcYHSggGB0lHRUVITEhJSkrLi4uFx8zODMsNygtLisBCgoKDg0OGxAQGi0lICUtLS0tLS0tLS0rLS0vLTUtLTAtLi0tLS0tLS8uKy0tLy0tLSstLy8rLSstLS01LS0tLf/AABEIAK8BIAMBIgACEQEDEQH/xAAcAAABBQEBAQAAAAAAAAAAAAABAAIFBgcEAwj/xABOEAABAweEBgUHBwkFCAMAAAABAAIRAwQSITEFBkFRYXETIjKBkQdCUqGxwdIUF3KSk9HwFSNUYoKissLhFjNDRMNTY3ODhMTT8SQ01P/EABoBAQEBAQEBAQAAAAAAAAAAAAABAgMEBQb/xAAxEQACAgECAwYFBAIDAAAAAAAAAQIRAxIhBDFBBWGRocHwE1FxgdEiMrHhFBVCQ/H/2gAMAwEAAhEDEQA/AJiPzX7fuRtFANmGuwjHZ7EqhAphsgmb2GxK0VWuk9aTxEL6Z4RXad29dOcRPCdyNOi2G4ON4kYHLGNy8r/Uu/rT6oTzWN0NBIiZxzkoQPybAxJIdGG5O+S9gYgkGeELzFTq3f1p9UJ4tEXf1ZnjKu42ExjHSGggwSCTMxv3IUmsIJIOAnPP1IiqxsloMkRjkJ3Lzp1IDhvEIBzWNguIMTAE7eJSdSaQHDAE3TOMd6FKoILXA']
@@ -439,6 +451,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2037',
     motor: 'PT6A-67F',
     uretimYili: 2023,
+    gelisTarihi: '22.08.2025',
     base: 'Etimesgut',
     maintenanceHours: [{ bakimTuru: '200H', kalanSaat: 100 }],
     photos: ['https://picsum.photos/seed/or2037/800/600']
@@ -459,6 +472,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: 'SN-2038',
     motor: 'PT6A-67F',
     uretimYili: 2021,
+    gelisTarihi: '17.07.2024',
     base: 'Etimesgut',
     maintenanceHours: [],
     photos: []
@@ -479,6 +493,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: '-',
     motor: 'PT6A-67F',
     uretimYili: 2024,
+    gelisTarihi: '08.05.2026',
     base: '-',
     maintenanceHours: [],
     photos: ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s']
@@ -499,6 +514,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: '-',
     motor: 'PT6A-67F',
     uretimYili: 2024,
+    gelisTarihi: '08.05.2026',
     base: '-',
     maintenanceHours: [],
     photos: ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s']

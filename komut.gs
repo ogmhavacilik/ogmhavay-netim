@@ -115,17 +115,38 @@ function doPost(e) {
         logSheet.getRange("A1:I1").setFontWeight("bold").setBackground("#fce5cd").setBorder(true, true, true, true, true, true);
       }
       
-      var id = params.id || Utilities.getUuid();
-      var tarih = params.tarih || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
-      var kNo = params.kuyrukNo || "";
-      var tip = params.tip || "";
-      var bSaat = params.baslangicSaati || "";
-      var bitSaat = params.bitisSaati || "";
-      var durum = params.durum || "";
-      var aciklama = params.aciklama || "";
+      var dataObj = params.data || {};
+      var dateVal = dataObj.date || params.tarih || "";
+      if (dateVal.includes('-')) {
+        var p = dateVal.split('-');
+        if (p[0].length === 4) dateVal = p[2] + "." + p[1] + "." + p[0];
+      }
+      var tarih = dateVal || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
+      var kNo = dataObj.kuyrukNo || params.kuyrukNo || "";
+      var tip = dataObj.tip || params.tip || "";
+      var bSaat = dataObj.startTime || params.baslangicSaati || "";
+      var bitSaat = dataObj.endTime || params.bitisSaati || "";
+      var durum = dataObj.status || params.durum || "";
+      var aciklama = dataObj.description || params.aciklama || "";
+      var id = params.id || (tarih + "_" + kNo + "_" + bSaat);
       var kayitTarihi = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy HH:mm:ss");
 
-      logSheet.appendRow([id, tarih, kNo, tip, bSaat, bitSaat, durum, aciklama, kayitTarihi]);
+      var dataRows = logSheet.getDataRange().getValues();
+      var existingRow = -1;
+      for (var i = 1; i < dataRows.length; i++) {
+        if (String(dataRows[i][0]) === id) {
+          existingRow = i + 1;
+          break;
+        }
+      }
+
+      if (existingRow !== -1) {
+        logSheet.getRange(existingRow, 1, 1, 9).setValues([[
+          id, tarih, kNo, tip, bSaat, bitSaat, durum, aciklama, kayitTarihi
+        ]]);
+      } else {
+        logSheet.appendRow([id, tarih, kNo, tip, bSaat, bitSaat, durum, aciklama, kayitTarihi]);
+      }
       return jsonSuccess({ id: id });
     }
 

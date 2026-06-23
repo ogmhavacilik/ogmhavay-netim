@@ -83,6 +83,7 @@ const App = () => {
   });
 
   const [hideKazaKirim, setHideKazaKirim] = useState(true);
+  const [sortByCagriKodu, setSortByCagriKodu] = useState(false);
 
   const [historicalFleet, setHistoricalFleet] = useState<Aircraft[] | null>(null);
   const [envanterLog, setEnvanterLog] = useState<any[]>([]);
@@ -1436,7 +1437,17 @@ const App = () => {
       return matchesSearch && matchesType && matchesTail && matchesKazaKirim;
     });
 
-    const order = ['C-650', 'B-360', 'Bell-429', 'AT-802', 'T-70'];
+    const getOrder = (cagriKodu: string) => {
+      const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
+      if (match) return parseInt(match[1]);
+      return 999;
+    };
+
+    if (sortByCagriKodu) {
+      return [...filtered].sort((a, b) => getOrder(a.cagriKodu) - getOrder(b.cagriKodu));
+    }
+
+    const order = ['C-650', 'B-360', 'Bell-429', 'T-70', 'AT-802'];
 
     return filtered.sort((a, b) => {
       const typeA = a.tip || '';
@@ -1452,20 +1463,33 @@ const App = () => {
         return typeA.localeCompare(typeB);
       }
 
-      // Same type, sort by ORMAN-XX or Kuyruk No for AT-802
-      const getOrder = (cagriKodu: string) => {
-        const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
-        if (match) return parseInt(match[1]);
-        return 999;
-      };
+      // 1. Kaza kırım sorting: kaza kırımlar (KK) are ALWAYS at the absolute bottom within their type category.
+      const isKazaKirimA = a.assignedCode === 'KK' || (a.durumAyrintisi && a.durumAyrintisi.toUpperCase().includes('KAZA KIRIM'));
+      const isKazaKirimB = b.assignedCode === 'KK' || (b.durumAyrintisi && b.durumAyrintisi.toUpperCase().includes('KAZA KIRIM'));
+      
+      if (isKazaKirimA !== isKazaKirimB) {
+        return isKazaKirimA ? 1 : -1;
+      }
 
+      // 2. Location (konum) grouping & sorting: same locations grouped together, sorted alphabetically (e.g. Antalya first, Çanakkale next, Muğla next)
+      const konumA = (a.konum || '').trim().toLocaleUpperCase('tr-TR');
+      const konumB = (b.konum || '').trim().toLocaleUpperCase('tr-TR');
+      
+      if (konumA !== konumB) {
+        // Handle '-' or empty/missing in sorting to go to the bottom
+        if (konumA === '-') return 1;
+        if (konumB === '-') return -1;
+        return konumA.localeCompare(konumB, 'tr-TR');
+      }
+
+      // 3. Within the same location, sort by cagriKodu / kuyrukNo:
       if (typeA === 'AT-802') {
         return a.kuyrukNo.localeCompare(b.kuyrukNo);
       }
       
       return getOrder(a.cagriKodu) - getOrder(b.cagriKodu);
     });
-  }, [fleet, historicalFleet, searchTerm, filterType, filterTail, hideKazaKirim]);
+  }, [fleet, historicalFleet, searchTerm, filterType, filterTail, hideKazaKirim, sortByCagriKodu]);
 
   const filteredActivities = useMemo(() => {
     const filtered = activities.filter(a => {
@@ -1696,9 +1720,15 @@ const App = () => {
             <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="bg-black/60 text-white px-4 py-2.5 rounded-xl border border-white/10 outline-none font-bold focus:border-emerald-500 transition-all text-xs [color-scheme:dark]" />
           </div>
         )}
-        <div className="flex items-center ml-auto bg-black/40 px-4 py-2.5 rounded-xl border border-white/10">
-          <input type="checkbox" id="hideKazaKirim" checked={hideKazaKirim} onChange={(e) => setHideKazaKirim(e.target.checked)} className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 focus:ring-2" />
-          <label htmlFor="hideKazaKirim" className="ml-2 text-xs font-black text-white uppercase tracking-widest cursor-pointer">Kaza Kırımları Gizle</label>
+        <div className="flex flex-wrap items-center gap-2 md:gap-4 ml-auto">
+          <div className="flex items-center bg-black/40 px-4 py-2.5 rounded-xl border border-white/10">
+            <input type="checkbox" id="sortByCagriKodu" checked={sortByCagriKodu} onChange={(e) => setSortByCagriKodu(e.target.checked)} className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 focus:ring-2" />
+            <label htmlFor="sortByCagriKodu" className="ml-2 text-xs font-black text-white uppercase tracking-widest cursor-pointer">Çağrı Koduna Sırala</label>
+          </div>
+          <div className="flex items-center bg-black/40 px-4 py-2.5 rounded-xl border border-white/10">
+            <input type="checkbox" id="hideKazaKirim" checked={hideKazaKirim} onChange={(e) => setHideKazaKirim(e.target.checked)} className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 focus:ring-2" />
+            <label htmlFor="hideKazaKirim" className="ml-2 text-xs font-black text-white uppercase tracking-widest cursor-pointer">Kaza Kırımları Gizle</label>
+          </div>
         </div>
         <button onClick={() => setIsGovdeSorguOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl ml-2">
           Gövde Uçuş Saati Sorgula
@@ -1712,6 +1742,7 @@ const App = () => {
           startDate={new Date(filterStartDate)}
           endDate={new Date(filterEndDate)}
           currentTime={new Date()}
+          isSyncing={isSyncing}
         />
       </div>
 
@@ -1743,6 +1774,7 @@ const App = () => {
                endDate={new Date(filterEndDate)} 
                title={`${new Date(filterStartDate).toLocaleDateString('tr-TR')} - ${new Date(filterEndDate).toLocaleDateString('tr-TR')} FAALİYET ÇİZELGESİ`} 
                onExport={() => exportTableToMHTML('activity-table', `Faaliyet_Cizelgesi_${filterStartDate}_${filterEndDate}`)} 
+               sortByCagriKodu={sortByCagriKodu}
              />
            </div>
         </div>
@@ -1808,6 +1840,7 @@ const App = () => {
                 <thead>
                   <tr className="bg-[#d9d9d9]">
                     <th className="border border-black px-2 py-3 text-center font-black w-14">SIRA NO</th>
+                    <th className="border border-black px-3 py-3 text-center font-black w-32">HAVA ARACI TİPİ</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">ÇAĞRI KODU</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-36">KUYRUK NUMARASI</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-28">KONUM</th>
@@ -1819,29 +1852,52 @@ const App = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white">
-                  {filteredFleet.map((a, i) => {
-                    const isKazaKirim = a.assignedCode === 'KK' || (a.durumAyrintisi && a.durumAyrintisi.toUpperCase().includes('KAZA KIRIM'));
-                    const hasOplAlert = a.oplAlerts && a.oplAlerts.length > 0 && !isKazaKirim;
-                    const isWeeklyAlertOnly = hasOplAlert && a.oplAlerts!.every(al => al.includes('haftalık') || al.includes('Haftalık'));
-                    const isFaal = String(a.durum).toUpperCase().includes("FAAL") && !String(a.durum).toUpperCase().includes("GAYRİ") && !String(a.durum).toUpperCase().includes("GAYRI");
-                    return (
-                      <tr key={i} className={`hover:bg-gray-100 transition-colors cursor-pointer group ${hasOplAlert ? (isWeeklyAlertOnly ? 'animate-yellow-blink' : 'animate-intense-blink') : ''} ${historicalFleet !== null ? 'opacity-60 cursor-default' : 'active:scale-[0.99]'}`} onClick={() => historicalFleet === null && setSelectedAircraft(a)}>
-                        <td className="border border-black px-2 py-2.5 text-center font-black text-gray-900 relative overflow-hidden">
-                          <div className="relative w-full h-full flex items-center justify-center min-h-[1.5rem]">
-                            {/* Sıra numarası normalde görünür, hover esnasında küçülüp kaybolur */}
-                            <span className="transition-all duration-300 transform group-hover:scale-0 group-hover:opacity-0 block font-black text-xs">
-                              {i + 1}
-                            </span>
-                            {/* Göz simgesi / detayı göster ikonu hover esnasında pürüzsüzce belirir */}
-                            <div className="absolute inset-0 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300 text-emerald-600">
-                              <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
+                  {(() => {
+                    const rowSpans: number[] = [];
+                    let idx = 0;
+                    while (idx < filteredFleet.length) {
+                      let span = 1;
+                      while (idx + span < filteredFleet.length && filteredFleet[idx + span].tip === filteredFleet[idx].tip) {
+                        span++;
+                      }
+                      rowSpans.push(span);
+                      for (let s = 1; s < span; s++) {
+                        rowSpans.push(0);
+                      }
+                      idx += span;
+                    }
+
+                    return filteredFleet.map((a, i) => {
+                      const isKazaKirim = a.assignedCode === 'KK' || (a.durumAyrintisi && a.durumAyrintisi.toUpperCase().includes('KAZA KIRIM'));
+                      const hasOplAlert = a.oplAlerts && a.oplAlerts.length > 0 && !isKazaKirim;
+                      const isWeeklyAlertOnly = hasOplAlert && a.oplAlerts!.every(al => al.includes('haftalık') || al.includes('Haftalık'));
+                      const isFaal = String(a.durum).toUpperCase().includes("FAAL") && !String(a.durum).toUpperCase().includes("GAYRİ") && !String(a.durum).toUpperCase().includes("GAYRI");
+                      const showTypeTd = rowSpans[i] > 0;
+                      const typeSpan = rowSpans[i];
+
+                      return (
+                        <tr key={i} className={`hover:bg-gray-100 transition-colors cursor-pointer group ${hasOplAlert ? (isWeeklyAlertOnly ? 'animate-yellow-blink' : 'animate-intense-blink') : ''} ${historicalFleet !== null ? 'opacity-60 cursor-default' : 'active:scale-[0.99]'}`} onClick={() => historicalFleet === null && setSelectedAircraft(a)}>
+                          <td className="border border-black px-2 py-2.5 text-center font-black text-gray-900 relative overflow-hidden">
+                            <div className="relative w-full h-full flex items-center justify-center min-h-[1.5rem]">
+                              {/* Sıra numarası normalde görünür, hover esnasında küçülüp kaybolur */}
+                              <span className="transition-all duration-300 transform group-hover:scale-0 group-hover:opacity-0 block font-black text-xs">
+                                {i + 1}
+                              </span>
+                              {/* Göz simgesi / detayı göster ikonu hover esnasında pürüzsüzce belirir */}
+                              <div className="absolute inset-0 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300 text-emerald-600">
+                                <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900">{a.cagriKodu}</td>
+                          </td>
+                          {showTypeTd && (
+                            <td rowSpan={typeSpan} className="border border-black px-3 py-2.5 text-center font-black text-gray-900 bg-gray-50 uppercase">
+                              {a.tip}
+                            </td>
+                          )}
+                          <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900">{a.cagriKodu}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900">
                           {a.kuyrukNo} 
                           <span className="text-red-600 font-black ml-1">
@@ -1882,8 +1938,9 @@ const App = () => {
                         </td>
                       </tr>
                     );
-                  })}
-                </tbody>
+                  })
+                })()}
+              </tbody>
               </table>
             </div>
 

@@ -90,6 +90,20 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
     return '';
   };
 
+  const rowSpans: number[] = [];
+  let idx = 0;
+  while (idx < sortedFleet.length) {
+    let span = 1;
+    while (idx + span < sortedFleet.length && sortedFleet[idx + span].tip === sortedFleet[idx].tip) {
+      span++;
+    }
+    rowSpans.push(span);
+    for (let s = 1; s < span; s++) {
+      rowSpans.push(0);
+    }
+    idx += span;
+  }
+
   let html = `
     <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
     <head>
@@ -109,12 +123,13 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
     <body>
       <table>
         <tr>
-          <td colspan="2" style="border: none;"></td>
+          <td colspan="3" style="border: none;"></td>
           <td colspan="4" class="title-row" style="border: none;">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</td>
           <td colspan="3" class="date-text" style="border: none;">${dateStr.split(' ')[0]}</td>
         </tr>
         <tr class="header-row">
           <th>SIRA NO</th>
+          <th>HAVA ARACI TİPİ</th>
           <th>ÇAĞRI KODU</th>
           <th>KUYRUK NUMARASI</th>
           <th>GÖVDE SAATİ</th>
@@ -137,9 +152,16 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
     const durumText = aircraft.durum ? String(aircraft.durum).toUpperCase() : '';
     const alertText = aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? String(aircraft.durumAyrintisi).toUpperCase() : '';
     
+    const span = rowSpans[index];
+    let typeTd = '';
+    if (span > 0) {
+      typeTd = `<td rowspan="${span}" style="font-weight: bold; color: #111827; background-color: #f9fafb;">${aircraft.tip || ''}</td>`;
+    }
+
     html += `
       <tr>
         <td style="font-weight: bold; color: #111827;">${index + 1}</td>
+        ${typeTd}
         <td style="font-weight: bold; color: #111827;">${aircraft.cagriKodu || ''}</td>
         <td style="font-weight: bold; color: #111827;">${aircraft.kuyrukNo || ''} <span class="abbr-text">${abbr}</span></td>
         <td style="mso-number-format:'\\@'; font-weight: bold; color: #FF6B00; font-size: 16px;">${(!aircraft.govdeUcusSaati || aircraft.govdeUcusSaati === '-' || aircraft.govdeUcusSaati === '0') ? '-' : formatToHHMM(aircraft.govdeUcusSaati, aircraft.tip)}</td>
