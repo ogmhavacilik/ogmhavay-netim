@@ -1721,18 +1721,16 @@ function sendReportEmail(recipient, customAttachments, ss) {
   }
 
   var liveAppUrl = "https://filodurumlar-bakimsube.netlify.app";
-  var body = "Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",\n\n" +
-             "Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.\n\n" +
-             "Bununla birlikte, aşağıdaki adresi tarayıcınıza kopyalayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:\n" +
+  var body = "Hava Araçları Bakım ve Teknik Şube Müdürlüğü tarafından otomatik olarak hazırlanan \"Günlük hava aracı ayarları durum raporları\" ekte bilgilerinize sunulmuştur.\n\n" +
+             "Aşağıdaki linki tarayıcınıza kopyalayarak anlık güncel durum raporunu canlı olarak takip edebilirsiniz:\n\n" +
              "filodurumlar-bakimsube.netlify.app\n\n" +
-             "İyi çalışmalar dilerim.";
+             "İyi çalışmalar dileriz.";
 
   var htmlBody = "<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>" +
-                 "<p>Sayın " + (recipient["PERSONEL ADI"] || "Yetkili") + ",</p>" +
-                 "<p>Günlük hava aracı operasyonel durum raporları ekte bilgilerinize sunulmuştur.</p>" +
-                 "<p>Bununla birlikte, aşağıdaki adresi tarayıcınıza kopyalayarak en güncel durum raporunu canlı olarak da takip edebilirsiniz:</p>" +
+                 "<p>Hava Araçları Bakım ve Teknik Şube Müdürlüğü tarafından otomatik olarak hazırlanan <strong>&quot;Günlük hava aracı ayarları durum raporları&quot;</strong> ekte bilgilerinize sunulmuştur.</p>" +
+                 "<p>Aşağıdaki linki tarayıcınıza kopyalayarak anlık güncel durum raporunu canlı olarak takip edebilirsiniz:</p>" +
                  "<p><strong>filodurumlar-bakimsube<b>.</b>netlify<b>.</b>app</strong></p>" +
-                 "<p>İyi çalışmalar dilerim.</p>" +
+                 "<p>İyi çalışmalar dileriz.</p>" +
                  "</div>";
 
   MailApp.sendEmail({
@@ -2626,19 +2624,34 @@ function generateFormattedEnvanterExcel(ssId) {
     var tariStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd.MM.yyyy");
     
     // Set Font to Arial for all potential content cells
-    tempSheet.getRange("A1:I250").setFontFamily("Arial");
+    tempSheet.getRange("A1:J250").setFontFamily("Arial");
 
-    // Date Row (Merged H2:I2 for 9-column layout alignment)
-    tempSheet.getRange("H2:I2").merge().setValue(tariStr).setFontColor("#dc2626").setFontWeight("bold").setHorizontalAlignment("right").setFontSize(14);
+    // Date Row (Merged I2:J2 for 10-column layout alignment)
+    tempSheet.getRange("I2:J2").merge().setValue(tariStr).setFontColor("#dc2626").setFontWeight("bold").setHorizontalAlignment("right").setFontSize(14);
     
-    // Title Row (Merged A2:G2)
-    tempSheet.getRange("A2:G2").merge().setValue("ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU").setFontWeight("bold").setHorizontalAlignment("center").setFontSize(16).setFontColor("#1f2937");
+    // Title Row (Merged A2:H2)
+    tempSheet.getRange("A2:H2").merge().setValue("ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU").setFontWeight("bold").setHorizontalAlignment("center").setFontSize(16).setFontColor("#1f2937");
     
-    // Header Row (9 Columns to perfectly match standard status report)
-    var headers = ["SIRA NO", "ÇAĞRI KODU", "KUYRUK NUMARASI", "GÖVDE SAATİ", "DURUM", "DURUM AYRINTISI", "KONUM", "FAYDALI SAAT", "AÇIKLAMA"];
-    var headerRange = tempSheet.getRange("A3:I3");
+    // Header Row (10 Columns to perfectly match standard status report)
+    var headers = ["SIRA NO", "HAVA ARACI TİPİ", "ÇAĞRI KODU", "KUYRUK NUMARASI", "GÖVDE SAATİ", "DURUM", "DURUM AYRINTISI", "KONUM", "FAYDALI SAAT", "AÇIKLAMA"];
+    var headerRange = tempSheet.getRange("A3:J3");
     headerRange.setValues([headers]).setBackground("#d9d9d9").setFontWeight("bold").setHorizontalAlignment("center").setVerticalAlignment("middle").setFontSize(10).setFontColor("black");
     tempSheet.setRowHeight(3, 30);
+
+    // Row Spans for HAVA ARACI TİPİ
+    var rowSpans = [];
+    var idxRow = 0;
+    while (idxRow < fleetData.length) {
+      var span = 1;
+      while (idxRow + span < fleetData.length && fleetData[idxRow + span].tip === fleetData[idxRow].tip) {
+        span++;
+      }
+      rowSpans.push(span);
+      for (var s = 1; s < span; s++) {
+        rowSpans.push(0);
+      }
+      idxRow += span;
+    }
 
     var startRow = 4;
     fleetData.forEach(function(item, idx) {
@@ -2678,6 +2691,7 @@ function generateFormattedEnvanterExcel(ssId) {
 
       var rowData = [
         idx + 1,               // SIRA NO
+        "",                    // Placeholder for HAVA ARACI TİPİ
         cagriKodu,             // ÇAĞRI KODU
         "",                    // Placeholder for Kuyruk Numarası
         (!item.govdeUcusSaati || item.govdeUcusSaati === "-" || item.govdeUcusSaati === "0" || item.govdeUcusSaati === "") ? "-" : formatToHHMM(item.govdeUcusSaati, item.tip), // GÖVDE SAATİ
@@ -2688,60 +2702,71 @@ function generateFormattedEnvanterExcel(ssId) {
         item.aciklama          // AÇIKLAMA
       ];
       
-      var range = tempSheet.getRange(currentRow, 1, 1, 9);
+      var range = tempSheet.getRange(currentRow, 1, 1, 10);
       range.setValues([rowData]);
       range.setBorder(true, true, true, true, true, true);
       range.setVerticalAlignment("middle").setHorizontalAlignment("center").setFontSize(10);
       
-      // Set Rich Text for Kuyruk No with styling
-      tempSheet.getRange(currentRow, 3).setRichTextValue(kNoValue).setFontWeight("bold").setFontColor("#111827");
+      // Merge HAVA ARACI TİPİ column
+      var span = rowSpans[idx];
+      if (span > 0) {
+        var typeCell = tempSheet.getRange(currentRow, 2);
+        typeCell.setValue(String(item.tip || "").toUpperCase()).setFontWeight("bold").setFontColor("#111827").setBackground("#f9fafb");
+        if (span > 1) {
+          tempSheet.getRange(currentRow, 2, span, 1).merge();
+        }
+      }
+
+      // Set Rich Text for Kuyruk No with styling (column 4)
+      tempSheet.getRange(currentRow, 4).setRichTextValue(kNoValue).setFontWeight("bold").setFontColor("#111827");
       
       // Style specific columns
       tempSheet.getRange(currentRow, 1).setFontWeight("bold").setFontColor("#111827");
-      tempSheet.getRange(currentRow, 2).setFontWeight("bold").setFontColor("#111827");
+      tempSheet.getRange(currentRow, 3).setFontWeight("bold").setFontColor("#111827");
       
-      // Govde Saati Style (#FF6B00, bold, size 12)
-      tempSheet.getRange(currentRow, 4).setNumberFormat("@").setFontWeight("bold").setFontColor("#FF6B00").setFontSize(12);
+      // Govde Saati Style (#FF6B00, bold, size 12) (column 5)
+      tempSheet.getRange(currentRow, 5).setNumberFormat("@").setFontWeight("bold").setFontColor("#FF6B00").setFontSize(12);
       
-      // Durum Cell Background & Typography color
-      var durumCell = tempSheet.getRange(currentRow, 5);
+      // Durum Cell Background & Typography color (column 6)
+      var durumCell = tempSheet.getRange(currentRow, 6);
       if (isFaal) {
         durumCell.setBackground("#e8f5e9").setFontColor("#2e7d32").setFontWeight("bold");
       } else {
         durumCell.setBackground("#ffebee").setFontColor("#c62828").setFontWeight("bold");
       }
       
-      tempSheet.getRange(currentRow, 6).setFontWeight("bold").setFontColor("#111827");
       tempSheet.getRange(currentRow, 7).setFontWeight("bold").setFontColor("#111827");
+      tempSheet.getRange(currentRow, 8).setFontWeight("bold").setFontColor("#111827");
       
-      // Faydali Saat Style (#1a73e8, bold, size 12)
-      var faydaliCell = tempSheet.getRange(currentRow, 8);
+      // Faydali Saat Style (#1a73e8, bold, size 12) (column 9)
+      var faydaliCell = tempSheet.getRange(currentRow, 9);
       faydaliCell.setNumberFormat("@").setFontColor("#1a73e8").setFontWeight("bold").setFontSize(12);
       
-      // Aciklama Cell (left aligned, italic, small, wrapped, top-aligned)
-      var aciklamaCell = tempSheet.getRange(currentRow, 9);
+      // Aciklama Cell (left aligned, italic, small, wrapped, top-aligned) (column 10)
+      var aciklamaCell = tempSheet.getRange(currentRow, 10);
       aciklamaCell.setFontStyle("italic").setFontSize(9).setFontColor("#4b5563").setHorizontalAlignment("left").setVerticalAlignment("top").setWrap(true);
     });
     
     var lastDataRow = startRow + fleetData.length;
     var footerRow = lastDataRow + 2;
     
-    tempSheet.getRange(footerRow, 1, 1, 9).merge().setValue("KISALTMALAR:").setFontWeight("bold").setFontSize(11);
-    tempSheet.getRange(footerRow + 1, 1, 1, 9).merge().setValue("H: HELİTAK  |  SA: SINGLE AMFİBİ  |  DA: DUAL AMFİBİ  |  SL: SINGLE LAND  |  DL: DUAL LAND")
+    tempSheet.getRange(footerRow, 1, 1, 10).merge().setValue("KISALTMALAR:").setFontWeight("bold").setFontSize(11);
+    tempSheet.getRange(footerRow + 1, 1, 1, 10).merge().setValue("H: HELİTAK  |  SA: SINGLE AMFİBİ  |  DA: DUAL AMFİBİ  |  SL: SINGLE LAND  |  DL: DUAL LAND")
       .setFontWeight("bold")
       .setFontSize(10)
       .setFontColor("#dc2626");
 
     // Set precise column widths to prevent cell overflows or clipping
     tempSheet.setColumnWidth(1, 65);   // SIRA NO
-    tempSheet.setColumnWidth(2, 110);  // ÇAĞRI KODU
-    tempSheet.setColumnWidth(3, 140);  // KUYRUK NUMARASI
-    tempSheet.setColumnWidth(4, 110);  // GÖVDE SAATİ
-    tempSheet.setColumnWidth(5, 110);  // DURUM
-    tempSheet.setColumnWidth(6, 145);  // DURUM AYRINTISI
-    tempSheet.setColumnWidth(7, 120);  // KONUM
-    tempSheet.setColumnWidth(8, 110);  // FAYDALI SAAT
-    tempSheet.setColumnWidth(9, 450);  // AÇIKLAMA
+    tempSheet.setColumnWidth(2, 130);  // HAVA ARACI TİPİ
+    tempSheet.setColumnWidth(3, 110);  // ÇAĞRI KODU
+    tempSheet.setColumnWidth(4, 140);  // KUYRUK NUMARASI
+    tempSheet.setColumnWidth(5, 110);  // GÖVDE SAATİ
+    tempSheet.setColumnWidth(6, 110);  // DURUM
+    tempSheet.setColumnWidth(7, 145);  // DURUM AYRINTISI
+    tempSheet.setColumnWidth(8, 120);  // KONUM
+    tempSheet.setColumnWidth(9, 110);  // FAYDALI SAAT
+    tempSheet.setColumnWidth(10, 450);  // AÇIKLAMA
 
     // Thick border style for the headers
     headerRange.setBorder(true, true, true, true, true, true, "solid_medium", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
