@@ -1106,13 +1106,13 @@ function sendReportEmail(recipient, customAttachments, ss) {
   }
   
   var liveAppUrl = "https://filodurumlar-bakimsube.netlify.app";
-  var body = "Hava Araçları Bakım ve Teknik Şube Müdürlüğü tarafından otomatik olarak hazırlanan \"Günlük hava aracı ayarları durum raporları\" ekte bilgilerinize sunulmuştur.\n\n" +
+  var body = "Hava Araçları Bakım ve Teknik Şube Müdürlüğü tarafından otomatik olarak hazırlanan \"Günlük Hava Aracı Operasyonel Durum Raporu\" Ek'te bilgilerinize sunulmuştur.\n\n" +
              "Aşağıdaki linki tarayıcınıza kopyalayarak anlık güncel durum raporunu canlı olarak takip edebilirsiniz:\n\n" +
              "filodurumlar-bakimsube.netlify.app\n\n" +
              "İyi çalışmalar dileriz.";
 
   var htmlBody = "<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>" +
-                 "<p>Hava Araçları Bakım ve Teknik Şube Müdürlüğü tarafından otomatik olarak hazırlanan <strong>&quot;Günlük hava aracı ayarları durum raporları&quot;</strong> ekte bilgilerinize sunulmuştur.</p>" +
+                 "<p>Hava Araçları Bakım ve Teknik Şube Müdürlüğü tarafından otomatik olarak hazırlanan <strong>&quot;Günlük Hava Aracı Operasyonel Durum Raporu&quot;</strong> Ek'te bilgilerinize sunulmuştur.</p>" +
                  "<p>Aşağıdaki linki tarayıcınıza kopyalayarak anlık güncel durum raporunu canlı olarak takip edebilirsiniz:</p>" +
                  "<p><strong>filodurumlar-bakimsube<b>.</b>netlify<b>.</b>app</strong></p>" +
                  "<p>İyi çalışmalar dileriz.</p>" +
