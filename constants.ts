@@ -493,7 +493,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: '-',
     motor: 'PT6A-67F',
     uretimYili: 2024,
-    gelisTarihi: '08.05.2026',
+    gelisTarihi: '07.05.2026',
     base: '-',
     maintenanceHours: [],
     photos: ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s']
@@ -514,7 +514,7 @@ export const MOCK_AIRCRAFT: Aircraft[] = [
     seriNo: '-',
     motor: 'PT6A-67F',
     uretimYili: 2024,
-    gelisTarihi: '08.05.2026',
+    gelisTarihi: '07.05.2026',
     base: '-',
     maintenanceHours: [],
     photos: ['https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS7owB3R6Jnw61F9UDe7ww_vma77LjceWkpGA&s']

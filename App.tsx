@@ -1525,11 +1525,41 @@ const App = () => {
       
       // Also consider Gelis Tarihi (Arrival Date) if available
       if (aircraft?.gelisTarihi && aircraft.gelisTarihi !== '-' && aircraft.gelisTarihi !== '') {
-        const parts = String(aircraft.gelisTarihi).split('.');
+        const parts = String(aircraft.gelisTarihi).split(/[./-]/);
         if (parts.length === 3) {
-          const isoGelis = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-          if (!firstOperationalDate || isoGelis < firstOperationalDate) {
-            firstOperationalDate = isoGelis;
+          let day = parseInt(parts[0], 10);
+          let month = parseInt(parts[1], 10);
+          let year = parseInt(parts[2], 10);
+          
+          if (parts[0].length === 4) {
+            year = parseInt(parts[0], 10);
+            month = parseInt(parts[1], 10);
+            day = parseInt(parts[2], 10);
+          } else if (parts[2].length === 4) {
+            // Check if MM/DD/YYYY format:
+            // 1) month is > 12 (needs swap)
+            // 2) first part is single digit, second part is single/double, separator is '/' (Google Sheets auto-formatted US date)
+            const hasSlash = String(aircraft.gelisTarihi).includes('/');
+            if (month > 12) {
+              const temp = day;
+              day = month;
+              month = temp;
+            } else if (hasSlash && month <= 12 && day <= 12) {
+              const temp = day;
+              day = month;
+              month = temp;
+            } else if (hasSlash && day > 12 && month <= 12 && parts[0].length === 1) {
+              const temp = day;
+              day = month;
+              month = temp;
+            }
+          }
+
+          if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+            const isoGelis = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            if (!firstOperationalDate || isoGelis < firstOperationalDate) {
+              firstOperationalDate = isoGelis;
+            }
           }
         }
       }
@@ -1541,7 +1571,7 @@ const App = () => {
         let curr = new Date(start);
         while (curr <= end) {
           const dateStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
-          if (dateStr < firstOperationalDate && (!dailyStatuses[dateStr] || dailyStatuses[dateStr] === '')) {
+          if (dateStr < firstOperationalDate) {
             dailyStatuses[dateStr] = 'X';
           }
           curr.setDate(curr.getDate() + 1);

@@ -1,5 +1,5 @@
 import { SheetConfig, Aircraft, Status, StatusType, DailyStatusCode, OPLItem } from '../types';
-import { getCallSignByTail } from '../constants';
+import { getCallSignByTail, MOCK_AIRCRAFT } from '../constants';
 
 /**
  * Durum metinlerini analiz ederek faaliyet kodunu belirler.
@@ -418,30 +418,8 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
     
     if (data.length === 0) return [];
 
-    // AT-802 için Geliş Tarihi eşleştirme haritası oluştur
+    // AT-802 için Geliş Tarihi eşleştirme haritası oluştur - Artık sunucu tarafındaki lookup'ı doğrudan kullandığımız için bu haritaya gerek kalmadı
     const arrivalMap = new Map<string, string>();
-    if (config.aircraftType === 'AT-802') {
-      data.forEach((item: any) => {
-        const rawGelisKNo = String(item.gelisKuyrukNo || '').trim();
-        const rawGelisTarihi = item.gelisTarihi;
-        
-        // Kuyruk no formatını temizle: "OR-2021 / 802-1051 (EC-OEK)" -> "OR-2021"
-        const match = rawGelisKNo.match(/OR-\d+/i);
-        if (match) {
-          const cleanKNo = match[0].toUpperCase();
-          let dateStr = '-';
-          if (Array.isArray(rawGelisTarihi)) {
-            // U24:V35 birleşik hücre olabilir, ilk değeri al
-            dateStr = formatDateIfISO(rawGelisTarihi[0]);
-          } else {
-            dateStr = formatDateIfISO(rawGelisTarihi);
-          }
-          if (dateStr && dateStr !== '-') {
-            arrivalMap.set(cleanKNo, dateStr);
-          }
-        }
-      });
-    }
 
     const now = new Date();
     const timestamp = now.toLocaleDateString('tr-TR') + ' ' + now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -585,7 +563,13 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
           const match = val.match(/\d{4}/);
           return match ? parseInt(match[0]) : (Number(item.uretimYili) || 0);
         })(),
-        gelisTarihi: arrivalMap.get(cleanKuyrukNo) || (item.gelisTarihi ? formatDateIfISO(item.gelisTarihi) : '-')
+        gelisTarihi: (function() {
+          const mockAc = MOCK_AIRCRAFT.find(a => a.kuyrukNo === kuyrukNo);
+          if (mockAc && mockAc.gelisTarihi && mockAc.gelisTarihi !== '-') {
+            return mockAc.gelisTarihi;
+          }
+          return item.gelisTarihi ? formatDateIfISO(item.gelisTarihi) : '-';
+        })()
       };
 
       if (config.aircraftType === 'Bell-429') {
