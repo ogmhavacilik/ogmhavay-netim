@@ -10,7 +10,8 @@ const __dirname = path.dirname(__filename);
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
-      base: './',
+      // GitHub Pages alt klasör yapısı için burayı güncelledik:
+      base: '/ogmhavay-netim/', 
       server: {
         port: 3000,
         host: '0.0.0.0',
