@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { Aircraft, Status, DailyStatusCode } from '../types';
 import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour, parseSingleCellToHour, proxyFetch } from '../services/sheetService';
 import { LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID } from '../constants';
+import { safeStorage } from '../services/safeStorage';
 
 interface DataUpdateFormProps {
   fleet: Aircraft[];
@@ -266,7 +267,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       // Local storage persistence
       if (selectedKuyruk) {
         const storageKey = `draft_${selectedKuyruk}_${newState.islemTarihi}`;
-        localStorage.setItem(storageKey, JSON.stringify({ formData: newState, at802Data }));
+        safeStorage.setItem(storageKey, JSON.stringify({ formData: newState, at802Data }));
       }
       return newState;
     });
@@ -280,7 +281,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       const newState = { ...prev, [field]: value };
       if (selectedKuyruk) {
         const storageKey = `draft_${selectedKuyruk}_${formData.islemTarihi}`;
-        localStorage.setItem(storageKey, JSON.stringify({ formData, at802Data: newState }));
+        safeStorage.setItem(storageKey, JSON.stringify({ formData, at802Data: newState }));
       }
       return newState;
     });
@@ -677,7 +678,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       }
 
       // Clear draft on success
-      localStorage.removeItem(`draft_${selectedAircraft.kuyrukNo}_${formData.islemTarihi}`);
+      safeStorage.removeItem(`draft_${selectedAircraft.kuyrukNo}_${formData.islemTarihi}`);
       setIsUpdateCompleted(true);
 
     } catch (error) {

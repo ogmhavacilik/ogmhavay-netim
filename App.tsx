@@ -26,6 +26,7 @@ import { exportTableToMHTML } from './services/mhtmlService';
 import { MOCK_ACTIVITY_GRID } from './constants';
 import { generateFleetExcelHtml, exportTableToExcel } from './src/services/excelService';
 import { X, Download, Activity, Clock } from 'lucide-react';
+import { safeStorage } from './services/safeStorage';
 
 const parseTimeToMinutes = (timeStr: string) => {
   if (!timeStr || timeStr === '-' || timeStr === 'undefined') return null;
@@ -39,10 +40,10 @@ const parseTimeToMinutes = (timeStr: string) => {
 
 const App = () => {
   const [isSplashVisible, setIsSplashVisible] = useState(() => {
-    return !localStorage.getItem('redirect_view');
+    return !safeStorage.getItem('redirect_view');
   });
   const [currentView, setCurrentView] = useState<'landing' | 'dashboard' | 'update'>(() => {
-    return (localStorage.getItem('redirect_view') as any) || 'landing';
+    return (safeStorage.getItem('redirect_view') as any) || 'landing';
   });
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -62,7 +63,7 @@ const App = () => {
   const [oplCheckStatus, setOplCheckStatus] = useState<Record<string, 'pending' | 'checking' | 'done'>>({});
   
   const [filterType, setFilterType] = useState(() => {
-    return localStorage.getItem('redirect_filter') || 'Tümü';
+    return safeStorage.getItem('redirect_filter') || 'Tümü';
   });
   const [filterTail, setFilterTail] = useState('');
   
@@ -1322,8 +1323,8 @@ const App = () => {
 
   useEffect(() => {
     // Clear redirect flags after they have been initialized in state on page load
-    localStorage.removeItem('redirect_view');
-    localStorage.removeItem('redirect_filter');
+    safeStorage.removeItem('redirect_view');
+    safeStorage.removeItem('redirect_filter');
   }, []);
 
   useEffect(() => {
@@ -1866,14 +1867,14 @@ const App = () => {
             </div>
 
             <div className="overflow-x-auto w-full">
-              <table id="inventory-table" className="min-w-[1200px] lg:w-full border-collapse border-[1.5px] border-black text-[12px] table-fixed">
+              <table id="inventory-table" className="min-w-[1200px] lg:w-full border-collapse border-[1.5px] border-black text-[12px] table-auto">
                 <thead>
                   <tr className="bg-[#d9d9d9]">
                     <th className="border border-black px-2 py-3 text-center font-black w-14">SIRA NO</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-32">HAVA ARACI TİPİ</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">ÇAĞRI KODU</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-36">KUYRUK NUMARASI</th>
-                    <th className="border border-black px-3 py-3 text-center font-black w-28">KONUM</th>
+                    <th className="border border-black px-3 py-3 text-center font-black w-44 min-w-[170px]">KONUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">DURUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-36">DURUM AYRINTISI</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">GÖVDE SAATİ</th>
@@ -1953,7 +1954,7 @@ const App = () => {
                             </>
                           )}
                         </td>
-                        <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900 uppercase">{a.konum}</td>
+                        <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900 uppercase whitespace-nowrap">{a.konum}</td>
                         <td className={`border border-black px-3 py-2.5 text-center font-black ${isFaal ? 'bg-[#e8f5e9] text-[#2e7d32]' : 'bg-[#ffebee] text-[#c62828]'}`}>{a.durum.toUpperCase()}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-gray-900 uppercase">{a.durumAyrintisi !== '-' ? a.durumAyrintisi : ''}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-[#FF6B00] text-base">{a.govdeUcusSaati || '-'}</td>
