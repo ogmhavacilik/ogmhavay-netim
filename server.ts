@@ -57,11 +57,6 @@ async function startServer() {
     }
   });
 
-  // Redirect root path to the subpath base to ensure correct asset resolution
-  app.get('/', (req, res) => {
-    res.redirect('/ogmhavay-netim/');
-  });
-
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
