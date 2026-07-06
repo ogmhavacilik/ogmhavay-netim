@@ -57,6 +57,11 @@ async function startServer() {
     }
   });
 
+  // Redirect root path to the subpath base to ensure correct asset resolution
+  app.get('/', (req, res) => {
+    res.redirect('/ogmhavay-netim/');
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -66,8 +71,10 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    // Serve static files both at the root and at the subdirectory path
+    app.use('/ogmhavay-netim', express.static(distPath));
     app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
+    app.get(['/ogmhavay-netim/*all', '*all'], (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
