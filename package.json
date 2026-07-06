@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "build:ghpages": "vite build --outDir docs --base /ogmhavay-netim/",
+    "build:ghpages": "BUILD_FOR_GHPAGES=true vite build",
     "start": "node dist/server.cjs",
     "lint": "tsc --noEmit"
   },
