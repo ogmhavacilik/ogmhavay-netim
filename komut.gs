@@ -479,8 +479,35 @@ function doPost(e) {
       if (!recipient)
         return jsonError("Alıcı bulunamadı. Aranan ID: " + recipientId);
 
-      sendReportEmail(recipient, customAttachments);
-      return jsonSuccess("E-posta gönderildi.");
+      var targetEmail = String(recipient["PERSONEL MAİL ADRESİ"] || "").trim().toLowerCase();
+      var matchingRecipients = [];
+      var emailColIdx = headers.indexOf("PERSONEL MAİL ADRESİ");
+
+      for (var i = 1; i < data.length; i++) {
+        var recEmail = String(data[i][emailColIdx] || "").trim().toLowerCase();
+        if (recEmail === targetEmail) {
+          var recObj = {};
+          for (var j = 0; j < headers.length; j++) {
+            recObj[headers[j]] = data[i][j];
+          }
+          matchingRecipients.push(recObj);
+        }
+      }
+
+      // 1 ek olandan çoklu ek olana doğru sırala (Artan sırada)
+      matchingRecipients.sort(function(a, b) {
+        var aAtts = String(a["GÖNDERİLECEK MAİLİN EKİ"] || "").split(',').filter(Boolean).length;
+        var bAtts = String(b["GÖNDERİLECEK MAİLİN EKİ"] || "").split(',').filter(Boolean).length;
+        return aAtts - bAtts;
+      });
+
+      // Arka arkaya mailleri gönder
+      for (var k = 0; k < matchingRecipients.length; k++) {
+        sendReportEmail(matchingRecipients[k], customAttachments);
+        Utilities.sleep(1000); // Mailler arasında kısa bir bekleme
+      }
+
+      return jsonSuccess("E-posta(lar) başarıyla gönderildi (" + matchingRecipients.length + " adet).");
     }
 
     if (action === "testMail") {
