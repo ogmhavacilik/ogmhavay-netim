@@ -462,22 +462,22 @@ const LogRecordsModal: React.FC<LogRecordsModalProps> = ({ aircraft, onClose }) 
         </div>
 
         {/* Body */}
-        <div className="flex-grow overflow-hidden flex flex-col bg-gray-50">
+        <div className="flex-grow overflow-y-auto flex flex-col bg-gray-50">
           {view === 'menu' ? (
-            <div className={`flex-grow flex items-center justify-center p-10 ${hasOPLSupport ? 'gap-10' : ''}`}>
+            <div className="flex-grow flex flex-wrap items-center justify-center p-6 md:p-10 gap-6 md:gap-10 overflow-y-auto py-8">
                {hasOPLSupport && (
-                 <button onClick={handleFetchOPL} className="bg-white w-96 p-12 rounded-[3.5rem] border-2 border-emerald-100 shadow-xl hover:shadow-2xl hover:border-emerald-500 transition-all flex flex-col items-center text-center space-y-6 transform hover:-translate-y-2">
-                    <div className="bg-emerald-50 p-6 rounded-[2rem] text-emerald-700"><svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth={2}/></svg></div>
-                    <div><h3 className="text-2xl font-black text-emerald-950 uppercase mb-2">ÖMÜRLÜ PARÇA LİSTESİ</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">KESİN FİLTRELEME AKTİF</p></div>
+                 <button onClick={handleFetchOPL} className="bg-white w-full max-w-sm md:w-80 lg:w-96 p-8 md:p-10 rounded-[2.5rem] border-2 border-emerald-100 shadow-xl hover:shadow-2xl hover:border-emerald-500 transition-all flex flex-col items-center text-center space-y-4 md:space-y-6 transform hover:-translate-y-1">
+                    <div className="bg-emerald-50 p-5 md:p-6 rounded-[2rem] text-emerald-700"><svg className="w-12 h-12 md:w-16 md:h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth={2}/></svg></div>
+                    <div><h3 className="text-xl md:text-2xl font-black text-emerald-950 uppercase mb-2">ÖMÜRLÜ PARÇA LİSTESİ</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">KESİN FİLTRELEME AKTİF</p></div>
                  </button>
                )}
-               <button onClick={() => setView('sheet')} className="bg-white w-96 p-12 rounded-[3.5rem] border-2 border-blue-100 shadow-xl hover:shadow-2xl hover:border-blue-500 transition-all flex flex-col items-center text-center space-y-6 transform hover:-translate-y-2">
-                  <div className="bg-blue-50 p-6 rounded-[2rem] text-blue-700"><svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></div>
-                  <div><h3 className="text-2xl font-black text-blue-950 uppercase mb-2">HAVA ARACI GÜNLÜK DURUMLARI</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">GÖRÜNTÜLE</p></div>
+               <button onClick={() => setView('sheet')} className="bg-white w-full max-w-sm md:w-80 lg:w-96 p-8 md:p-10 rounded-[2.5rem] border-2 border-blue-100 shadow-xl hover:shadow-2xl hover:border-blue-500 transition-all flex flex-col items-center text-center space-y-4 md:space-y-6 transform hover:-translate-y-1">
+                  <div className="bg-blue-50 p-5 md:p-6 rounded-[2rem] text-blue-700"><svg className="w-12 h-12 md:w-16 md:h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></div>
+                  <div><h3 className="text-xl md:text-2xl font-black text-blue-950 uppercase mb-2">HAVA ARACI GÜNLÜK DURUMLARI</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">GÖRÜNTÜLE</p></div>
                </button>
-               <button onClick={() => setView('maintenance')} className="bg-white w-96 p-12 rounded-[3.5rem] border-2 border-purple-100 shadow-xl hover:shadow-2xl hover:border-purple-500 transition-all flex flex-col items-center text-center space-y-6 transform hover:-translate-y-2">
-                  <div className="bg-purple-50 p-6 rounded-[2rem] text-purple-700"><svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg></div>
-                  <div><h3 className="text-2xl font-black text-purple-950 uppercase mb-2">ÇEVRİM DIŞI ÇALIŞ</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">İNDİR / YÜKLE EKRANI</p></div>
+               <button onClick={() => setView('maintenance')} className="bg-white w-full max-w-sm md:w-80 lg:w-96 p-8 md:p-10 rounded-[2.5rem] border-2 border-purple-100 shadow-xl hover:shadow-2xl hover:border-purple-500 transition-all flex flex-col items-center text-center space-y-4 md:space-y-6 transform hover:-translate-y-1">
+                  <div className="bg-purple-50 p-5 md:p-6 rounded-[2rem] text-purple-700"><svg className="w-12 h-12 md:w-16 md:h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg></div>
+                  <div><h3 className="text-xl md:text-2xl font-black text-purple-950 uppercase mb-2">ÇEVRİM DIŞI ÇALIŞ</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic tracking-widest">İNDİR / YÜKLE EKRANI</p></div>
                </button>
             </div>
           ) : view === 'sheet' ? (

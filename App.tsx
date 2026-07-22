@@ -85,6 +85,7 @@ const App = () => {
 
   const [hideKazaKirim, setHideKazaKirim] = useState(true);
   const [sortByCagriKodu, setSortByCagriKodu] = useState(false);
+  const [sortByFaydaliSaat, setSortByFaydaliSaat] = useState(false);
 
   const [historicalFleet, setHistoricalFleet] = useState<Aircraft[] | null>(null);
   const [envanterLog, setEnvanterLog] = useState<any[]>([]);
@@ -1444,6 +1445,17 @@ const App = () => {
       return 999;
     };
 
+    const getFaydaliVal = (item: any) => {
+      const val = item.faydaliSaat;
+      if (val === null || val === undefined || val === '') return 999999;
+      const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+      return isNaN(num) ? 999999 : num;
+    };
+
+    if (sortByFaydaliSaat) {
+      return [...filtered].sort((a, b) => getFaydaliVal(a) - getFaydaliVal(b));
+    }
+
     if (sortByCagriKodu) {
       return [...filtered].sort((a, b) => getOrder(a.cagriKodu) - getOrder(b.cagriKodu));
     }
@@ -1490,7 +1502,7 @@ const App = () => {
       
       return getOrder(a.cagriKodu) - getOrder(b.cagriKodu);
     });
-  }, [fleet, historicalFleet, searchTerm, filterType, filterTail, hideKazaKirim, sortByCagriKodu]);
+  }, [fleet, historicalFleet, searchTerm, filterType, filterTail, hideKazaKirim, sortByCagriKodu, sortByFaydaliSaat]);
 
   const filteredActivities = useMemo(() => {
     const filtered = activities.filter(a => {
@@ -1753,11 +1765,33 @@ const App = () => {
         )}
         <div className="flex flex-wrap items-center gap-2 md:gap-4 ml-auto">
           <div className="flex items-center bg-black/40 px-4 py-2.5 rounded-xl border border-white/10">
-            <input type="checkbox" id="sortByCagriKodu" checked={sortByCagriKodu} onChange={(e) => setSortByCagriKodu(e.target.checked)} className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 focus:ring-2" />
+            <input 
+              type="checkbox" 
+              id="sortByFaydaliSaat" 
+              checked={sortByFaydaliSaat} 
+              onChange={(e) => {
+                setSortByFaydaliSaat(e.target.checked);
+                if (e.target.checked) setSortByCagriKodu(false);
+              }} 
+              className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 focus:ring-2 cursor-pointer" 
+            />
+            <label htmlFor="sortByFaydaliSaat" className="ml-2 text-xs font-black text-white uppercase tracking-widest cursor-pointer">Faydalı Saate Göre Sırala</label>
+          </div>
+          <div className="flex items-center bg-black/40 px-4 py-2.5 rounded-xl border border-white/10">
+            <input 
+              type="checkbox" 
+              id="sortByCagriKodu" 
+              checked={sortByCagriKodu} 
+              onChange={(e) => {
+                setSortByCagriKodu(e.target.checked);
+                if (e.target.checked) setSortByFaydaliSaat(false);
+              }} 
+              className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 focus:ring-2 cursor-pointer" 
+            />
             <label htmlFor="sortByCagriKodu" className="ml-2 text-xs font-black text-white uppercase tracking-widest cursor-pointer">Çağrı Koduna Sırala</label>
           </div>
           <div className="flex items-center bg-black/40 px-4 py-2.5 rounded-xl border border-white/10">
-            <input type="checkbox" id="hideKazaKirim" checked={hideKazaKirim} onChange={(e) => setHideKazaKirim(e.target.checked)} className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 focus:ring-2" />
+            <input type="checkbox" id="hideKazaKirim" checked={hideKazaKirim} onChange={(e) => setHideKazaKirim(e.target.checked)} className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 focus:ring-2 cursor-pointer" />
             <label htmlFor="hideKazaKirim" className="ml-2 text-xs font-black text-white uppercase tracking-widest cursor-pointer">Kaza Kırımları Gizle</label>
           </div>
         </div>
@@ -1801,11 +1835,13 @@ const App = () => {
              </div>
              <ActivityGrid 
                activities={filteredActivities} 
+               fleet={filteredFleet}
                startDate={new Date(filterStartDate)} 
                endDate={new Date(filterEndDate)} 
                title={`${new Date(filterStartDate).toLocaleDateString('tr-TR')} - ${new Date(filterEndDate).toLocaleDateString('tr-TR')} FAALİYET ÇİZELGESİ`} 
                onExport={() => exportTableToMHTML('activity-table', `Faaliyet_Cizelgesi_${filterStartDate}_${filterEndDate}`)} 
                sortByCagriKodu={sortByCagriKodu}
+               sortByFaydaliSaat={sortByFaydaliSaat}
              />
            </div>
         </div>
@@ -2013,6 +2049,7 @@ const App = () => {
         <AircraftDetailModal 
           aircraft={selectedAircraft} 
           activities={activities}
+          envanterLog={envanterLog}
           onClose={() => setSelectedAircraft(null)} 
           onEdit={() => {
             requireAuth(selectedAircraft.tip, () => {
@@ -2022,6 +2059,9 @@ const App = () => {
           }}
           onViewLogs={(openLogs) => {
             requireAuth(selectedAircraft.tip, openLogs);
+          }}
+          onViewHistory={(openHistory) => {
+            requireAuth(selectedAircraft.tip, openHistory);
           }}
         />
       )}

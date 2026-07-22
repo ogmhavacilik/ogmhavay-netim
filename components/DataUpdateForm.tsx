@@ -5,6 +5,7 @@ import { Aircraft, Status, DailyStatusCode } from '../types';
 import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour, parseSingleCellToHour, proxyFetch } from '../services/sheetService';
 import { LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID } from '../constants';
 import { safeStorage } from '../services/safeStorage';
+import { cleanDescription } from '../services/cleanUtils';
 
 interface DataUpdateFormProps {
   fleet: Aircraft[];
@@ -370,7 +371,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
         konum: formData.konum,
         durum: formData.durum,
         durumAyrintisi: formData.durumAyrintisi,
-        aciklama: formData.aciklama,
+        aciklama: cleanDescription(formData.aciklama),
         intraDayStartTime: formData.intraDayStartTime,
         intraDayEndTime: formData.intraDayEndTime,
         islemTarihi: formData.islemTarihi
@@ -401,7 +402,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           }
         }
       } else {
-        finalData = { ...formData };
+        finalData = { ...formData, aciklama: cleanDescription(formData.aciklama) };
         
         // Tarih Formatlama (DD.MM.YYYY veya T-70 için GG-AA-YY)
         if (finalData.bakimTakvimTarih) {
@@ -477,7 +478,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           startTime: formData.intraDayStartTime,
           endTime: formData.intraDayEndTime,
           status: analysis.code,
-          description: formData.aciklama,
+          description: cleanDescription(formData.aciklama),
           date: formData.islemTarihi
         });
 

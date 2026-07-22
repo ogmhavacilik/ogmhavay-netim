@@ -12,21 +12,38 @@ async function startServer() {
 
   // Proxy endpoint for Google Apps Script
   app.post('/api/proxy', async (req, res) => {
-    const { url, body } = req.body;
+    const { url, body, method = 'POST' } = req.body;
 
     if (!url) {
       return res.status(400).json({ success: false, error: 'URL is required' });
     }
 
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        redirect: 'follow', // Important for Apps Script
-        headers: {
+      let targetUrl = url;
+      let fetchOptions: RequestInit = {
+        redirect: 'follow',
+      };
+
+      if (method.toUpperCase() === 'GET') {
+        fetchOptions.method = 'GET';
+        if (body && typeof body === 'object') {
+          const params = new URLSearchParams();
+          Object.keys(body).forEach(k => {
+            if (body[k] !== undefined && body[k] !== null) {
+              params.append(k, String(body[k]));
+            }
+          });
+          targetUrl = url.includes('?') ? `${url}&${params.toString()}` : `${url}?${params.toString()}`;
+        }
+      } else {
+        fetchOptions.method = 'POST';
+        fetchOptions.headers = {
           'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify(body),
-      });
+        };
+        fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+      }
+
+      const response = await fetch(targetUrl, fetchOptions);
 
       const contentType = response.headers.get('content-type');
       let data;

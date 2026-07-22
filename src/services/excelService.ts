@@ -1,5 +1,6 @@
 
 import { Aircraft, Status, DailyStatusCode } from '../../types';
+import { cleanDescription } from '../../services/cleanUtils';
 
 export const formatToHHMM = (decimalHours: number | string, aircraftType?: string): string => {
   if (decimalHours === null || decimalHours === undefined || decimalHours === '') return '-';
@@ -142,7 +143,7 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
   `;
 
   sortedFleet.forEach((aircraft, index) => {
-    const aciklama = (aircraft.aciklama || '').replace(/\n/g, '<br>');
+    const aciklama = cleanDescription(aircraft.aciklama).replace(/\n/g, '<br>');
     const faydaliSaat = (aircraft.faydaliSaat !== null && aircraft.faydaliSaat !== undefined) ? formatToHHMM(aircraft.faydaliSaat, aircraft.tip) : '';
     const abbr = getAbbreviation(aircraft.kuyrukNo || '');
     

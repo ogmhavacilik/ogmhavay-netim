@@ -1,5 +1,5 @@
 import { SheetConfig, Aircraft, Status, StatusType, DailyStatusCode, OPLItem } from '../types';
-import { getCallSignByTail, MOCK_AIRCRAFT } from '../constants';
+import { getCallSignByTail, MOCK_AIRCRAFT, YAKIT_SCRIPT_URL, YAKIT_SHEET_ID, LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID } from '../constants';
 
 /**
  * Durum metinlerini analiz ederek faaliyet kodunu belirler.
@@ -337,7 +337,8 @@ const formatDateIfISO = (val: any): string => {
   return s;
 };
 
-export const proxyFetch = async (url: string, body: any) => {
+export const proxyFetch = async (url: string, body: any, options?: { method?: 'GET' | 'POST' }) => {
+  const method = options?.method || 'POST';
   // 1. Try local proxy first (AI Studio environment)
   // This is preferred in AI Studio to avoid CORS and handle redirects server-side
   try {
@@ -346,7 +347,7 @@ export const proxyFetch = async (url: string, body: any) => {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ url, body }),
+      body: JSON.stringify({ url, body, method }),
     });
 
     if (response.ok) {
@@ -364,16 +365,26 @@ export const proxyFetch = async (url: string, body: any) => {
   }
 
   // 2. Fallback to direct fetch (Netlify/Production environment)
-  // Google Apps Script requires text/plain to bypass CORS preflight checks in the browser
   try {
-    const response = await fetch(url.trim(), {
-      method: 'POST',
-      redirect: 'follow', // Important for Apps Script redirects (Macro -> Execution)
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify(body),
-    });
+    let targetUrl = url.trim();
+    let fetchOpts: RequestInit = { redirect: 'follow' };
+
+    if (method === 'GET') {
+      fetchOpts.method = 'GET';
+      if (body && typeof body === 'object') {
+        const params = new URLSearchParams();
+        Object.keys(body).forEach(k => {
+          if (body[k] !== undefined && body[k] !== null) params.append(k, String(body[k]));
+        });
+        targetUrl = targetUrl.includes('?') ? `${targetUrl}&${params.toString()}` : `${targetUrl}?${params.toString()}`;
+      }
+    } else {
+      fetchOpts.method = 'POST';
+      fetchOpts.headers = { 'Content-Type': 'text/plain;charset=utf-8' };
+      fetchOpts.body = typeof body === 'string' ? body : JSON.stringify(body);
+    }
+
+    const response = await fetch(targetUrl, fetchOpts);
 
     if (!response.ok) {
       throw new Error(`Direct Fetch HTTP ${response.status}`);
@@ -381,7 +392,6 @@ export const proxyFetch = async (url: string, body: any) => {
 
     const text = await response.text();
     try {
-      // Apps Script might return JSON or a string
       const json = JSON.parse(text);
       return json;
     } catch (e) {
@@ -792,5 +802,326 @@ export const updatePastEnvanterLog = async (
   } catch (error) {
     console.error('updatePastEnvanterLog Hatası:', error);
     return { success: false, message: 'Sunucu bağlantı hatası.' };
+  }
+};
+
+export interface YakitKaydi {
+  tarih: string;
+  kuyrukNo: string;
+  miktar: number;
+  ikmalYeri?: string;
+  aciklama?: string;
+  faturaNo?: string;
+}
+
+export const parseCSV = (csvText: string): string[][] => {
+  if (!csvText || typeof csvText !== 'string') return [];
+  const lines = csvText.split(/\r?\n/);
+  const rows: string[][] = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const row: string[] = [];
+    let insideQuotes = false;
+    let entry = '';
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        insideQuotes = !insideQuotes;
+      } else if (char === ',' && !insideQuotes) {
+        row.push(entry.trim().replace(/^"|"$/g, ''));
+        entry = '';
+      } else {
+        entry += char;
+      }
+    }
+    row.push(entry.trim().replace(/^"|"$/g, ''));
+    rows.push(row);
+  }
+  return rows;
+};
+
+export const fetchYakitData = async (): Promise<YakitKaydi[]> => {
+  try {
+    const scriptUrls = [YAKIT_SCRIPT_URL, LOG_SCRIPT_URL];
+    const actions = ["onGetAdminPanelData", "getYakitData", "getFaaliyetLog", "getLogs", "getFuelData", "getAircraftData", "getData", "read"];
+    const sheetNames = ["yakıt kayıtları verisi", "yakit kayitlari verisi", "yakit", ""];
+
+    let rawList: any[] = [];
+
+    const extractList = (res: any): any[] => {
+      if (!res) return [];
+      if (typeof res === 'string') {
+        try {
+          const parsed = JSON.parse(res);
+          const sub = extractList(parsed);
+          if (sub.length > 0) return sub;
+        } catch (e) {
+          if (res.includes(',') || res.includes('\n')) {
+            const parsed = parseCSV(res);
+            if (parsed.length > 0) return parsed;
+          }
+        }
+      }
+      if (Array.isArray(res)) return res;
+      if (res.data) {
+        if (Array.isArray(res.data)) return res.data;
+        if (typeof res.data === 'string') {
+          try {
+            const parsed = JSON.parse(res.data);
+            const sub = extractList(parsed);
+            if (sub.length > 0) return sub;
+          } catch (e) {
+            const parsed = parseCSV(res.data);
+            if (parsed.length > 0) return parsed;
+          }
+        }
+        if (typeof res.data === 'object') {
+          if (Array.isArray(res.data.fuelRecords)) return res.data.fuelRecords;
+          if (Array.isArray(res.data.yakitKayitlari)) return res.data.yakitKayitlari;
+          if (Array.isArray(res.data.envanterLog)) return res.data.envanterLog;
+          if (Array.isArray(res.data.data)) return res.data.data;
+          if (Array.isArray(res.data.rows)) return res.data.rows;
+          if (Array.isArray(res.data.records)) return res.data.records;
+          if (Array.isArray(res.data.items)) return res.data.items;
+          if (Array.isArray(res.data.logs)) return res.data.logs;
+          const vals = Object.values(res.data);
+          for (const v of vals) {
+            if (Array.isArray(v) && v.length > 0) return v;
+          }
+        }
+      }
+      if (Array.isArray(res.fuelRecords)) return res.fuelRecords;
+      if (Array.isArray(res.yakitKayitlari)) return res.yakitKayitlari;
+      if (Array.isArray(res.envanterLog)) return res.envanterLog;
+      if (Array.isArray(res.logs)) return res.logs;
+      if (Array.isArray(res.rows)) return res.rows;
+      if (Array.isArray(res.records)) return res.records;
+      return [];
+    };
+
+    // 1. First priority: POST onGetAdminPanelData
+    try {
+      const pData = await proxyFetch(YAKIT_SCRIPT_URL, { action: "onGetAdminPanelData", payload: null }, { method: 'POST' });
+      const list = extractList(pData);
+      if (list && list.length > 0) {
+        rawList = list;
+      }
+    } catch (e) {
+      // fallback
+    }
+
+    // 2. Try POST requests across URLs and actions
+    if (rawList.length === 0) {
+      for (const url of scriptUrls) {
+        if (rawList.length > 0) break;
+        for (const action of actions) {
+          if (rawList.length > 0) break;
+          for (const sName of sheetNames) {
+            try {
+              const body: any = { action, sheetId: YAKIT_SHEET_ID };
+              if (sName) body.sheetName = sName;
+              const result = await proxyFetch(url, body, { method: 'POST' });
+              const list = extractList(result);
+              if (list && list.length > 0) {
+                rawList = list;
+                break;
+              }
+            } catch (e) {
+              // continue
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Try GET requests if POST yielded nothing
+    if (rawList.length === 0) {
+      for (const url of scriptUrls) {
+        if (rawList.length > 0) break;
+        for (const action of actions) {
+          try {
+            const result = await proxyFetch(url, { action, sheetId: YAKIT_SHEET_ID, sheetName: "yakıt kayıtları verisi" }, { method: 'GET' });
+            const list = extractList(result);
+            if (list && list.length > 0) {
+              rawList = list;
+              break;
+            }
+          } catch (e) {
+            // continue
+          }
+        }
+      }
+    }
+
+    // 4. Try direct Google Sheets CSV export URLs
+    if (rawList.length === 0) {
+      const sheetIdsToTry = [YAKIT_SHEET_ID, "1ifdtoxjdr1U0YmDeeByBEpHbLwEa7OTMoTLbm97WDq", MAIL_LOG_SHEET_ID];
+      for (const sheetId of sheetIdsToTry) {
+        if (!sheetId) continue;
+        if (rawList.length > 0) break;
+        const csvUrls = [
+          `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`,
+          `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`
+        ];
+        for (const csvUrl of csvUrls) {
+          if (rawList.length > 0) break;
+          try {
+            const result = await proxyFetch(csvUrl, {}, { method: 'GET' });
+            const list = extractList(result);
+            if (list && list.length > 0) {
+              rawList = list;
+              break;
+            }
+          } catch (e) {
+            // continue
+          }
+        }
+      }
+    }
+
+    if (!Array.isArray(rawList) || rawList.length === 0) return [];
+
+    const parseFuelAmount = (val: any): number => {
+      if (typeof val === 'number') return val;
+      if (!val) return 0;
+      let s = String(val).trim();
+      if (!s || s === '-') return 0;
+      if (s.includes(',') && s.includes('.')) {
+        s = s.replace(/\./g, '').replace(',', '.');
+      } else if (s.includes(',')) {
+        s = s.replace(',', '.');
+      }
+      const num = parseFloat(s);
+      return isNaN(num) ? 0 : num;
+    };
+
+    const items: YakitKaydi[] = rawList.map((row: any) => {
+      if (!row) return null;
+
+      if (Array.isArray(row)) {
+        let rawTarih = '';
+        let faturaNo = '';
+        let rawMiktar: any = 0;
+        let kNo = '';
+        let ikmalYeri = '';
+        let aciklama = '';
+
+        if (row.length >= 6) {
+          rawTarih = String(row[0] || '').trim();
+          faturaNo = String(row[2] || '').trim();
+          rawMiktar = row[4];
+          kNo = String(row[5] || '').trim();
+          ikmalYeri = String(row[10] || row[9] || '').trim();
+          aciklama = String(row[6] || row[1] || '').trim();
+        }
+
+        if (!kNo || (!kNo.includes('OR-') && !kNo.includes('ORMAN') && !kNo.includes('TC-'))) {
+          for (const cell of row) {
+            const sCell = String(cell || '').trim();
+            const match = sCell.match(/\b(OR-\d{4}|ORMAN-\d{2,4}|TC-[A-Z0-9]{3,5})\b/i);
+            if (match) {
+              kNo = match[0].toUpperCase();
+              break;
+            }
+          }
+        }
+
+        if (!rawTarih || !/\d/.test(rawTarih)) {
+          for (const cell of row) {
+            const sCell = String(cell || '').trim();
+            if ((sCell.includes('-') || sCell.includes('.') || sCell.includes('/')) && /\d{2,4}/.test(sCell) && !sCell.includes('ID-') && !sCell.includes('OGM')) {
+              rawTarih = sCell;
+              break;
+            }
+          }
+        }
+
+        return {
+          tarih: rawTarih,
+          kuyrukNo: kNo,
+          miktar: parseFuelAmount(rawMiktar),
+          ikmalYeri,
+          aciklama,
+          faturaNo
+        };
+      }
+
+      const getVal = (keys: string[]) => {
+        for (const k of keys) {
+          if (row[k] !== undefined && row[k] !== null && row[k] !== '') return row[k];
+        }
+        const rowKeys = Object.keys(row || {});
+        for (const k of keys) {
+          const normK = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const foundKey = rowKeys.find(rk => rk.toLowerCase().replace(/[^a-z0-9]/g, '') === normK);
+          if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null && row[foundKey] !== '') {
+            return row[foundKey];
+          }
+        }
+        return '';
+      };
+
+      let kNo = String(getVal([
+        'kuyrukNo', 'Kuyruk Numarası', 'KUYRUK NUMARASI', 'Kuyruk No', 'KUYRUK NO',
+        'kuyruk_numarasi', 'kuyruk_no', 'tailNumber', 'Hava Aracı', 'HAVA ARACI',
+        'Kuyruk', 'kuyruk', 'CagriKodu', 'Çağrı Kodu', 'ÇAGRİ KODU', 'TAIL', 'Tail',
+        'F', 'f', '5'
+      ]) || '').trim();
+
+      if (!kNo || (!kNo.includes('OR-') && !kNo.includes('ORMAN') && !kNo.includes('TC-'))) {
+        for (const val of Object.values(row)) {
+          if (val && typeof val === 'string') {
+            const match = val.match(/\b(OR-\d{4}|ORMAN-\d{2,4}|TC-[A-Z0-9]{3,5})\b/i);
+            if (match) {
+              kNo = match[0].toUpperCase();
+              break;
+            }
+          }
+        }
+      }
+
+      const rawTarih = String(getVal([
+        'tarih', 'Tarih', 'TARİH', 'date', 'Date', 'İkmal Tarihi', 'İKMAL TARİHİ',
+        'TARIH', 'Tarihi', 'A', 'a', '0'
+      ]) || '').trim();
+
+      const rawMiktar = getVal([
+        'yakitMiktari', 'Yakıt Miktarı (lt)', 'Yakıt Miktarı(lt)', 'Yakıt Miktarı',
+        'YAKIT MİKTARI (LT)', 'YAKIT MİKTARI', 'miktar', 'Miktar', 'MİKTAR',
+        'litre', 'Litre', 'LT', 'Lt', 'yakit', 'Yakıt', 'Miktarı', 'YAKIT',
+        'Alınan Yakıt', 'ALINAN YAKIT', 'E', 'e', '4'
+      ]);
+
+      const ikmalYeri = String(getVal([
+        'ikmalYeri', 'İkmal Konumu', 'İKMAL KONUMU', 'İkmal Yeri', 'İKMAL YERİ',
+        'İkmal Tipi', 'konum', 'Konum', 'İkmal Noktası', 'İstasyon', 'istasyon', 'Yeri',
+        'K', 'k', '10', 'J', 'j', '9'
+      ]) || '').trim();
+
+      const aciklama = String(getVal([
+        'aciklama', 'Açıklama', 'AÇIKLAMA', 'Personel Adı', 'Kayıt Tipi', 'not',
+        'Not', 'NOT', 'detay', 'Detay', 'G', 'g', '6'
+      ]) || '').trim();
+
+      const faturaNo = String(getVal([
+        'faturaNo', 'Makbuz Numarası', 'MAKBUZ NUMARASI', 'Makbuz No', 'Fatura No',
+        'FATURA NO', 'fişNo', 'Fiş No', 'Belge No', 'Fiş/Fatura', 'C', 'c', '2'
+      ]) || '').trim();
+
+      const res: YakitKaydi = {
+        tarih: rawTarih,
+        kuyrukNo: kNo,
+        miktar: parseFuelAmount(rawMiktar),
+        ikmalYeri,
+        aciklama,
+        faturaNo
+      };
+      return res;
+    }).filter((item): item is YakitKaydi => item !== null && item.miktar > 0);
+
+    return items;
+  } catch (err) {
+    console.error("fetchYakitData error:", err);
+    return [];
   }
 };

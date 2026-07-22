@@ -1,20 +1,22 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { AircraftActivity, DailyStatusCode } from '../types';
+import { AircraftActivity, DailyStatusCode, Aircraft } from '../types';
 import { X, Clock, Calendar, Activity } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface ActivityGridProps {
   activities: AircraftActivity[];
+  fleet?: Aircraft[];
   startDate: Date;
   endDate: Date;
   title: string;
   onExport?: () => void;
   onDayClick?: (date: Date) => void;
   sortByCagriKodu?: boolean;
+  sortByFaydaliSaat?: boolean;
 }
 
-const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endDate, title, onExport, onDayClick, sortByCagriKodu = false }) => {
+const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], startDate, endDate, title, onExport, onDayClick, sortByCagriKodu = false, sortByFaydaliSaat = false }) => {
   const [selectedDayView, setSelectedDayView] = useState<{ activity: AircraftActivity, date: Date } | null>(null);
 
   const isHourlyView = useMemo(() => {
@@ -211,6 +213,18 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
       return 999;
     };
 
+    if (sortByFaydaliSaat) {
+      const getFaydaliVal = (item: AircraftActivity) => {
+        const ac = fleet.find(f => f.kuyrukNo.trim().toUpperCase() === item.kuyrukNo.trim().toUpperCase());
+        const val = ac?.faydaliSaat ?? (item as any).faydaliSaat;
+        if (val === null || val === undefined || val === '') return 999999;
+        const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+        return isNaN(num) ? 999999 : num;
+      };
+      const sorted = [...activities].sort((a, b) => getFaydaliVal(a) - getFaydaliVal(b));
+      return { 'TÜMÜ': sorted };
+    }
+
     if (sortByCagriKodu) {
       const sorted = [...activities].sort((a, b) => getOrder(a.cagriKodu) - getOrder(b.cagriKodu));
       return { 'TÜMÜ': sorted };
@@ -248,7 +262,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, startDate, endD
     });
     
     return sortedGroups;
-  }, [activities, sortByCagriKodu]);
+  }, [activities, fleet, sortByCagriKodu, sortByFaydaliSaat]);
 
   if (activities.length === 0) return null;
 

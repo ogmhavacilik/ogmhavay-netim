@@ -2,19 +2,24 @@
 import React, { useState, useEffect } from 'react';
 import { Aircraft, Status, OPLItem, AircraftActivity } from '../types';
 import LogRecordsModal from './LogRecordsModal';
+import MaintenanceHistoryModal from './MaintenanceHistoryModal';
 import { fetchOPLData, formatToHHMM } from '../services/sheetService';
+import { cleanDescription } from '../services/cleanUtils';
 
 interface AircraftDetailModalProps {
   aircraft: Aircraft;
   activities: AircraftActivity[];
+  envanterLog?: any[];
   onClose: () => void;
   onEdit: () => void;
   onViewLogs: (openLogs: () => void) => void;
+  onViewHistory?: (openHistory: () => void) => void;
 }
 
-const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, activities, onClose, onEdit, onViewLogs }) => {
+const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, activities, envanterLog = [], onClose, onEdit, onViewLogs, onViewHistory }) => {
   const [activePhoto, setActivePhoto] = useState(0);
   const [isLogRecordsOpen, setIsLogRecordsOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [oplAlerts, setOplAlerts] = useState<string[]>([]);
   const [isLoadingOPL, setIsLoadingOPL] = useState(false);
 
@@ -673,12 +678,27 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                       </div>
                     )}
                     <div className="min-h-[140px] bg-white p-5 rounded-2xl border border-gray-200 text-gray-500 text-[13px] font-medium leading-relaxed shadow-sm italic whitespace-pre-wrap">
-                      {aircraft.aciklama && aircraft.aciklama !== '-' ? aircraft.aciklama : "--"}
+                      {cleanDescription(aircraft.aciklama) ? aircraft.aciklama : "--"}
                     </div>
                  </div>
               </div>
               
-              <div className="mt-8 flex justify-end space-x-3">
+              <div className="mt-8 flex flex-wrap justify-end gap-3">
+                 <button 
+                   onClick={() => {
+                     if (onViewHistory) {
+                       onViewHistory(() => setIsHistoryOpen(true));
+                     } else {
+                       setIsHistoryOpen(true);
+                     }
+                   }}
+                   className="px-6 py-3 text-[11px] font-black text-emerald-800 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-all uppercase tracking-widest border border-emerald-300/60 shadow-sm flex items-center space-x-1.5"
+                 >
+                   <svg className="w-4 h-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                   </svg>
+                   <span>ARIZA / BAKIM GEÇMİŞİ</span>
+                 </button>
                  <button 
                    onClick={() => onViewLogs(() => setIsLogRecordsOpen(true))}
                    className="px-8 py-3 text-[11px] font-black text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all uppercase tracking-widest"
@@ -696,6 +716,15 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
         <LogRecordsModal 
           aircraft={aircraft} 
           onClose={() => setIsLogRecordsOpen(false)} 
+        />
+      )}
+
+      {isHistoryOpen && (
+        <MaintenanceHistoryModal
+          aircraft={aircraft}
+          activities={activities}
+          envanterLog={envanterLog}
+          onClose={() => setIsHistoryOpen(false)}
         />
       )}
     </>
