@@ -588,15 +588,27 @@ const MaintenanceHistoryModal: React.FC<MaintenanceHistoryModalProps> = ({
                       <span className="text-xs font-black text-gray-400 uppercase tracking-widest">
                         {record.type === 'ARIZA' ? 'ARIZA PERİYODU' : 'BAKIM PERİYODU'}
                       </span>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-gray-100 text-gray-700">
-                        {record.isIntraDayOnly ? 'GÜN İÇİ / SAATLİK' : `${record.durationDays} GÜN SÜRDÜ`}
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                        record.faaleGecisDate.includes('Devam Ediyor')
+                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        {record.faaleGecisDate.includes('Devam Ediyor') 
+                          ? 'DEVAM EDİYOR' 
+                          : record.isIntraDayOnly 
+                            ? 'GÜN İÇİ / SAATLİK' 
+                            : `${record.durationDays} GÜN SÜRDÜ`}
                       </span>
                     </div>
 
                     <div className="flex items-center space-x-3 text-lg font-black text-gray-900 tracking-tight">
                       <span>{record.startDate}</span>
                       <span className="text-gray-400">➔</span>
-                      <span>{record.endDate}</span>
+                      {record.faaleGecisDate.includes('Devam Ediyor') ? (
+                        <span className="text-amber-600 font-extrabold italic">Devam Ediyor</span>
+                      ) : (
+                        <span>{record.endDate}</span>
+                      )}
                     </div>
                   </div>
 
