@@ -189,7 +189,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     aciklama: '',
     intraDayStartTime: '',
     intraDayEndTime: '',
-    islemTarihi: new Date().toISOString().split('T')[0]
+    islemTarihi: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
   });
 
   const handleTypeSelect = (type: string) => {
@@ -308,7 +308,8 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       return;
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const isPastDate = formData.islemTarihi < today;
 
     // Validation checks for flight hours (previous and subsequent limits) have been removed per user request to allow retroactive updates and corrections of past day flight hours freely.

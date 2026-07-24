@@ -393,7 +393,7 @@ const MaintenanceHistoryModal: React.FC<MaintenanceHistoryModalProps> = ({
         } else {
           faaleGecisDate = `${formatDateTR(nextDate)}`;
         }
-      } else if (endDate === todayStr && aircraft.durum !== 'FAAL') {
+      } else if (aircraft.durum !== 'FAAL') {
         faaleGecisDate = 'Devam Ediyor';
       }
 

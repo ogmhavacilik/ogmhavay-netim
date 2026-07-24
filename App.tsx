@@ -117,7 +117,7 @@ const App = () => {
         sheetId: MAIL_LOG_SHEET_ID,
         data: {
           ...data,
-          date: data.date || new Date().toISOString().split('T')[0]
+          date: data.date || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
         }
       });
       
@@ -1345,8 +1345,9 @@ const App = () => {
   }, [runGlobalSync]);
 
   useEffect(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (filterDate === todayStr) {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (filterDate === todayStr || filterDate >= todayStr) {
       setHistoricalFleet(null);
       return;
     }
