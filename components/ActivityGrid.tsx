@@ -653,7 +653,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
               <div className="w-10 h-10 border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #DCFCE7 50%, #FF0000 50%)' }} />
               <div className="text-[10px] font-black text-slate-700 uppercase leading-tight">
                 <span className="text-[#15803d]">FAAL </span>
-                <span className="text-[#dc2626]">(YANGIN GÖREVİ YAPAMAZ)</span>
+                <span className="text-[#dc2626]">(FIREBOSS GÖREVİ YAPAMAZ)</span>
               </div>
             </div>
           </div>

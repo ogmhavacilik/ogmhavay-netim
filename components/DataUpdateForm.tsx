@@ -297,7 +297,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     const isCurrentGayriFaal = selectedAircraft.durum === Status.GAYRI_FAAL;
     const isCurrentFaal = !isCurrentGayriFaal;
     const isNewGayriFaal = formData.durum === Status.GAYRI_FAAL;
-    const isNewFaal = formData.durum === Status.FAAL || formData.durum === Status.FAAL_YANGIN_GOREVI_YAPAMAZ;
+    const isNewFaal = formData.durum === Status.FAAL || formData.durum === Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ;
 
     if (isCurrentFaal && isNewGayriFaal && !formData.intraDayStartTime) {
       newErrors.intraDayStartTime = true;
@@ -1015,7 +1015,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                           handleInputChange('durum', val); 
                           const now = new Date();
                           const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-                          if (val === Status.FAAL || val === Status.FAAL_YANGIN_GOREVI_YAPAMAZ) {
+                          if (val === Status.FAAL || val === Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ) {
                             if (val === Status.FAAL) {
                               handleInputChange('durumAyrintisi', '-');
                             }
@@ -1030,7 +1030,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                         }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
                           <option value={Status.FAAL}>{Status.FAAL}</option>
                           <option value={Status.GAYRI_FAAL}>{Status.GAYRI_FAAL}</option>
-                          <option value={Status.FAAL_YANGIN_GOREVI_YAPAMAZ}>{Status.FAAL_YANGIN_GOREVI_YAPAMAZ}</option>
+                          <option value={Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ}>{Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ}</option>
                         </select>
                       </div>
                       {formData.durum === Status.GAYRI_FAAL && (
@@ -1057,7 +1057,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                           </div>
                         </>
                       )}
-                      {(formData.durum === Status.FAAL || formData.durum === Status.FAAL_YANGIN_GOREVI_YAPAMAZ) && (
+                      {(formData.durum === Status.FAAL || formData.durum === Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ) && (
                         <div className="space-y-2 md:col-span-2">
                           <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FAAL BAŞLANGIÇ SAATİ</label>
                           <input type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className={`w-full bg-white text-black border-2 ${validationErrors.intraDayEndTime ? 'border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'border-transparent'} rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all`} />
@@ -1114,7 +1114,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                           handleInputChange('durum', val); 
                           const now = new Date();
                           const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-                          if (val === Status.FAAL || val === Status.FAAL_YANGIN_GOREVI_YAPAMAZ) {
+                          if (val === Status.FAAL || val === Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ) {
                             if (val === Status.FAAL) {
                               handleInputChange('durumAyrintisi', '-');
                             }
@@ -1129,7 +1129,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                         }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
                           <option value={Status.FAAL}>{Status.FAAL}</option>
                           <option value={Status.GAYRI_FAAL}>{Status.GAYRI_FAAL}</option>
-                          <option value={Status.FAAL_YANGIN_GOREVI_YAPAMAZ}>{Status.FAAL_YANGIN_GOREVI_YAPAMAZ}</option>
+                          <option value={Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ}>{Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ}</option>
                         </select>
                       </div>
                       {formData.durum === Status.GAYRI_FAAL && (
@@ -1156,7 +1156,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                           </div>
                         </>
                       )}
-                      {(formData.durum === Status.FAAL || formData.durum === Status.FAAL_YANGIN_GOREVI_YAPAMAZ) && (
+                      {(formData.durum === Status.FAAL || formData.durum === Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ) && (
                         <div className="space-y-2 md:col-span-2">
                           <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">FAAL BAŞLANGIÇ SAATİ</label>
                           <input type="time" value={formData.intraDayEndTime} onChange={(e) => handleInputChange('intraDayEndTime', e.target.value)} className={`w-full bg-white text-black border-2 ${validationErrors.intraDayEndTime ? 'border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'border-transparent'} rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all`} />
@@ -1209,7 +1209,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                           handleInputChange('durum', val); 
                           const now = new Date();
                           const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-                          if (val === Status.FAAL || val === Status.FAAL_YANGIN_GOREVI_YAPAMAZ) {
+                          if (val === Status.FAAL || val === Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ) {
                             if (val === Status.FAAL) {
                               handleInputChange('durumAyrintisi', '-');
                             }
@@ -1223,7 +1223,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                           }
                         }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
                           <option value={Status.FAAL}>{Status.FAAL}</option>
-                          <option value={Status.FAAL_YANGIN_GOREVI_YAPAMAZ}>{Status.FAAL_YANGIN_GOREVI_YAPAMAZ}</option>
+                          <option value={Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ}>{Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ}</option>
                           <option value={Status.GAYRI_FAAL}>{Status.GAYRI_FAAL}</option>
                         </select>
                       </div>
@@ -1259,7 +1259,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                           </div>
                         </>
                       )}
-                      {(formData.durum === Status.FAAL || formData.durum === Status.FAAL_YANGIN_GOREVI_YAPAMAZ) && (
+                      {(formData.durum === Status.FAAL || formData.durum === Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ) && (
                         <div className="space-y-2 md:col-span-2">
                           <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">
                             FAAL BAŞLANGIÇ SAATİ {selectedAircraft?.durum === Status.GAYRI_FAAL && <span className="text-red-500 font-bold tracking-normal text-xs ml-1">(ZORUNLU)</span>}
@@ -1365,7 +1365,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                               handleInputChange('durum', val); 
                               const now = new Date();
                               const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-                              if (val === Status.FAAL || val === Status.FAAL_YANGIN_GOREVI_YAPAMAZ) {
+                              if (val === Status.FAAL || val === Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ) {
                                 if (val === Status.FAAL) {
                                   handleInputChange('durumAyrintisi', '-');
                                 }
@@ -1379,7 +1379,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                               }
                             }} className="w-full bg-white text-black border-2 border-transparent rounded-xl px-4 py-3 font-bold focus:border-emerald-500 outline-none transition-all">
                               <option value={Status.FAAL}>{Status.FAAL}</option>
-                              <option value={Status.FAAL_YANGIN_GOREVI_YAPAMAZ}>{Status.FAAL_YANGIN_GOREVI_YAPAMAZ}</option>
+                              <option value={Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ}>{Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ}</option>
                               <option value={Status.GAYRI_FAAL}>{Status.GAYRI_FAAL}</option>
                             </select>
                           </div>
@@ -1415,7 +1415,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                               </div>
                             </>
                           )}
-                          {(formData.durum === Status.FAAL || formData.durum === Status.FAAL_YANGIN_GOREVI_YAPAMAZ) && (
+                          {(formData.durum === Status.FAAL || formData.durum === Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ) && (
                             <div className="space-y-4 md:col-span-2">
                               <label className="block text-emerald-500/60 font-black text-[10px] uppercase tracking-[0.4em]">
                                 FAAL BAŞLANGIÇ SAATİ {selectedAircraft?.durum === Status.GAYRI_FAAL && <span className="text-red-500 font-bold tracking-normal text-xs ml-1">(ZORUNLU)</span>}

@@ -1996,16 +1996,17 @@ const App = () => {
                           {(() => {
                             const dUpper = String(a.durum || '').toUpperCase();
                             const dAyr = String(a.durumAyrintisi || '').toUpperCase();
-                            const isYanginGoreviYapamaz = dUpper.includes("YANGIN GÖREVİ YAPAMAZ") || 
+                            const isFirebossGoreviYapamaz = dUpper.includes("FIREBOSS") || dUpper.includes("YANGIN GÖREVİ YAPAMAZ") || 
                                                           dUpper.includes("YANGIN GOREVI YAPAMAZ") ||
+                                                          dAyr.includes("FIREBOSS") ||
                                                           dAyr.includes("YANGIN GÖREVİ YAPAMAZ") ||
                                                           dAyr.includes("YANGIN GOREVI YAPAMAZ");
 
-                            if (isYanginGoreviYapamaz) {
+                            if (isFirebossGoreviYapamaz) {
                               return (
                                 <div className="leading-snug">
                                   <span className="text-[#2e7d32] font-black block">FAAL</span>
-                                  <span className="text-[#c62828] font-black block text-[10px]">YANGIN GÖREVİ YAPAMAZ</span>
+                                  <span className="text-[#c62828] font-black block text-[10px]">FIREBOSS GÖREVİ YAPAMAZ</span>
                                 </div>
                               );
                             }

@@ -649,11 +649,11 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
         const dAyr = String(aircraft.durumAyrintisi || '').toUpperCase();
         const combined = `${dStr} ${dAyr}`.trim();
 
-        if (combined.includes('YANGIN GÖREVİ YAPAMAZ') || combined.includes('YANGIN GOREVI YAPAMAZ')) {
+        if (combined.includes('FIREBOSS GÖREVİ YAPAMAZ') || combined.includes('FIREBOSS GOREVI YAPAMAZ') || combined.includes('YANGIN GÖREVİ YAPAMAZ') || combined.includes('YANGIN GOREVI YAPAMAZ')) {
           return (
             <>
               <span className="text-green-600 font-black">FAAL </span>
-              <span className="text-red-600 font-black">(YANGIN GÖREVİ YAPAMAZ)</span>
+              <span className="text-red-600 font-black">(FIREBOSS GÖREVİ YAPAMAZ)</span>
             </>
           );
         }

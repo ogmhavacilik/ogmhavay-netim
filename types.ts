@@ -10,7 +10,7 @@ export enum PlatformType {
 export enum Status {
   FAAL = 'FAAL',
   GAYRI_FAAL = 'GAYRI FAAL',
-  FAAL_YANGIN_GOREVI_YAPAMAZ = 'FAAL YANGIN GÖREVİ YAPAMAZ'
+  FAAL_FIREBOSS_GOREVI_YAPAMAZ = 'FAAL FIREBOSS GÖREVİ YAPAMAZ'
 }
 
 export enum StatusType {
