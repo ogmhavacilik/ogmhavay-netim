@@ -75,7 +75,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
   }, [startDate, endDate, currentTime]);
 
   const getStatusClass = (code: DailyStatusCode | string, isCompletedToday?: boolean) => {
-    if (code === 'K' || isCompletedToday) return 'bg-white p-0 relative overflow-hidden border-black';
+    if (code === 'K' || isCompletedToday || code === 'FY') return 'bg-white p-0 relative overflow-hidden border-black';
     switch (code) {
       case 'B': case 'BB': case 'TBU': case 'KM': return 'bg-[#FFFF00] text-black font-black border-black'; // SARI
       case 'A': case 'PB': case 'KK': return 'bg-[#FF0000] text-white font-black border-black'; // KIRMIZI
@@ -89,6 +89,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
 
   const getStatusStyle = (code: DailyStatusCode | string, isCompletedToday?: boolean): React.CSSProperties => {
     if (code === 'K' || isCompletedToday) return { backgroundColor: '#FFFFFF', padding: 0 };
+    if (code === 'FY') return { background: 'linear-gradient(135deg, #DCFCE7 50%, #FF0000 50%)', padding: 0 };
     switch (code) {
       case 'B': case 'BB': case 'TBU': case 'KM': return { backgroundColor: '#FFFF00', color: '#000000' };
       case 'A': case 'PB': case 'KK': return { backgroundColor: '#FF0000', color: '#FFFFFF' };
@@ -101,11 +102,11 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
   };
 
   const calculateRowStats = (activity: AircraftActivity) => {
-    let bakim = 0, ariza = 0, olmadi = 0, faal = 0, missing = 0;
+    let bakim = 0, ariza = 0, olmadi = 0, faal = 0, faalYanginGoreviYapamaz = 0, missing = 0;
 
     const getStreakLengthAt = (dateStrKey: string, baseDate: Date) => {
       const s = activity.dailyStatuses[dateStrKey];
-      if (!s || s === 'F') return 0;
+      if (!s || s === 'F' || s === 'FY') return 0;
 
       let length = 1;
       
@@ -115,7 +116,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
       for (let i = 0; i < 30; i++) {
         const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const prevS = activity.dailyStatuses[k];
-        if (prevS && prevS !== 'F') {
+        if (prevS && prevS !== 'F' && prevS !== 'FY') {
           length++;
           d.setDate(d.getDate() - 1);
         } else {
@@ -129,7 +130,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
       for (let i = 0; i < 30; i++) {
         const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const nextS = activity.dailyStatuses[k];
-        if (nextS && nextS !== 'F') {
+        if (nextS && nextS !== 'F' && nextS !== 'FY') {
           length++;
           d.setDate(d.getDate() + 1);
         } else {
@@ -164,6 +165,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
           olmadi++;
         } else if (s === 'F') {
           faal++;
+        } else if (s === 'FY') {
+          faalYanginGoreviYapamaz++;
         }
       }
     });
@@ -182,7 +185,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
       }
 
       if (isPastOrToday) {
-        if (s === 'F') {
+        if (s === 'F' || s === 'FY') {
           effectiveFaal++;
         } else if (s && !['X', ''].includes(s)) {
           // Rule: Downtime is ignored for activity rate if:
@@ -197,12 +200,12 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
     });
 
     const totalGFaal = bakim + ariza + olmadi;
-    const totalFaal = faal;
+    const totalFaal = faal + faalYanginGoreviYapamaz;
     
     const baseDays = daysElapsed - olmadi - missing;
     const percentage = baseDays > 0 ? ((effectiveFaal / baseDays) * 100).toFixed(0) : "0";
     
-    return { bakim, ariza, olmadi, totalGFaal, totalFaal, effectiveFaal, percentage, missing };
+    return { bakim, ariza, olmadi, faal, totalGFaal, totalFaal, faalYanginGoreviYapamaz, effectiveFaal, percentage, missing };
   };
 
   // TİP bazlı gruplandırma ve sıralama
@@ -307,7 +310,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                 <>
                   <th colSpan={3} className="border border-black bg-[#00b0f0] text-white py-0.5 text-[8px] font-black uppercase tracking-tighter" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>TOPLAM G.FAAL</th>
                   <th rowSpan={2} className="border border-black bg-[#00b0f0] text-white px-0.5 w-12 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>TOPLAM<br/>G.FAAL</th>
-                  <th rowSpan={2} className="border border-black bg-[#ffc000] text-black px-0.5 w-12 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#ffc000', color: '#000000' }}>TOPLAM<br/>FAAL</th>
+                  <th colSpan={2} className="border border-black bg-[#ffc000] text-black py-0.5 text-[8px] font-black uppercase tracking-tighter" style={{ backgroundColor: '#ffc000', color: '#000000' }}>TOPLAM FAAL</th>
                   <th rowSpan={2} className="border border-black bg-gray-50 text-black px-0.5 w-12 text-[7px] font-black uppercase leading-tight" style={{ backgroundColor: '#f8fafc', color: '#000000' }}>TOPLAM GÜN SAYISI</th>
                   <th rowSpan={2} className="border border-black bg-gray-100 text-black px-0.5 w-16 text-[8px] font-black uppercase leading-tight" style={{ backgroundColor: '#f3f4f6', color: '#000000' }}>FAALİYET % **</th>
                 </>
@@ -318,18 +321,20 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                 <th className="border border-black bg-[#ffff00] text-black w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#ffff00', color: '#000000' }}>Bakım</th>
                 <th className="border border-black bg-[#ff0000] text-white w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#ff0000', color: '#ffffff' }}>Arıza</th>
                 <th className="border border-black bg-[#7030a0] text-white w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#7030a0', color: '#ffffff' }}>Olmadığı</th>
+                <th className="border border-black bg-[#DCFCE7] text-black w-10 text-[7.5px] py-1 font-black" style={{ backgroundColor: '#DCFCE7', color: '#000000' }}>Faal</th>
+                <th className="border border-black bg-[#DCFCE7] text-red-600 w-14 text-[6px] py-0.5 font-black leading-tight" style={{ backgroundColor: '#DCFCE7', color: '#dc2626' }}>Faal Yangın Görevi Yapamaz</th>
               </tr>
             )}
           </thead>
           <tbody>
             {(() => {
               let globalIndex = 0;
-              let grandBakim = 0, grandAriza = 0, grandOlmadi = 0, grandTotalGF = 0, grandTotalF = 0, grandEffectiveFaal = 0, grandMissing = 0;
+              let grandBakim = 0, grandAriza = 0, grandOlmadi = 0, grandTotalGF = 0, grandFaal = 0, grandFaalYanginGoreviYapamaz = 0, grandTotalF = 0, grandEffectiveFaal = 0, grandMissing = 0;
               let grandTotalActs = 0;
 
               const content = Object.keys(groupedActivities).map((groupName, gIdx) => {
                 const groupActs = groupedActivities[groupName];
-                let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupTotalF = 0, groupEffectiveFaal = 0, groupMissing = 0;
+                let groupBakim = 0, groupAriza = 0, groupOlmadi = 0, groupTotalGF = 0, groupFaal = 0, groupFaalYanginGoreviYapamaz = 0, groupTotalF = 0, groupEffectiveFaal = 0, groupMissing = 0;
                 grandTotalActs += groupActs.length;
 
                 const groupRowSpans: number[] = [];
@@ -355,6 +360,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                       groupAriza += s.ariza;
                       groupOlmadi += s.olmadi;
                       groupTotalGF += s.totalGFaal;
+                      groupFaal += s.faal;
+                      groupFaalYanginGoreviYapamaz += s.faalYanginGoreviYapamaz;
                       groupTotalF += s.totalFaal;
                       groupEffectiveFaal += s.effectiveFaal;
                       groupMissing += s.missing;
@@ -364,6 +371,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                       grandAriza += s.ariza;
                       grandOlmadi += s.olmadi;
                       grandTotalGF += s.totalGFaal;
+                      grandFaal += s.faal;
+                      grandFaalYanginGoreviYapamaz += s.faalYanginGoreviYapamaz;
                       grandTotalF += s.totalFaal;
                       grandEffectiveFaal += s.effectiveFaal;
                       grandMissing += s.missing;
@@ -497,6 +506,10 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                                          bg = '#DCFCE7';
                                          fg = '#000000';
                                          label = ''; // Faal ise boş kalsın veya F yazılsın
+                                       } else if (otherStatus === 'FY') {
+                                         bg = '#DCFCE7';
+                                         fg = '#dc2626';
+                                         label = 'FY';
                                        } else if (otherStatus === 'TB') {
                                          bg = '#40E0D0';
                                          fg = '#000000';
@@ -510,6 +523,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                                        );
                                      })()}
                                   </div>
+                                ) : status === 'FY' ? (
+                                  <div className="absolute inset-0 w-full h-full min-h-[24px]" style={{ background: 'linear-gradient(135deg, #DCFCE7 50%, #FF0000 50%)' }} />
                                 ) : (
                                   <div className="flex items-center justify-center min-h-[24px]">
                                     {status !== 'F' && status}
@@ -525,6 +540,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                             <td className="border border-black text-center font-bold bg-[#ffcccc]" style={{ backgroundColor: '#ffcccc' }}>{s.ariza || '0'}</td>
                             <td className="border border-black text-center font-bold bg-[#e2efda]" style={{ backgroundColor: '#e2efda' }}>{s.olmadi || '0'}</td>
                             <td className="border border-black text-center font-bold bg-[#ddebf7]" style={{ backgroundColor: '#ddebf7' }}>{s.totalGFaal}</td>
+                            <td className="border border-black text-center font-bold bg-[#dcfce7]" style={{ backgroundColor: '#dcfce7' }}>{s.faal || '0'}</td>
+                            <td className="border border-black text-center font-bold bg-[#dcfce7] text-red-600" style={{ backgroundColor: '#dcfce7', color: '#dc2626' }}>{s.faalYanginGoreviYapamaz || '0'}</td>
                             <td className="border border-black text-center font-bold bg-[#fff2cc]" style={{ backgroundColor: '#fff2cc' }}>{s.totalFaal}</td>
                             <td className="border border-black text-center font-bold bg-white" style={{ backgroundColor: '#ffffff' }}>{daysElapsed}</td>
                             <td className="border border-black text-center font-bold bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>{s.percentage}%</td>
@@ -541,6 +558,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                       <td className="border border-black text-center bg-[#ff0000] text-white" style={{ backgroundColor: '#ff0000', color: '#ffffff' }}>{groupAriza}</td>
                       <td className="border border-black text-center bg-[#7030a0] text-white" style={{ backgroundColor: '#7030a0', color: '#ffffff' }}>{groupOlmadi}</td>
                       <td className="border border-black text-center bg-[#00b0f0] text-white" style={{ backgroundColor: '#00b0f0', color: '#ffffff' }}>{groupTotalGF}</td>
+                      <td className="border border-black text-center bg-[#dcfce7] text-black font-bold">{groupFaal}</td>
+                      <td className="border border-black text-center bg-[#dcfce7] text-red-600 font-bold">{groupFaalYanginGoreviYapamaz}</td>
                       <td className="border border-black text-center bg-[#ffc000]" style={{ backgroundColor: '#ffc000', color: '#000000' }}>{groupTotalF}</td>
                       <td className="border border-black text-center font-black bg-gray-50">{groupActs.length * daysElapsed}</td>
                       <td className="border border-black text-center bg-gray-200" style={{ backgroundColor: '#e5e7eb' }}>
@@ -565,6 +584,8 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                   <td className="border border-black text-center bg-[#ff0000] text-white">{grandAriza}</td>
                   <td className="border border-black text-center bg-[#7030a0] text-white">{grandOlmadi}</td>
                   <td className="border border-black text-center bg-[#00b0f0] text-white">{grandTotalGF}</td>
+                  <td className="border border-black text-center bg-[#dcfce7] text-black font-bold">{grandFaal}</td>
+                  <td className="border border-black text-center bg-[#dcfce7] text-red-600 font-bold">{grandFaalYanginGoreviYapamaz}</td>
                   <td className="border border-black text-center bg-[#ffc000] text-black">{grandTotalF}</td>
                   <td className="border border-black text-center font-black bg-white text-black">{grandTotalActs * daysElapsed}</td>
                   <td className="border border-black text-center bg-emerald-700 text-white text-[11px]">%{grandPercentage}</td>
@@ -618,7 +639,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
             </div>
           </div>
 
-          {/* Column 3: Absent/Experience (MOR/TURKUAZ) */}
+          {/* Column 3: Absent/Experience (MOR/TURKUAZ/YEŞİL) */}
           <div className="flex flex-col space-y-3">
             <div className="flex items-center space-x-3 group">
               <div className="w-10 h-10 bg-[#7030a0] border-2 border-black flex items-center justify-center text-[12px] font-black text-white shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">X</div>
@@ -627,6 +648,13 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
             <div className="flex items-center space-x-3 group">
               <div className="w-10 h-10 bg-[#40E0D0] border-2 border-black flex items-center justify-center text-[10px] font-black shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">TB</div>
               <div className="text-[11px] font-black text-slate-700 uppercase">TB: TECRÜBE BEKLER</div>
+            </div>
+            <div className="flex items-center space-x-3 group">
+              <div className="w-10 h-10 border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #DCFCE7 50%, #FF0000 50%)' }} />
+              <div className="text-[10px] font-black text-slate-700 uppercase leading-tight">
+                <span className="text-[#15803d]">FAAL </span>
+                <span className="text-[#dc2626]">(YANGIN GÖREVİ YAPAMAZ)</span>
+              </div>
             </div>
           </div>
 

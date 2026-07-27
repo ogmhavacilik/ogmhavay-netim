@@ -1992,7 +1992,31 @@ const App = () => {
                           )}
                         </td>
                         <td className="border border-black px-3 py-2.5 text-center font-bold text-gray-900 uppercase whitespace-nowrap">{a.konum}</td>
-                        <td className={`border border-black px-3 py-2.5 text-center font-black ${isFaal ? 'bg-[#e8f5e9] text-[#2e7d32]' : 'bg-[#ffebee] text-[#c62828]'}`}>{a.durum.toUpperCase()}</td>
+                        <td className={`border border-black px-3 py-2.5 text-center font-black ${isFaal ? 'bg-[#e8f5e9]' : 'bg-[#ffebee]'}`}>
+                          {(() => {
+                            const dUpper = String(a.durum || '').toUpperCase();
+                            const dAyr = String(a.durumAyrintisi || '').toUpperCase();
+                            const isYanginGoreviYapamaz = dUpper.includes("YANGIN GÖREVİ YAPAMAZ") || 
+                                                          dUpper.includes("YANGIN GOREVI YAPAMAZ") ||
+                                                          dAyr.includes("YANGIN GÖREVİ YAPAMAZ") ||
+                                                          dAyr.includes("YANGIN GOREVI YAPAMAZ");
+
+                            if (isYanginGoreviYapamaz) {
+                              return (
+                                <div className="leading-snug">
+                                  <span className="text-[#2e7d32] font-black block">FAAL</span>
+                                  <span className="text-[#c62828] font-black block text-[10px]">YANGIN GÖREVİ YAPAMAZ</span>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <span className={isFaal ? 'text-[#2e7d32]' : 'text-[#c62828]'}>
+                                {dUpper}
+                              </span>
+                            );
+                          })()}
+                        </td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-gray-900 uppercase">{a.durumAyrintisi !== '-' ? a.durumAyrintisi : ''}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-[#FF6B00] text-base">{a.govdeUcusSaati || '-'}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">{formatToHHMM(a.faydaliSaat, a.tip)}</td>

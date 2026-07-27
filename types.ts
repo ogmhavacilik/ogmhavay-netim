@@ -9,7 +9,8 @@ export enum PlatformType {
 
 export enum Status {
   FAAL = 'FAAL',
-  GAYRI_FAAL = 'GAYRI FAAL'
+  GAYRI_FAAL = 'GAYRI FAAL',
+  FAAL_YANGIN_GOREVI_YAPAMAZ = 'FAAL YANGIN GÖREVİ YAPAMAZ'
 }
 
 export enum StatusType {
@@ -86,7 +87,7 @@ export interface Aircraft {
   bakim200H?: string;
 }
 
-export type DailyStatusCode = 'B' | 'BB' | 'TBU' | 'KM' | 'A' | 'PB' | 'KK' | 'X' | 'F' | 'TB' | 'K' | '?' | '';
+export type DailyStatusCode = 'B' | 'BB' | 'TBU' | 'KM' | 'A' | 'PB' | 'KK' | 'X' | 'F' | 'FY' | 'TB' | 'K' | '?' | '';
 
 export interface LogEvent {
   hour: number;

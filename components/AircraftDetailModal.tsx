@@ -641,13 +641,30 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
               <div className="p-6 rounded-3xl border border-gray-100 bg-gray-50/50 flex-grow shadow-inner">
   <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4">MEVCUT DURUM</h3>
   <div className="flex items-center mb-6">
-    <div className={`w-3.5 h-3.5 rounded-full mr-3 ${aircraft.durum === Status.FAAL ? 'bg-green-500 shadow-green-500/30' : 'bg-red-500 shadow-red-500/30'}`}></div>
+    <div className={`w-3.5 h-3.5 rounded-full mr-3 ${aircraft.durum === Status.GAYRI_FAAL ? 'bg-red-500 shadow-red-500/30' : 'bg-green-500 shadow-green-500/30'}`}></div>
     
-    <span className={`text-3xl font-black tracking-tighter ${aircraft.durum === Status.FAAL ? 'text-green-600' : 'text-red-600'}`}>
-      {aircraft.durum === Status.GAYRI_FAAL 
-        ? `GAYRI FAAL (${aircraft.durumAyrintisi})`
-        : aircraft.durum
-      }
+    <span className="text-3xl font-black tracking-tighter">
+      {(() => {
+        const dStr = String(aircraft.durum || '').toUpperCase();
+        const dAyr = String(aircraft.durumAyrintisi || '').toUpperCase();
+        const combined = `${dStr} ${dAyr}`.trim();
+
+        if (combined.includes('YANGIN GÖREVİ YAPAMAZ') || combined.includes('YANGIN GOREVI YAPAMAZ')) {
+          return (
+            <>
+              <span className="text-green-600 font-black">FAAL </span>
+              <span className="text-red-600 font-black">(YANGIN GÖREVİ YAPAMAZ)</span>
+            </>
+          );
+        }
+        if (aircraft.durum === Status.GAYRI_FAAL || dStr.includes('GAYRI FAAL') || dStr.includes('GAYRİ FAAL')) {
+          return <span className="text-red-600 font-black">GAYRI FAAL {aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? `(${aircraft.durumAyrintisi})` : ''}</span>;
+        }
+        if (aircraft.durum === Status.FAAL || dStr === 'FAAL') {
+          return <span className="text-green-600 font-black">FAAL</span>;
+        }
+        return <span className="text-red-600 font-black">{aircraft.durum}</span>;
+      })()}
     </span>
   </div>
                  <div className="space-y-4">

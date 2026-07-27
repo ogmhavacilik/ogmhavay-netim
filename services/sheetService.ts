@@ -20,8 +20,14 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   const desc = (getVal(['aciklama', 'Açıklama', 'AÇIKLAMA', 'P', 'p', 'D', 'd', 'aciklama']) || '').trim();
   const descUpper = desc.toLocaleUpperCase('tr-TR');
 
-  // Adım 0: KESİN DURUM KONTROLÜ (Eğer FAAL ise öncelikle F veya K dönmeliyiz)
+  // Adım 0: KESİN DURUM KONTROLÜ
+  if (durumStr.includes('YANGIN') && (durumStr.includes('YAPAMAZ') || durumStr.includes('GÖREVİ') || durumStr.includes('GOREVI'))) {
+    return { code: 'FY', interpretation: 'FAAL YANGIN GÖREVİ YAPAMAZ' };
+  }
   if (durumStr === 'FAAL' || durumStr === 'F') {
+    if (detailUpper.includes('YANGIN') && (detailUpper.includes('YAPAMAZ') || detailUpper.includes('GÖREVİ') || detailUpper.includes('GOREVI'))) {
+      return { code: 'FY', interpretation: 'FAAL YANGIN GÖREVİ YAPAMAZ' };
+    }
     if (detailUpper.includes('KARMA') || detailUpper.includes('HEM FAAL') || descUpper.includes('KARMA') || descUpper.includes('HEM FAAL')) {
       return { code: 'K', interpretation: 'KARMA GÜN' };
     }
@@ -61,7 +67,8 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
       'PB': { code: 'PB', interpretation: 'PARÇA BEKLER' },
       'KK': { code: 'KK', interpretation: 'KAZA KIRIM' },
       'X': { code: 'X', interpretation: 'OLMADIĞI GÜNLER' },
-      'TB': { code: 'TB', interpretation: 'TECRÜBE BEKLER' }
+      'TB': { code: 'TB', interpretation: 'TECRÜBE BEKLER' },
+      'FY': { code: 'FY', interpretation: 'FAAL YANGIN GÖREVİ YAPAMAZ' }
     };
 
     if (exactMap[t]) return exactMap[t];
@@ -489,7 +496,7 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
       const aircraft: Partial<Aircraft> = {
         kuyrukNo: kuyrukNo,
         cagriKodu: getCallSignByTail(kuyrukNo),
-        durum: (analysis.code !== 'F') ? Status.GAYRI_FAAL : Status.FAAL,
+        durum: (analysis.code === 'FY') ? Status.FAAL_YANGIN_GOREVI_YAPAMAZ : ((analysis.code === 'F' || analysis.code === 'K') ? Status.FAAL : Status.GAYRI_FAAL),
         durumTipi: (analysis.code === 'B' || analysis.code === 'BB' || analysis.code === 'TBU' || analysis.code === 'KM') ? StatusType.BAKIM : 
                    (analysis.code === 'A' || analysis.code === 'PB') ? StatusType.ARIZA : StatusType.NONE,
         durumAyrintisi: String(item.durumAyrintisi || '-'),

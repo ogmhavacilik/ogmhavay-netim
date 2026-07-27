@@ -41,6 +41,7 @@ const MaintenanceForm: React.FC<MaintenanceFormProps> = ({ aircraft, onSave, onC
               className="w-full p-2 border rounded-lg bg-gray-50 font-medium"
             >
               <option value={Status.FAAL}>FAAL</option>
+              <option value={Status.FAAL_YANGIN_GOREVI_YAPAMAZ}>FAAL YANGIN GÖREVİ YAPAMAZ</option>
               <option value={Status.GAYRI_FAAL}>GAYRI FAAL</option>
             </select>
           </div>
