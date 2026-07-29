@@ -679,7 +679,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
           </div>
           <div className="bg-emerald-200/50 border-l-4 border-emerald-600 p-4 rounded-r-xl">
              <p className="text-[11px] font-black text-emerald-950 leading-relaxed uppercase tracking-tight">
-               * FAALİYET % HESAPLAMA NOTU: Üst üste 3 gün (veya daha fazla) OLMADIĞI GÜNLER (X) durumunda olan hava araçları, bu süre zarfında hesaplamaya dahil edilmez. Farklı tarihlerde gerçekleşen toplam OLMADIĞI GÜNLER süresi ise hesaplamaya dahil edilir.
+               * FAALİYET % HESAPLAMA NOTU: Üst üste 3 gün (veya daha fazla) OLMADIĞI GÜNLER (X) durumunda olan hava araçları, bu süre zarfında hesaplamaya dahil edilmez.
              </p>
           </div>
         </div>

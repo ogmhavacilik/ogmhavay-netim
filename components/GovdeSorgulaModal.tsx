@@ -65,9 +65,10 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
     if (!dateStr && dateStr !== 0) return null;
     if (dateStr instanceof Date) {
       if (isNaN(dateStr.getTime())) return null;
-      const y = dateStr.getFullYear();
-      const m = dateStr.getMonth() + 1;
-      const d = dateStr.getDate();
+      const trDt = new Date(dateStr.getTime() + 3 * 3600 * 1000);
+      const y = trDt.getUTCFullYear();
+      const m = trDt.getUTCMonth() + 1;
+      const d = trDt.getUTCDate();
       return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     }
     const s = String(dateStr).trim();
@@ -79,9 +80,10 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
         const excelEpoch = new Date(1899, 11, 30);
         const dateObj = new Date(excelEpoch.getTime() + num * 86400 * 1000);
         if (!isNaN(dateObj.getTime())) {
-          const y = dateObj.getFullYear();
-          const m = dateObj.getMonth() + 1;
-          const d = dateObj.getDate();
+          const trDt = new Date(dateObj.getTime() + 3 * 3600 * 1000);
+          const y = trDt.getUTCFullYear();
+          const m = trDt.getUTCMonth() + 1;
+          const d = trDt.getUTCDate();
           return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         }
       }
@@ -90,9 +92,10 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
     if (s.includes('T') || s.includes('Z') || s.includes('GMT')) {
       const dt = new Date(s);
       if (!isNaN(dt.getTime())) {
-        const y = dt.getUTCFullYear();
-        const m = dt.getUTCMonth() + 1;
-        const d = dt.getUTCDate();
+        const trDt = new Date(dt.getTime() + 3 * 3600 * 1000);
+        const y = trDt.getUTCFullYear();
+        const m = trDt.getUTCMonth() + 1;
+        const d = trDt.getUTCDate();
         return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       }
     }
@@ -119,9 +122,10 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
     
     const dt = new Date(s);
     if (!isNaN(dt.getTime())) {
-      const y = dt.getUTCFullYear();
-      const m = dt.getUTCMonth() + 1;
-      const d = dt.getUTCDate();
+      const trDt = new Date(dt.getTime() + 3 * 3600 * 1000);
+      const y = trDt.getUTCFullYear();
+      const m = trDt.getUTCMonth() + 1;
+      const d = trDt.getUTCDate();
       return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     }
     return null;

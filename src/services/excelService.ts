@@ -147,12 +147,29 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
     const faydaliSaat = (aircraft.faydaliSaat !== null && aircraft.faydaliSaat !== undefined) ? formatToHHMM(aircraft.faydaliSaat, aircraft.tip) : '';
     const abbr = getAbbreviation(aircraft.kuyrukNo || '');
     
-    const isFaal = String(aircraft.durum || '').toUpperCase().includes("FAAL") && !String(aircraft.durum || '').toUpperCase().includes("GAYRİ") && !String(aircraft.durum || '').toUpperCase().includes("GAYRI");
-    const durumClass = isFaal ? "faal" : "gayrifaal";
+    const dUpper = String(aircraft.durum || '').toUpperCase();
+    const dAyr = String(aircraft.durumAyrintisi || '').toUpperCase();
+    const isFirebossGoreviYapamaz = dUpper.includes("FIREBOSS") || dUpper.includes("YANGIN GÖREVİ YAPAMAZ") || 
+                                  dUpper.includes("YANGIN GOREVI YAPAMAZ") ||
+                                  dAyr.includes("FIREBOSS") ||
+                                  dAyr.includes("YANGIN GÖREVİ YAPAMAZ") ||
+                                  dAyr.includes("YANGIN GOREVI YAPAMAZ");
 
+    const isFaal = isFirebossGoreviYapamaz || (dUpper.includes("FAAL") && !dUpper.includes("GAYRİ") && !dUpper.includes("GAYRI"));
     const durumText = aircraft.durum ? String(aircraft.durum).toUpperCase() : '';
     const alertText = aircraft.durumAyrintisi && aircraft.durumAyrintisi !== '-' ? String(aircraft.durumAyrintisi).toUpperCase() : '';
     
+    let durumTdHtml = '';
+    if (isFirebossGoreviYapamaz) {
+      durumTdHtml = `<td style="background-color: #e8f5e9; font-weight: bold; text-align: center; vertical-align: middle; padding: 4px;">
+        <div style="color: #2e7d32; font-size: 12px; font-weight: 900; line-height: 1.2;">FAAL</div>
+        <div style="color: #c62828; font-size: 10px; font-weight: 900; line-height: 1.1;">FIREBOSS<br/>GÖREVİ<br/>YAPAMAZ</div>
+      </td>`;
+    } else {
+      const durumClass = isFaal ? "faal" : "gayrifaal";
+      durumTdHtml = `<td class="${durumClass}">${durumText}</td>`;
+    }
+
     const span = rowSpans[index];
     let typeTd = '';
     if (span > 0) {
@@ -166,7 +183,7 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
         <td style="font-weight: bold; color: #111827;">${aircraft.cagriKodu || ''}</td>
         <td style="font-weight: bold; color: #111827;">${aircraft.kuyrukNo || ''} <span class="abbr-text">${abbr}</span></td>
         <td style="mso-number-format:'\\@'; font-weight: bold; color: #FF6B00; font-size: 16px;">${(!aircraft.govdeUcusSaati || aircraft.govdeUcusSaati === '-' || aircraft.govdeUcusSaati === '0') ? '-' : formatToHHMM(aircraft.govdeUcusSaati, aircraft.tip)}</td>
-        <td class="${durumClass}">${durumText}</td>
+        ${durumTdHtml}
         <td style="font-weight: bold; color: #111827;">${alertText}</td>
         <td style="font-weight: bold; color: #111827; text-transform: uppercase;">${aircraft.konum || ''}</td>
         <td style="mso-number-format:'\\@'; font-weight: bold; color: #1a73e8; font-size: 16px;">${faydaliSaat}</td>
