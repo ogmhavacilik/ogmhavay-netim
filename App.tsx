@@ -1031,21 +1031,26 @@ const App = () => {
             let initialStatus = previousTailStatus;
             let isDown = (previousTailStatus !== 'F');
 
-            // Smart logic: If first event of day is a failure start, then we must have been Faal before that
+            // Smart logic: If first event of day is an 'up' event (Faal başlangıç saati)
             if (events.length > 0) {
               if (events[0].type === 'up') {
-                isDown = true;
-                initialStatus = (previousTailStatus !== 'F' ? previousTailStatus : (events[0].status || 'GA'));
+                if (previousTailStatus !== 'F' && previousTailStatus !== 'FY') {
+                  isDown = true;
+                  initialStatus = previousTailStatus;
+                } else {
+                  isDown = false;
+                  initialStatus = 'F';
+                }
               } else if (events[0].type === 'down') {
                 isDown = false;
                 initialStatus = 'F';
               }
-            } else if ((dailyStatus as string) !== 'F' && (dailyStatus as string) !== '?' && (dailyStatus as string) !== '') {
+            } else if ((dailyStatus as string) !== 'F' && (dailyStatus as string) !== 'FY' && (dailyStatus as string) !== '?' && (dailyStatus as string) !== '') {
               isDown = true;
               initialStatus = dailyStatus;
-            } else if (dailyStatus === 'F' && previousTailStatus !== 'F') {
+            } else if ((dailyStatus === 'F' || dailyStatus === 'FY') && previousTailStatus !== 'F' && previousTailStatus !== 'FY') {
               isDown = false;
-              initialStatus = 'F';
+              initialStatus = (dailyStatus as DailyStatusCode) || 'F';
             }
 
             let lastDownMins = 0;
@@ -1111,7 +1116,8 @@ const App = () => {
               if (!act.hourlyDescriptions) act.hourlyDescriptions = {};
               act.hourlyDescriptions[dateStr] = { ...act.hourlyDescriptions[dateStr], ...hourlyDescriptions };
               
-              if (totalGayriFaalMins > 0 && totalGayriFaalMins < endOfDayMins) {
+              const distinctHStatuses = Array.from(new Set(Object.values(hourlyStatuses))).filter(st => st !== '' && st !== undefined);
+              if (totalGayriFaalMins > 0 && totalGayriFaalMins < endOfDayMins && distinctHStatuses.length > 1) {
                 if (!act.intraDayCompletions) act.intraDayCompletions = {};
                 act.intraDayCompletions[dateStr] = true;
               }
@@ -1708,13 +1714,24 @@ const App = () => {
                </span>
             </div>
           </div>
-          <div className="flex flex-col sm:flex-row gap-4 sm:space-x-5">
-            <button onClick={() => setShowActivity(!showActivity)} className={`px-6 sm:px-10 py-4 sm:py-5 rounded-[2rem] font-black text-[10px] sm:text-[11px] uppercase tracking-[0.1em] sm:tracking-[0.4em] transition-all shadow-2xl border-2 w-full sm:w-auto ${showActivity ? 'bg-blue-600 text-white border-blue-500' : 'bg-white/10 text-white border-white/20'}`}>
-               {showActivity ? "ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU" : "FAALİYET ÇİZELGESİ"}
-            </button>
+          <div className="flex flex-col sm:flex-row gap-3 items-center">
+            <div className="flex bg-black/50 p-1.5 rounded-[2rem] border border-white/10 shadow-2xl">
+              <button 
+                onClick={() => setShowActivity(false)} 
+                className={`px-5 sm:px-8 py-3.5 sm:py-4 rounded-[1.5rem] font-black text-[10px] sm:text-[11px] uppercase tracking-[0.1em] sm:tracking-[0.2em] transition-all ${!showActivity ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 border-2 border-blue-400' : 'text-gray-400 hover:text-white bg-transparent'}`}
+              >
+                ENVANTER GÜNLÜK DURUM RAPORU
+              </button>
+              <button 
+                onClick={() => setShowActivity(true)} 
+                className={`px-5 sm:px-8 py-3.5 sm:py-4 rounded-[1.5rem] font-black text-[10px] sm:text-[11px] uppercase tracking-[0.1em] sm:tracking-[0.2em] transition-all ${showActivity ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/50 border-2 border-emerald-400' : 'text-gray-400 hover:text-white bg-transparent'}`}
+              >
+                FAALİYET ÇİZELGESİ
+              </button>
+            </div>
             <button 
               onClick={handleAdminClick} 
-              className={`relative px-6 sm:px-10 py-4 sm:py-5 rounded-[2rem] font-black text-[10px] sm:text-[11px] border-2 uppercase tracking-[0.1em] sm:tracking-[0.4em] transition-all shadow-lg flex items-center justify-center w-full sm:w-auto ${notifications.length > 0 ? 'bg-red-900 border-red-500 text-white animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'bg-[#021a0c] hover:bg-emerald-900 text-white border-emerald-800/50'}`}
+              className={`relative px-6 sm:px-8 py-4 sm:py-4 rounded-[2rem] font-black text-[10px] sm:text-[11px] border-2 uppercase tracking-[0.1em] sm:tracking-[0.3em] transition-all shadow-lg flex items-center justify-center w-full sm:w-auto ${notifications.length > 0 ? 'bg-red-900 border-red-500 text-white animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'bg-[#021a0c] hover:bg-emerald-900 text-white border-emerald-800/50'}`}
             >
               YÖNETİM & GELEN KUTUSU
               {notifications.length > 0 && (
@@ -1914,8 +1931,8 @@ const App = () => {
                     <th className="border border-black px-3 py-3 text-center font-black w-44 min-w-[170px]">KONUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">DURUM</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-36">DURUM AYRINTISI</th>
-                    <th className="border border-black px-3 py-3 text-center font-black w-24">GÖVDE SAATİ</th>
                     <th className="border border-black px-3 py-3 text-center font-black w-24">FAYDALI SAAT</th>
+                    <th className="border border-black px-3 py-3 text-center font-black w-24">GÖVDE SAATİ</th>
                     <th className="border border-black px-3 py-3 text-left font-black w-[400px] min-w-[340px]">AÇIKLAMA</th>
                   </tr>
                 </thead>
@@ -2019,8 +2036,8 @@ const App = () => {
                           })()}
                         </td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-gray-900 uppercase">{a.durumAyrintisi !== '-' ? a.durumAyrintisi : ''}</td>
-                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#FF6B00] text-base">{a.govdeUcusSaati || '-'}</td>
                         <td className="border border-black px-3 py-2.5 text-center font-black text-[#1a73e8] text-base">{formatToHHMM(a.faydaliSaat, a.tip)}</td>
+                        <td className="border border-black px-3 py-2.5 text-center font-black text-[#FF6B00] text-base">{a.govdeUcusSaati || '-'}</td>
                         <td className="border border-black px-4 py-2 text-left text-[11px] leading-tight text-gray-600 italic whitespace-pre-wrap relative">
                           <div className="flex justify-between items-center w-full min-h-[1.5rem]">
                             <span className="flex-1 pr-14">{a.aciklama}</span>

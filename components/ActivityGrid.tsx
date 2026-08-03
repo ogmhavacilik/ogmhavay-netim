@@ -19,6 +19,86 @@ interface ActivityGridProps {
 const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], startDate, endDate, title, onExport, onDayClick, sortByCagriKodu = false, sortByFaydaliSaat = false }) => {
   const [selectedDayView, setSelectedDayView] = useState<{ activity: AircraftActivity, date: Date } | null>(null);
 
+  const [tooltip, setTooltip] = useState<{
+    kuyrukNo: string;
+    tip: string;
+    cagriKodu: string;
+    dateFormatted: string;
+    status: string;
+    statusMeta: { label: string; bg: string; fg: string; border: string };
+    descriptions: string[];
+    events: { hour: number; exactMins: number; type: string; status: string; desc: string }[];
+    isKarma: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const getStatusMeta = (code: string) => {
+    switch (code) {
+      case 'F': return { label: 'FAAL', bg: '#DCFCE7', fg: '#166534', border: '#86EFAC' };
+      case 'FY': return { label: 'FAAL (FIREBOSS GÖREVİ YAPAMAZ)', bg: '#DCFCE7', fg: '#991B1B', border: '#FCA5A5' };
+      case 'A': return { label: 'ARIZA', bg: '#FF0000', fg: '#FFFFFF', border: '#DC2626' };
+      case 'B': return { label: 'BAKIM', bg: '#FFFF00', fg: '#000000', border: '#EAB308' };
+      case 'BB': return { label: 'BAKIM BEKLER', bg: '#FFFF00', fg: '#000000', border: '#EAB308' };
+      case 'KM': return { label: 'KABUL MUAYENESİ', bg: '#FFFF00', fg: '#000000', border: '#EAB308' };
+      case 'TBU': return { label: 'TEKNİK BÜLTEN UYGULAMASI', bg: '#FFFF00', fg: '#000000', border: '#EAB308' };
+      case 'PB': return { label: 'PARÇA BEKLER', bg: '#FF0000', fg: '#FFFFFF', border: '#DC2626' };
+      case 'KK': return { label: 'KAZA KIRIM', bg: '#FF0000', fg: '#FFFFFF', border: '#DC2626' };
+      case 'X': return { label: 'OLMADIĞI GÜNLER', bg: '#7030A0', fg: '#FFFFFF', border: '#A855F7' };
+      case 'TB': return { label: 'TECRÜBE BEKLER', bg: '#40E0D0', fg: '#000000', border: '#2DD4BF' };
+      case 'K': return { label: 'KARMA GÜN (SAATLİK DEĞİŞİKLİK)', bg: '#F97316', fg: '#FFFFFF', border: '#FB923C' };
+      default: return { label: code || 'VERİ YOK', bg: '#4B5563', fg: '#FFFFFF', border: '#9CA3AF' };
+    }
+  };
+
+  const handleCellMouseEnter = (
+    e: React.MouseEvent,
+    act: AircraftActivity,
+    date: Date,
+    status: string,
+    isKarma: boolean,
+    hour?: string
+  ) => {
+    const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const dateFormatted = hour 
+      ? `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()} (${hour})`
+      : `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()}`;
+
+    const hourlyDescObj = act.hourlyDescriptions?.[dateStrKey] || {};
+    let descs = Array.from(new Set(Object.values(hourlyDescObj).filter(d => Boolean(d && d.trim()))));
+    
+    const events = act.intraDayEvents?.[dateStrKey] || [];
+    events.forEach(ev => {
+      if (ev.desc && ev.desc.trim() && !descs.includes(ev.desc.trim())) {
+        descs.push(ev.desc.trim());
+      }
+    });
+
+    const meta = getStatusMeta(isKarma ? 'K' : status);
+
+    setTooltip({
+      kuyrukNo: act.kuyrukNo,
+      tip: act.tip,
+      cagriKodu: act.cagriKodu,
+      dateFormatted,
+      status: isKarma ? 'K' : status,
+      statusMeta: meta,
+      descriptions: descs,
+      events,
+      isKarma,
+      x: e.clientX,
+      y: e.clientY
+    });
+  };
+
+  const handleCellMouseMove = (e: React.MouseEvent) => {
+    setTooltip(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
+  };
+
+  const handleCellMouseLeave = () => {
+    setTooltip(null);
+  };
+
   const isHourlyView = useMemo(() => {
     const s = new Date(startDate);
     const e = new Date(endDate);
@@ -420,7 +500,14 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                             if (isFuture) status = '';
 
                             return (
-                              <td key={hIdx} className={`border border-black text-center text-[10px] ${getStatusClass(status)}`} style={getStatusStyle(status)}>
+                              <td 
+                                key={hIdx} 
+                                className={`border border-black text-center text-[10px] ${getStatusClass(status)}`} 
+                                style={getStatusStyle(status)}
+                                onMouseEnter={(e) => handleCellMouseEnter(e, act, startDate, status, false, hour)}
+                                onMouseMove={handleCellMouseMove}
+                                onMouseLeave={handleCellMouseLeave}
+                              >
                                 {status === 'F' ? '' : status}
                               </td>
                             );
@@ -438,23 +525,37 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
 
                             const isCompletedToday = act.intraDayCompletions?.[dateStrKey];
                             const hourlyData = act.hourlyStatuses?.[dateStrKey] || {};
-                            const hasHourlyData = Object.keys(hourlyData).length > 0;
+                            const eventsForDay = act.intraDayEvents?.[dateStrKey] || [];
                             
-                            // Bir günün "Karma" (Yıldızlı) olması için ya durum kodu 'K' (Karma) olmalı
-                            // ya da saatlik verisi olup gün içinde durum değişikliği yaşanmış olmalı.
-                            // Sadece "isCompletedToday" olması yetmez, saatlik verisi yoksa yıldız koymuyoruz.
-                            const isKarma = status === 'K' || (isCompletedToday && hasHourlyData);
+                            const allStatusesInDay = Array.from(new Set([
+                              ...Object.values(hourlyData),
+                              ...eventsForDay.map(e => e.status)
+                            ])).filter(st => st !== '' && st !== undefined);
+
+                            const GAYRI_FAAL_CODES = ['B', 'BB', 'TBU', 'KM', 'A', 'PB', 'KK', 'X', 'TB'];
+                            const FAAL_CODES = ['F', 'FY'];
+
+                            const hasGayriFaalCode = allStatusesInDay.some(st => GAYRI_FAAL_CODES.includes(st as string));
+                            const hasFaalCode = allStatusesInDay.some(st => FAAL_CODES.includes(st as string));
+
+                            // Bir günün "Karma" (Turuncu Yıldızlı) olması için ya durum kodu 'K' olmalı
+                            // ya da gün içinde HEM Gayrı Faal kodu (Bakım, Arıza vb.) HEM DE Faal kodu bulunmalı.
+                            // Sadece Faal başlangıç saati yazılmış ama Gayrı Faal durumu yoksa yıldız gösterilmez.
+                            const isKarma = status === 'K' || (isCompletedToday && hasGayriFaalCode && hasFaalCode);
 
                             return (
                               <td 
                                 key={dIdx} 
-                                className={`border border-black text-center text-[10px] relative ${getStatusClass(status, isCompletedToday)} cursor-pointer hover:opacity-80 ${dIdx === todayIndex ? 'bg-red-50/10' : ''}`} 
-                                style={getStatusStyle(status, isCompletedToday)}
+                                className={`border border-black text-center text-[10px] relative ${getStatusClass(status, isKarma)} cursor-pointer hover:opacity-80 ${dIdx === todayIndex ? 'bg-red-50/10' : ''}`} 
+                                style={getStatusStyle(status, isKarma)}
                                 onClick={() => {
                                   if (isKarma) {
                                     setSelectedDayView({ activity: act, date: date });
                                   }
                                 }}
+                                onMouseEnter={(e) => handleCellMouseEnter(e, act, date, status, isKarma)}
+                                onMouseMove={handleCellMouseMove}
+                                onMouseLeave={handleCellMouseLeave}
                               >
                                 {dIdx === todayIndex && (
                                    <div className="absolute inset-y-0 right-[-2px] w-0 border-r-[3.5px] border-dashed border-red-600 z-[50] pointer-events-none" />
@@ -885,6 +986,91 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* FAALİYET KUTUSU BİLGİ PENCERESİ (HOVER POPUP) */}
+      {tooltip && (
+        <div 
+          className="fixed z-[9999] pointer-events-none transition-all duration-75 ease-out"
+          style={{
+            left: Math.min(Math.max(10, tooltip.x + 15), Math.max(10, window.innerWidth - 330)),
+            top: Math.min(Math.max(10, tooltip.y + 15), Math.max(10, window.innerHeight - 280)),
+            maxWidth: '320px',
+            width: 'max-content'
+          }}
+        >
+          <div className="bg-slate-950/95 backdrop-blur-md border-2 border-emerald-500/50 rounded-2xl shadow-2xl p-4 text-white text-xs space-y-3 ring-1 ring-black/50 min-w-[260px]">
+            {/* Üst Başlık: Tarih ve Hava Aracı Bilgisi */}
+            <div className="border-b border-white/10 pb-2">
+              <div className="font-black text-emerald-400 text-sm tracking-wide flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
+                {tooltip.dateFormatted}
+              </div>
+              <div className="text-[11px] font-bold text-gray-300 mt-1">
+                {tooltip.kuyrukNo} • {tooltip.tip} {tooltip.cagriKodu ? `(${tooltip.cagriKodu})` : ''}
+              </div>
+            </div>
+
+            {/* Durum Etiketi */}
+            <div className="flex items-center space-x-2">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">DURUM:</span>
+              <span 
+                className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase shadow-sm border"
+                style={{ 
+                  backgroundColor: tooltip.statusMeta.bg, 
+                  color: tooltip.statusMeta.fg,
+                  borderColor: tooltip.statusMeta.border
+                }}
+              >
+                {tooltip.statusMeta.label}
+              </span>
+            </div>
+
+            {/* Gün İçi Faaliyet Olayları (Varsa) */}
+            {tooltip.events && tooltip.events.length > 0 && (
+              <div className="space-y-1.5 border-t border-white/10 pt-2">
+                <div className="text-[10px] font-black text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> FAALİYET & LOG AKIŞI
+                </div>
+                <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                  {tooltip.events.map((ev, idx) => {
+                    const timeStr = `${String(ev.hour).padStart(2, '0')}:${String(ev.exactMins || 0).padStart(2, '0')}`;
+                    const evMeta = getStatusMeta(ev.status);
+                    return (
+                      <div key={idx} className="bg-white/5 rounded-lg p-1.5 text-[11px] flex flex-col gap-0.5 border border-white/5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-amber-300 text-[11px]">{timeStr}</span>
+                          <span 
+                            className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase"
+                            style={{ backgroundColor: evMeta.bg, color: evMeta.fg }}
+                          >
+                            {evMeta.label}
+                          </span>
+                        </div>
+                        {ev.desc && <div className="text-gray-300 text-[10px] italic mt-0.5">{ev.desc}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Açıklama / Not Metni */}
+            {tooltip.descriptions && tooltip.descriptions.length > 0 ? (
+              <div className="space-y-1 border-t border-white/10 pt-2">
+                <div className="text-[10px] font-black text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                  <Activity className="w-3.5 h-3.5 text-amber-400" /> AÇIKLAMA / NOT
+                </div>
+                <div className="text-gray-200 text-[11px] font-medium leading-relaxed bg-black/60 p-2.5 rounded-xl border border-white/10 whitespace-pre-wrap max-h-36 overflow-y-auto">
+                  {tooltip.descriptions.join('\n\n')}
+                </div>
+              </div>
+            ) : (!tooltip.events || tooltip.events.length === 0) ? (
+              <div className="text-[10px] text-gray-400 italic border-t border-white/10 pt-2">
+                Bu güne ait özel açıklama/not girilmemiş.
+              </div>
+            ) : null}
           </div>
         </div>
       )}

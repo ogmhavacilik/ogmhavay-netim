@@ -59,15 +59,16 @@ async function startServer() {
         }
       }
 
-      res.status(response.status).json({
+      res.status(200).json({
         success: response.ok,
         data: data,
         status: response.status
       });
     } catch (error) {
       console.error('Proxy Error:', error);
-      res.status(500).json({ 
+      res.status(200).json({ 
         success: false, 
+        data: null,
         error: error instanceof Error ? error.message : 'Internal Server Error',
         details: String(error)
       });

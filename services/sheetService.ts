@@ -394,7 +394,8 @@ export const proxyFetch = async (url: string, body: any, options?: { method?: 'G
     const response = await fetch(targetUrl, fetchOpts);
 
     if (!response.ok) {
-      throw new Error(`Direct Fetch HTTP ${response.status}`);
+      console.warn(`Direct Fetch HTTP ${response.status} for ${url}`);
+      return { success: false, status: response.status, data: [] };
     }
 
     const text = await response.text();
@@ -405,8 +406,8 @@ export const proxyFetch = async (url: string, body: any, options?: { method?: 'G
       return text;
     }
   } catch (error) {
-    console.error('Direct Fetch Error (Netlify Fallback):', error);
-    throw error;
+    console.warn('Direct Fetch Error (Netlify Fallback):', error);
+    return { success: false, data: [], error: String(error) };
   }
 };
 
