@@ -3,7 +3,8 @@ name: Build and Deploy to GitHub Pages
 on:
   push:
     branches:
-      - main # Veya master (ana dalınız hangisiyse)
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -28,14 +29,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Application
         run: npm run build
-        # GITHUB_ACTIONS ortam değişkenini Otomatik Algılar ve 'docs' dizinine derleme yapar
+        env:
+          GITHUB_ACTIONS: 'true'
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -43,7 +45,6 @@ jobs:
       - name: Upload Build Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # ÖNEMLİ: Vite konfigürasyonunuzda isGithubPages durumunda outDir 'docs' yapıldığı için burayı 'docs' yapıyoruz!
           path: './docs'
 
       - name: Deploy to GitHub Pages
