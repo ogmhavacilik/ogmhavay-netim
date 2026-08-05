@@ -515,21 +515,19 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       const analysis = analyzeStatus(statusToAnalyze);
 
       let mainUpdateResult = { success: true, message: '' };
-      if (!isPastDate) {
-        const uRes = await updateAircraftData(
-          selectedAircraft.appsScriptUrl || '',
-          selectedAircraft.sheetId || '',
-          selectedAircraft.kuyrukNo,
-          { 
-            ...finalData, 
-            assignedCode: analysis.code // Send assignedCode to prevent auto-reanalysis on server
-          },
-          selectedAircraft.mapping,
-          selectedAircraft.sheetName,
-          selectedAircraft.tip
-        );
-        mainUpdateResult = { success: uRes.success, message: uRes.message };
-      }
+      const uRes = await updateAircraftData(
+        selectedAircraft.appsScriptUrl || '',
+        selectedAircraft.sheetId || '',
+        selectedAircraft.kuyrukNo,
+        { 
+          ...finalData, 
+          assignedCode: analysis.code // Send assignedCode to prevent auto-reanalysis on server
+        },
+        selectedAircraft.mapping,
+        selectedAircraft.sheetName,
+        selectedAircraft.tip
+      );
+      mainUpdateResult = { success: uRes.success, message: uRes.message };
 
       if (!mainUpdateResult.success) {
         setMessage({ type: 'error', text: mainUpdateResult.message || 'Hava aracı dosyası güncellenirken hata oluştu.' });
@@ -728,14 +726,24 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     if (isPastDate) {
         if (!envanterLog || envanterLog.length === 0) return;
         
-        // Use the same normalization logic as App.tsx to ensure match
-        const searchDate = formData.islemTarihi; // yyyy-MM-dd
+        const normalizeDate = (dStr: string) => {
+          if (!dStr) return '';
+          const s = String(dStr).trim();
+          if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) {
+            const p = s.split('.');
+            return `${p[2]}-${p[1]}-${p[0]}`;
+          }
+          return s;
+        };
+        
+        // Use normalized date comparison (yyyy-MM-dd)
+        const searchDate = formData.islemTarihi;
         const searchKuyruk = (selectedKuyruk || "").trim().toUpperCase();
         
         // Öncelikle seçili tarihteki kaydı bul
         let logEntry = envanterLog.find(log => {
           const logKuyruk = String(log.kuyrukNo || "").trim().toUpperCase();
-          const logTarih = String(log.tarih || "").trim();
+          const logTarih = normalizeDate(String(log.tarih || ""));
           return logKuyruk === searchKuyruk && logTarih === searchDate;
         });
 
@@ -744,10 +752,14 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           const pastLogs = envanterLog
             .filter(log => {
                const logKuyruk = String(log.kuyrukNo || "").trim().toUpperCase();
-               const logTarih = String(log.tarih || "").trim();
+               const logTarih = normalizeDate(String(log.tarih || ""));
                return logKuyruk === searchKuyruk && logTarih < searchDate;
             })
-            .sort((a, b) => String(b.tarih).localeCompare(String(a.tarih)));
+            .sort((a, b) => {
+               const tA = normalizeDate(String(a.tarih || ""));
+               const tB = normalizeDate(String(b.tarih || ""));
+               return tB.localeCompare(tA);
+            });
           
           if (pastLogs.length > 0) {
             logEntry = pastLogs[0];

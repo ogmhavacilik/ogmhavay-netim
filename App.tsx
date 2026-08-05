@@ -159,21 +159,24 @@ const App = () => {
   ) => {
     const searchKNoClean = kuyrukNo.trim().toUpperCase();
 
-    if (!isPastDate) {
-      setFleet(prevFleet => {
-        return prevFleet.map(a => {
-          if (String(a.kuyrukNo).trim().toUpperCase() === searchKNoClean) {
-            const updatedAc = { ...a };
-            if (updates.govdeUcusSaati !== undefined) {
-              const parsedVal = parseSingleCellToHour(updates.govdeUcusSaati, a.tip);
-              if (parsedVal !== null) {
+    setFleet(prevFleet => {
+      return prevFleet.map(a => {
+        if (String(a.kuyrukNo).trim().toUpperCase() === searchKNoClean) {
+          const updatedAc = { ...a };
+          if (updates.govdeUcusSaati !== undefined) {
+            const parsedVal = parseSingleCellToHour(updates.govdeUcusSaati, a.tip);
+            if (parsedVal !== null) {
+              const currentVal = parseSingleCellToHour(a.govdeUcusSaati, a.tip) || 0;
+              if (!isPastDate || parsedVal >= currentVal) {
                 updatedAc.govdeUcusSaati = updates.govdeUcusSaati;
               }
             }
-            if (updates.faydaliSaat !== undefined) {
-              const numVal = parseFloat(String(updates.faydaliSaat).replace(',', '.'));
-              updatedAc.faydaliSaat = !isNaN(numVal) ? numVal : undefined;
-            }
+          }
+          if (updates.faydaliSaat !== undefined) {
+            const numVal = parseFloat(String(updates.faydaliSaat).replace(',', '.'));
+            updatedAc.faydaliSaat = !isNaN(numVal) ? numVal : undefined;
+          }
+          if (!isPastDate) {
             if (updates.konum !== undefined) updatedAc.konum = updates.konum;
             if (updates.durum !== undefined) updatedAc.durum = updates.durum;
             if (updates.durumAyrintisi !== undefined) updatedAc.durumAyrintisi = updates.durumAyrintisi;
@@ -187,13 +190,13 @@ const App = () => {
             if (updates.bakim480H !== undefined) updatedAc.bakim480H = updates.bakim480H;
             if (updates.bakimTakvimTarih !== undefined) updatedAc.bakimTakvimTarih = updates.bakimTakvimTarih;
             if (updates.bakim200H !== undefined) updatedAc.bakim200H = updates.bakim200H;
-
-            return updatedAc;
           }
-          return a;
-        });
+
+          return updatedAc;
+        }
+        return a;
       });
-    }
+    });
 
     setEnvanterLog(prevLogs => {
       let updatedLogs = [...prevLogs];

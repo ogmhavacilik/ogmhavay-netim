@@ -65,36 +65,34 @@ function doPost(e) {
       }
       
       if (updates.govdeUcusSaati !== undefined) {
-        if (!isPastDate) {
-          var valGovde = updates.govdeUcusSaati;
-          if (valGovde !== null && valGovde !== undefined && valGovde !== "") {
-            var formattedGovde = String(valGovde).trim().replace(',', '.');
-            var nGovde = parseFloat(formattedGovde);
-            if (!isNaN(nGovde)) {
+        var valGovde = updates.govdeUcusSaati;
+        if (valGovde !== null && valGovde !== undefined && valGovde !== "") {
+          var formattedGovde = String(valGovde).trim().replace(',', '.');
+          var nGovde = parseFloat(formattedGovde);
+          var currentCellVal = sheet.getRange(rowIndex, 5).getValue();
+          var currentFormatted = String(currentCellVal).trim().replace(',', '.');
+          var nCurrent = parseFloat(currentFormatted);
+
+          if (!isNaN(nGovde)) {
+            // Geçmiş tarih olsa bile saati ileri doğru güncelleme yapılıyorsa (nGovde >= nCurrent), E-Tablo'daki saat de güncellenir.
+            if (!isPastDate || isNaN(nCurrent) || nGovde >= nCurrent) {
               sheet.getRange(rowIndex, 5).setValue(nGovde);
-            } else {
-              sheet.getRange(rowIndex, 5).setValue(valGovde);
             }
           } else {
-            sheet.getRange(rowIndex, 5).setValue("");
+            if (!isPastDate) {
+              sheet.getRange(rowIndex, 5).setValue(valGovde);
+            }
           }
         } else {
-          // Geriye dönük güncelleme ise, Column E'yi geçmiş saat değeriyle ezmiyoruz.
-          // Envanter Log'daki en son/güncel değeri koruyoruz.
-          var latestLogs = getLatestLogs();
-          var kNoClean = String(kuyrukNo).trim().toUpperCase();
-          if (latestLogs[kNoClean]) {
-            var latestHours = latestLogs[kNoClean].govdeUcusSaati;
-            if (latestHours !== undefined && latestHours !== "" && latestHours !== null) {
-              sheet.getRange(rowIndex, 5).setValue(latestHours);
-            }
+          if (!isPastDate) {
+            sheet.getRange(rowIndex, 5).setValue("");
           }
         }
       }
-      if (updates.konum !== undefined) sheet.getRange(rowIndex, 12).setValue(updates.konum);
-      if (updates.durum !== undefined) sheet.getRange(rowIndex, 13).setValue(updates.durum);
-      if (updates.durumAyrintisi !== undefined) sheet.getRange(rowIndex, 14).setValue(updates.durumAyrintisi);
-      if (updates.aciklama !== undefined) sheet.getRange(rowIndex, 15).setValue(updates.aciklama);
+      if (updates.konum !== undefined && (!isPastDate || updates.forceUpdate)) sheet.getRange(rowIndex, 12).setValue(updates.konum);
+      if (updates.durum !== undefined && (!isPastDate || updates.forceUpdate)) sheet.getRange(rowIndex, 13).setValue(updates.durum);
+      if (updates.durumAyrintisi !== undefined && (!isPastDate || updates.forceUpdate)) sheet.getRange(rowIndex, 14).setValue(updates.durumAyrintisi);
+      if (updates.aciklama !== undefined && (!isPastDate || updates.forceUpdate)) sheet.getRange(rowIndex, 15).setValue(updates.aciklama);
       
       // Corrected to save directly to Column H (8) for Saat Esaslı Bakım (50H)
       if (updates.bakim50H !== undefined) {
