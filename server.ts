@@ -2,6 +2,13 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+import { setGlobalDispatcher, Agent } from 'undici';
+
+setGlobalDispatcher(new Agent({
+  headersTimeout: 120000,
+  bodyTimeout: 120000,
+  connectTimeout: 30000
+}));
 
 async function startServer() {
   const app = express();
@@ -43,7 +50,24 @@ async function startServer() {
         fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
       }
 
-      const response = await fetch(targetUrl, fetchOptions);
+      let response: Response | undefined;
+      let lastError: any;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          response = await fetch(targetUrl, fetchOptions);
+          break;
+        } catch (err) {
+          lastError = err;
+          if (attempt === 0) {
+            console.warn('Proxy fetch attempt 1 failed, retrying...', err);
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+        }
+      }
+
+      if (!response) {
+        throw lastError;
+      }
 
       const contentType = response.headers.get('content-type');
       let data;
