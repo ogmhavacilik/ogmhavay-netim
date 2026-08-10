@@ -21,15 +21,22 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
   const descUpper = desc.toLocaleUpperCase('tr-TR');
   const fullTextUpper = `${durumStr} ${detailUpper} ${descUpper}`;
 
+  const tipUpper = (getVal(['tip', 'platformTipi', 'cagriKodu', 'kuyrukNo']) || '').toLocaleUpperCase('tr-TR');
+  const cagriStr = String(item.cagriKodu || '');
+  const kuyrukStr = String(item.kuyrukNo || '');
+  const isAT802 = tipUpper.includes('802') || tipUpper.includes('AT-802') || tipUpper.includes('AT802') ||
+                  kuyrukStr.startsWith('OR-20') ||
+                  cagriStr.startsWith('ORMAN-2') || cagriStr.startsWith('ORMAN-3') || cagriStr.startsWith('ORMAN-4');
+
   // Direct code check
-  if (item.analizKodu === 'FY' || item.assignedCode === 'FY') {
+  if ((item.analizKodu === 'FY' || item.assignedCode === 'FY') && isAT802) {
     return { code: 'FY', interpretation: 'FAAL FIREBOSS GÖREVİ YAPAMAZ' };
   }
 
-  // Adım 0: FIREBOSS / FY DURUM KONTROLÜ (Açıklama, durum ayrıntısı veya genel metin içerisinde)
+  // FIREBOSS / FY DURUM KONTROLÜ - SADECE AT-802 İÇİN GEÇERLİDİR
   const isFYKeyword = (t: string) => {
-    if (!t) return false;
-    if (t.includes('FY') || t.includes('FIREBOSS') || t.includes('FIRE BOSS') || t.includes('YANGIN') || t.includes('SU ATMA')) {
+    if (!isAT802 || !t) return false;
+    if (t.includes('FY') || t.includes('FIREBOSS') || t.includes('FIRE BOSS') || t.includes('SU ATMA')) {
       if (
         t.includes('YAPAMAZ') || t.includes('YAPAMIYOR') || 
         t.includes('GÖREVİ') || t.includes('GOREVI') || 
@@ -42,16 +49,19 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
     return false;
   };
 
-  if (isFYKeyword(fullTextUpper)) {
-    if (!durumStr.includes('GAYRİ') && !durumStr.includes('GAYRI') && !durumStr.includes('ARIZA')) {
+  // Explicit FAAL Check: If main status is explicitly 'FAAL' or 'F' or starts with 'FAAL'
+  const isFaal = (durumStr.includes('FAAL') && !durumStr.includes('GAYRİ') && !durumStr.includes('GAYRI')) || durumStr === 'F';
+  
+  if (isFaal) {
+    // Sadece AT-802 ise FY kontrolü yap
+    if (isAT802 && isFYKeyword(fullTextUpper)) {
       return { code: 'FY', interpretation: 'FAAL FIREBOSS GÖREVİ YAPAMAZ' };
     }
-  }
-
-  if (durumStr === 'FAAL' || durumStr === 'F') {
     if (detailUpper.includes('KARMA') || detailUpper.includes('HEM FAAL') || descUpper.includes('KARMA') || descUpper.includes('HEM FAAL')) {
       return { code: 'K', interpretation: 'KARMA GÜN' };
     }
+    // Ana durum FAAL ise ve FY/Karma yoksa doğrudan FAAL ('F')
+    return { code: 'F', interpretation: 'FAAL' };
   }
 
   const normalizeTurkish = (str: string): string => {
@@ -74,10 +84,8 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
     const t = text.toLocaleUpperCase('tr-TR');
     if (!t) return null;
     
-    // Normalize string for matching: replace all Turkish accented letters
     const n = normalizeTurkish(t);
 
-    // Exact Code Match (Highest Priority)
     const exactMap: Record<string, { code: DailyStatusCode, interpretation: string }> = {
       'B': { code: 'B', interpretation: 'BAKIM' },
       'BB': { code: 'BB', interpretation: 'BAKIM BEKLER' },
@@ -87,19 +95,20 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
       'PB': { code: 'PB', interpretation: 'PARÇA BEKLER' },
       'KK': { code: 'KK', interpretation: 'KAZA KIRIM' },
       'X': { code: 'X', interpretation: 'OLMADIĞI GÜNLER' },
-      'TB': { code: 'TB', interpretation: 'TECRÜBE BEKLER' },
-      'FY': { code: 'FY', interpretation: 'FAAL FIREBOSS GÖREVİ YAPAMAZ' }
+      'TB': { code: 'TB', interpretation: 'TECRÜBE BEKLER' }
     };
+    if (isAT802) {
+      exactMap['FY'] = { code: 'FY', interpretation: 'FAAL FIREBOSS GÖREVİ YAPAMAZ' };
+    }
 
     if (exactMap[t]) return exactMap[t];
 
-    if (n.includes('FIREBOSS') || n.includes('FIRE BOSS') || n.includes('YANGIN') || n.includes('FY')) {
+    if (isAT802 && (n.includes('FIREBOSS') || n.includes('FIRE BOSS') || n.includes('FY'))) {
       if (n.includes('YAPAMAZ') || n.includes('GOREV') || n.includes('FY') || n.includes('SADECE DUZ')) {
         return { code: 'FY', interpretation: 'FAAL FIREBOSS GÖREVİ YAPAMAZ' };
       }
     }
 
-    // Keyword Match - Use Normalized version 'n'
     if (n.includes('TEKNIK BULTEN') || n.includes('TBU')) return { code: 'TBU', interpretation: 'TEKNİK BÜLTEN UYGULAMASI' };
     if (n.includes('BAKIM BEKLER') || n === 'BB') return { code: 'BB', interpretation: 'BAKIM BEKLER' };
     if (n.includes('BAKIM')) return { code: 'B', interpretation: 'BAKIM' };
@@ -113,11 +122,11 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
     return null;
   };
 
-  // Adım 1: Durum Ayrıntısı (DURUM_AYRINTISI) - ÖNCELİKLİ
+  // Adım 1: Durum Ayrıntısı
   const detailMatch = findCodeInText(detail);
   if (detailMatch) return detailMatch;
 
-  // Adım 2: Durum (DURUM)
+  // Adım 2: Durum
   const durumMatch = findCodeInText(durumStr);
   if (durumMatch) return durumMatch;
 
@@ -126,7 +135,7 @@ export const analyzeStatus = (item: any): { code: DailyStatusCode, interpretatio
     return { code: 'A', interpretation: 'ARIZA' };
   }
 
-  // Adım 3: Açıklama (ACIKLAMA)
+  // Adım 3: Açıklama
   const descMatch = findCodeInText(desc);
   if (descMatch) return descMatch;
 

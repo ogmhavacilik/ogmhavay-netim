@@ -773,8 +773,8 @@ const App = () => {
           if (a.assignedCode) {
             code = a.assignedCode as DailyStatusCode;
           } else {
-            const upperDurum = String(a.durum || '').trim().toUpperCase();
-            if (upperDurum === 'FAAL') code = 'F';
+            const statusAnalysis = analyzeStatus(a);
+            code = statusAnalysis.code;
           }
 
           activityMap.set(a.kuyrukNo, {
@@ -876,9 +876,11 @@ const App = () => {
               let act = activityMap.get(kuyrukNo);
               if (act) {
                 if (!act.dailyStatuses) act.dailyStatuses = {};
-                // Eğer bugün ise ve zaten bir kod varsa (canlı veriden gelen), logdaki kodu sadece analizKodu varsa ez
+                // Eğer bugün ise, canlı veriden gelen faallik durumunu koru
                 if (dateStrKey === todayStr) {
                   if (analizKodu) {
+                    act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
+                  } else if (act.dailyStatuses[dateStrKey] === '?' || !act.dailyStatuses[dateStrKey]) {
                     act.dailyStatuses = { ...act.dailyStatuses, [dateStrKey]: code };
                   }
                 } else {
