@@ -625,7 +625,9 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                                      })()}
                                   </div>
                                 ) : status === 'FY' ? (
-                                  <div className="absolute inset-0 w-full h-full min-h-[24px]" style={{ background: 'linear-gradient(135deg, #DCFCE7 50%, #FF0000 50%)' }} />
+                                  <div className="absolute inset-0 w-full h-full min-h-[24px] flex items-center justify-center font-black text-[9px] text-red-900 drop-shadow-sm" style={{ background: 'linear-gradient(135deg, #DCFCE7 50%, #FF0000 50%)' }}>
+                                    FY
+                                  </div>
                                 ) : (
                                   <div className="flex items-center justify-center min-h-[24px]">
                                     {status !== 'F' && status}

@@ -20,7 +20,7 @@ import {
   MAIL_LOG_SHEET_ID,
   getCallSignByTail
 } from './constants';
-import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM, parseSingleCellToHour, proxyFetch } from './services/sheetService';
+import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM, parseSingleCellToHour, proxyFetch, analyzeStatus } from './services/sheetService';
 import { exportAT802DailyStatusToPDF, exportOPLToPDF, exportAT802CiktiPDF } from './services/pdfService';
 import { exportTableToMHTML } from './services/mhtmlService';
 import { MOCK_ACTIVITY_GRID } from './constants';
@@ -856,28 +856,21 @@ const App = () => {
 
               // Bugünün verisini logdan değil, canlı veriden alıyoruz
               let code: DailyStatusCode = '?';
-              const isMainFaal = durumAyrintisi === 'FAAL';
+              const isMainFaal = durumAyrintisi === 'FAAL' || logEntry.durum === 'FAAL';
               
+              // Always analyze the log entry using analyzeStatus
+              const statusAnalysis = analyzeStatus(logEntry);
+
               if (analizKodu) {
                 code = analizKodu as DailyStatusCode;
-                // Heuristic fix: If main status is tracked as 'FAAL' in the log but the analysis code
-                // remained 'TB' or 'KM', it's likely a logic error from the past.
-                if (isMainFaal && (code === 'TB' || code === 'KM')) {
+                // If analyzeStatus detected FY (Fireboss task inability), respect FY
+                if (statusAnalysis.code === 'FY') {
+                  code = 'FY';
+                } else if (isMainFaal && (code === 'TB' || code === 'KM')) {
                   code = 'F';
                 }
-              } else if (isMainFaal) {
-                code = 'F';
               } else {
-                // Heuristic mapping for non-faal without analizKodu
-                if (durumAyrintisi.includes('BAKIM') && durumAyrintisi.includes('BEKLER')) code = 'BB';
-                else if (durumAyrintisi.includes('BAKIM')) code = 'B';
-                else if (durumAyrintisi.includes('ARIZA')) code = 'A';
-                else if (durumAyrintisi.includes('PARÇA')) code = 'PB';
-                else if (durumAyrintisi.includes('KABUL')) code = 'KM';
-                else if (durumAyrintisi.includes('TEKNİK BÜLTEN')) code = 'TBU';
-                else if (durumAyrintisi.includes('KAZA')) code = 'KK';
-                else if (durumAyrintisi.includes('TB') || durumAyrintisi.includes('TECRÜBE')) code = 'TB';
-                else if (durumAyrintisi.includes('X')) code = 'X';
+                code = statusAnalysis.code;
               }
 
               let act = activityMap.get(kuyrukNo);
@@ -1032,7 +1025,7 @@ const App = () => {
             const endOfDayMins = isToday ? currentMins : 24 * 60;
 
             let initialStatus = previousTailStatus;
-            let isDown = (previousTailStatus !== 'F');
+            let isDown = (previousTailStatus !== 'F' && previousTailStatus !== 'FY');
 
             // Smart logic: If first event of day is an 'up' event (Faal başlangıç saati)
             if (events.length > 0) {
@@ -1042,11 +1035,11 @@ const App = () => {
                   initialStatus = previousTailStatus;
                 } else {
                   isDown = false;
-                  initialStatus = 'F';
+                  initialStatus = previousTailStatus === 'FY' ? 'FY' : 'F';
                 }
               } else if (events[0].type === 'down') {
                 isDown = false;
-                initialStatus = 'F';
+                initialStatus = previousTailStatus === 'FY' ? 'FY' : 'F';
               }
             } else if ((dailyStatus as string) !== 'F' && (dailyStatus as string) !== 'FY' && (dailyStatus as string) !== '?' && (dailyStatus as string) !== '') {
               isDown = true;
@@ -1090,22 +1083,21 @@ const App = () => {
                   currentState = ev.status;
                   currentDesc = ev.desc;
                 } else if (ev.type === 'up') {
-                  currentState = 'F';
+                  currentState = previousTailStatus === 'FY' ? 'FY' : 'F';
                   currentDesc = ev.desc;
                 }
               }
               const hStr = `${h.toString().padStart(2, '0')}:00`;
               hourlyStatuses[hStr] = currentState;
-              if (currentState !== 'F' || eventsAtHour.length > 0) {
-                hourlyDescriptions[hStr] = currentDesc || (currentState !== 'F' ? 'Gayri Faal Durum Devam Ediyor' : '');
+              if ((currentState !== 'F' && currentState !== 'FY') || eventsAtHour.length > 0) {
+                hourlyDescriptions[hStr] = currentDesc || (currentState !== 'F' && currentState !== 'FY' ? 'Gayri Faal Durum Devam Ediyor' : '');
               }
             }
 
             tailLastStatusMap.set(kuyrukNo, currentState);
             
-            // Bug Fix: Only carry over if we don't have a record for today or if it's explicitly unknown ('?')
-            // DO NOT override 'F' (Faal) status from the log with a previous day's maintenance status.
-            if ((act.dailyStatuses[dateStr] === undefined || act.dailyStatuses[dateStr] === '?' || act.dailyStatuses[dateStr] === '') && currentState !== 'F') {
+            // Ara günlerde ve eksik günlerde önceki durumun (FY dahil) korunması
+            if (act.dailyStatuses[dateStr] === undefined || act.dailyStatuses[dateStr] === '?' || act.dailyStatuses[dateStr] === '') {
               act.dailyStatuses[dateStr] = currentState as DailyStatusCode;
             }
 
