@@ -761,12 +761,15 @@ export const fetchOPLData = async (
       kuyrukNo
     });
 
-    if (!result || !result.success || !Array.isArray(result.data)) {
-      console.warn("fetchOPLData: Geçersiz veri yapısı", result);
+    const data = (result && (result.success || result.status === 'success') && Array.isArray(result.data)) 
+      ? result.data 
+      : (Array.isArray(result) ? result : (result && Array.isArray(result.data) ? result.data : []));
+
+    if (!data || data.length === 0) {
       return [];
     }
 
-    return result.data;
+    return data;
   } catch (error) {
     console.error(`fetchOPLData Hatası (${kuyrukNo} - ${scriptUrl}):`, error);
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {

@@ -54,7 +54,7 @@ const App = () => {
   const lastSyncSignatureRef = useRef<string>('');
   
   const [fleet, setFleet] = useState<Aircraft[]>([]);
-  const [activities, setActivities] = useState<AircraftActivity[]>([]);
+  const [activities, setActivities] = useState<AircraftActivity[]>(MOCK_ACTIVITY_GRID);
   
   const [selectedAircraft, setSelectedAircraft] = useState<Aircraft | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -762,9 +762,28 @@ const App = () => {
 
       console.log(`Processing ${logData.length} daily logs and ${intraDayData.length} intra-day logs`);
 
-      setActivities(() => {
+      if (logData.length === 0 && intraDayData.length === 0) {
+        console.warn("fetchPastLogs: Geçerli log kaydı bulunamadı, mevcut faaliyet verileri korunuyor.");
+        return;
+      }
+
+      setActivities((prevActivities) => {
         const activityMap = new Map<string, AircraftActivity>();
         
+        const baseActivities = (prevActivities && prevActivities.length > 0) ? prevActivities : MOCK_ACTIVITY_GRID;
+        baseActivities.forEach(act => {
+          activityMap.set(act.kuyrukNo, {
+            ...act,
+            dailyStatuses: { ...act.dailyStatuses },
+            hourlyStatuses: { ...act.hourlyStatuses },
+            intraDayCompletions: { ...act.intraDayCompletions },
+            intraDayDurations: { ...act.intraDayDurations },
+            intraDayEvents: { ...act.intraDayEvents },
+            hourlyDescriptions: { ...act.hourlyDescriptions },
+            intraDayStartStatuses: { ...act.intraDayStartStatuses }
+          });
+        });
+
         const now = new Date();
         const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
@@ -777,18 +796,25 @@ const App = () => {
             code = statusAnalysis.code;
           }
 
-          activityMap.set(a.kuyrukNo, {
-            kuyrukNo: a.kuyrukNo,
-            cagriKodu: a.cagriKodu,
-            tip: a.tip || 'Bilinmiyor',
-            dailyStatuses: { [todayStr]: code },
-            hourlyStatuses: {},
-            intraDayCompletions: {},
-            intraDayDurations: {},
-            intraDayEvents: {},
-            hourlyDescriptions: {},
-            intraDayStartStatuses: {}
-          });
+          const existing = activityMap.get(a.kuyrukNo);
+          if (existing) {
+            existing.dailyStatuses = { ...existing.dailyStatuses, [todayStr]: code };
+            existing.cagriKodu = a.cagriKodu || existing.cagriKodu;
+            existing.tip = a.tip || existing.tip;
+          } else {
+            activityMap.set(a.kuyrukNo, {
+              kuyrukNo: a.kuyrukNo,
+              cagriKodu: a.cagriKodu,
+              tip: a.tip || 'Bilinmiyor',
+              dailyStatuses: { [todayStr]: code },
+              hourlyStatuses: {},
+              intraDayCompletions: {},
+              intraDayDurations: {},
+              intraDayEvents: {},
+              hourlyDescriptions: {},
+              intraDayStartStatuses: {}
+            });
+          }
         });
 
         const normalizedEnvanterLog: any[] = [];
