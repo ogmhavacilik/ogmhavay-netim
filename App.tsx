@@ -1137,23 +1137,28 @@ const App = () => {
   const runGlobalSync = useCallback(async () => {
     setIsSyncing(true);
     setSyncStatus('checking');
-    
-    // Geçmiş logları beklemeden hemen çekmeye başla
-    fetchPastLogs();
 
     try {
       const fetchedFleet: Aircraft[] = [];
 
-      await Promise.all(SHEET_CONFIGS.map(async (config) => {
+      // Google Apps Script çakışmasını ve kilitlenmesini önlemek için istekler sırayla gönderilir
+      for (const config of SHEET_CONFIGS) {
         try {
           const data = await fetchAircraftDataFromAppsScript(config.appsScriptUrl, config);
           if (data && data.length > 0) {
             fetchedFleet.push(...(data as Aircraft[]));
+          } else {
+            console.warn(`[SYNC] ${config.aircraftType} verisi alınamadı, mevcut önbellek korunuyor.`);
           }
         } catch (e) {
           console.error(`Sync error for ${config.aircraftType}:`, e);
         }
-      }));
+        // Sayfa istekleri arasına 300ms küçük bir es ver
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
+      // Geçmiş logları ana veri çekimi sonrası çek
+      fetchPastLogs();
 
       if (fetchedFleet.length > 0) {
         // Create a signature of the data to detect changes

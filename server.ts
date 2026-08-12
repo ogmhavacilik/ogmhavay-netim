@@ -52,42 +52,60 @@ async function startServer() {
 
       let response: Response | undefined;
       let lastError: any;
-      for (let attempt = 0; attempt < 2; attempt++) {
+      let parsedData: any = null;
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           response = await fetch(targetUrl, fetchOptions);
-          break;
+          
+          if (response.ok) {
+            const rawText = await response.text();
+            // Google Apps Script can return HTML on rate limits or internal script errors
+            const isHtml = rawText.includes('<!DOCTYPE html>') || rawText.includes('<html') || rawText.includes('Google Docs');
+            if (!isHtml) {
+              try {
+                parsedData = JSON.parse(rawText);
+              } catch (e) {
+                parsedData = rawText;
+              }
+              break; // Success!
+            }
+          } else {
+            // Stop retrying immediately on 404 or other 4xx client errors (except 429 Rate Limit)
+            if (response.status !== 429 && response.status >= 400 && response.status < 500) {
+              break;
+            }
+          }
         } catch (err) {
           lastError = err;
-          if (attempt === 0) {
-            console.warn('Proxy fetch attempt 1 failed, retrying...', err);
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          }
+        }
+
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
         }
       }
 
-      if (!response) {
-        throw lastError;
+      if (parsedData !== null) {
+        return res.status(200).json({
+          success: true,
+          data: parsedData,
+          status: response ? response.status : 200
+        });
       }
 
-      const contentType = response.headers.get('content-type');
-      let data;
-      
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        data = await response.text();
-        try {
-          data = JSON.parse(data);
-        } catch (e) {
-          // Keep as text if not JSON
-        }
+      if (response) {
+        const rawText = await response.text().catch(() => '');
+        let fallbackData: any = rawText;
+        try { fallbackData = JSON.parse(rawText); } catch (e) {}
+
+        return res.status(200).json({
+          success: response.ok,
+          data: fallbackData,
+          status: response.status
+        });
       }
 
-      res.status(200).json({
-        success: response.ok,
-        data: data,
-        status: response.status
-      });
+      throw lastError || new Error('Network request failed after 3 attempts');
     } catch (error) {
       console.error('Proxy Error:', error);
       res.status(200).json({ 

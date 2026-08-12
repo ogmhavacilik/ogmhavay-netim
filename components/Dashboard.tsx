@@ -94,29 +94,31 @@ const Dashboard: React.FC<DashboardProps> = ({ fleet, activities, startDate, end
           <span className="text-red-600 text-xs font-black uppercase tracking-widest">Gayrı Faal Adedi</span>
           <div className="text-5xl font-black text-red-700 mt-1">{total - faalList.length}</div>
         </div>
-        <div className="bg-white/95 backdrop-blur p-4 rounded-2xl shadow-xl h-48 border-b-4 border-blue-500 flex items-center justify-center">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={chartData}
-                cx="50%"
-                cy="50%"
-                innerRadius={35}
-                outerRadius={55}
-                paddingAngle={5}
-                dataKey="value"
-                label={renderCustomizedLabel}
-                labelLine={false}
-                animationBegin={0}
-                animationDuration={800}
-              >
-                {chartData.map((entry, index) => (
-                  entry && entry.color ? <Cell key={`cell-${index}`} fill={entry.color} stroke="none" /> : null
-                ))}
-              </Pie>
-              <Tooltip content={<CustomTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
+        <div className="bg-white/95 backdrop-blur p-4 rounded-2xl shadow-xl h-48 border-b-4 border-blue-500 w-full min-w-0 min-h-0 relative">
+          <div className="w-full h-full min-w-0 min-h-0 flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <PieChart>
+                <Pie
+                  data={chartData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={35}
+                  outerRadius={55}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={renderCustomizedLabel}
+                  labelLine={false}
+                  animationBegin={0}
+                  animationDuration={800}
+                >
+                  {chartData.map((entry, index) => (
+                    entry && entry.color ? <Cell key={`cell-${index}`} fill={entry.color} stroke="none" /> : null
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
     </div>

@@ -446,7 +446,7 @@ export const proxyFetch = async (url: string, body: any, options?: { method?: 'G
   }
 };
 
-export const fetchAircraftDataFromAppsScript = async (url: string, config: SheetConfig): Promise<Partial<Aircraft>[]> => {
+export const fetchAircraftDataFromAppsScript = async (url: string, config: SheetConfig, retries = 3): Promise<Partial<Aircraft>[]> => {
   const cleanUrl = url?.trim();
   if (!cleanUrl || !cleanUrl.startsWith('http')) {
     console.warn(`Geçersiz veya boş Apps Script URL'si (${config.aircraftType}). Lütfen konfigürasyonu kontrol edin.`);
@@ -456,27 +456,45 @@ export const fetchAircraftDataFromAppsScript = async (url: string, config: Sheet
     console.error(`Hatalı URL Formatı (${config.aircraftType}): Lütfen Google Sheets URL'si yerine Google Apps Script Web App URL'sini girin. URL: ${cleanUrl}`);
     return [];
   }
+
+  let data: any[] = [];
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const result = await proxyFetch(cleanUrl, {
+        sheetId: config.sheetId,
+        sheetName: config.sheetName || '',
+        mapping: config.mapping,
+        action: 'getAircraftData',
+        fetchTechnicalDetails: config.aircraftType === 'AT-802'
+      });
+      
+      const resList = (result && (result.success || result.status === 'success') && Array.isArray(result.data)) 
+        ? result.data 
+        : (Array.isArray(result) ? result : (result && Array.isArray(result.data) ? result.data : []));
+      
+      if (resList && resList.length > 0) {
+        data = resList;
+        break;
+      }
+      
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    } catch (err) {
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+  }
+
+  if (data.length === 0) {
+    return [];
+  }
+
+  const now = new Date();
+  const timestamp = now.toLocaleDateString('tr-TR') + ' ' + now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
   try {
-    const result = await proxyFetch(cleanUrl, {
-      sheetId: config.sheetId,
-      sheetName: config.sheetName || '',
-      mapping: config.mapping,
-      action: 'getAircraftData',
-      fetchTechnicalDetails: config.aircraftType === 'AT-802'
-    });
-    
-    const data = (result && (result.success || result.status === 'success') && Array.isArray(result.data)) 
-      ? result.data 
-      : (Array.isArray(result) ? result : []);
-    
-    if (data.length === 0) return [];
-
-    // AT-802 için Geliş Tarihi eşleştirme haritası oluştur - Artık sunucu tarafındaki lookup'ı doğrudan kullandığımız için bu haritaya gerek kalmadı
-    const arrivalMap = new Map<string, string>();
-
-    const now = new Date();
-    const timestamp = now.toLocaleDateString('tr-TR') + ' ' + now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
     return data.map((item: any): Partial<Aircraft> | null => {
       if (!item || typeof item !== 'object') return null;
       const analysis = analyzeStatus(item);
