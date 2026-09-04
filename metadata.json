@@ -3,5 +3,8 @@
   "description": "Orman Genel Müdürlüğü hava araçları durum takip, bakım yönetimi, faaliyet takvimi ve otomatik raporlama portalı.",
   "requestFramePermissions": [
     "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

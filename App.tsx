@@ -25,6 +25,7 @@ import { exportAT802DailyStatusToPDF, exportOPLToPDF, exportAT802CiktiPDF } from
 import { exportTableToMHTML } from './services/mhtmlService';
 import { MOCK_ACTIVITY_GRID } from './constants';
 import { generateFleetExcelHtml, exportTableToExcel } from './src/services/excelService';
+import { LocationStatusGrid } from './components/LocationStatusGrid';
 import { X, Download, Activity, Clock } from 'lucide-react';
 import { safeStorage } from './services/safeStorage';
 
@@ -48,7 +49,9 @@ const App = () => {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [showActivity, setShowActivity] = useState(false);
+  const [activeReportTab, setActiveReportTab] = useState<'daily' | 'location' | 'activity'>('daily');
+  const showActivity = activeReportTab === 'activity';
+  const setShowActivity = (val: boolean) => setActiveReportTab(val ? 'activity' : 'daily');
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'checking' | 'updated' | 'no-change' | 'error'>('idle');
   const lastSyncSignatureRef = useRef<string>('');
@@ -1743,16 +1746,22 @@ const App = () => {
             </div>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 items-center">
-            <div className="flex bg-black/50 p-1.5 rounded-[2rem] border border-white/10 shadow-2xl">
+            <div className="flex bg-black/50 p-1.5 rounded-[2rem] border border-white/10 shadow-2xl overflow-x-auto max-w-full">
               <button 
-                onClick={() => setShowActivity(false)} 
-                className={`px-5 sm:px-8 py-3.5 sm:py-4 rounded-[1.5rem] font-black text-[10px] sm:text-[11px] uppercase tracking-[0.1em] sm:tracking-[0.2em] transition-all ${!showActivity ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 border-2 border-blue-400' : 'text-gray-400 hover:text-white bg-transparent'}`}
+                onClick={() => setActiveReportTab('daily')} 
+                className={`px-4 sm:px-6 py-3 sm:py-3.5 rounded-[1.5rem] font-black text-[10px] sm:text-[11px] uppercase tracking-[0.08em] sm:tracking-[0.15em] transition-all whitespace-nowrap ${activeReportTab === 'daily' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 border-2 border-blue-400' : 'text-gray-400 hover:text-white bg-transparent'}`}
               >
-                ENVANTER GÜNLÜK DURUM RAPORU
+                GÜNLÜK DURUM RAPORU
               </button>
               <button 
-                onClick={() => setShowActivity(true)} 
-                className={`px-5 sm:px-8 py-3.5 sm:py-4 rounded-[1.5rem] font-black text-[10px] sm:text-[11px] uppercase tracking-[0.1em] sm:tracking-[0.2em] transition-all ${showActivity ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/50 border-2 border-emerald-400' : 'text-gray-400 hover:text-white bg-transparent'}`}
+                onClick={() => setActiveReportTab('location')} 
+                className={`px-4 sm:px-6 py-3 sm:py-3.5 rounded-[1.5rem] font-black text-[10px] sm:text-[11px] uppercase tracking-[0.08em] sm:tracking-[0.15em] transition-all whitespace-nowrap ${activeReportTab === 'location' ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/50 border-2 border-amber-400' : 'text-gray-400 hover:text-white bg-transparent'}`}
+              >
+                KONUM DURUM ÇİZELGESİ
+              </button>
+              <button 
+                onClick={() => setActiveReportTab('activity')} 
+                className={`px-4 sm:px-6 py-3 sm:py-3.5 rounded-[1.5rem] font-black text-[10px] sm:text-[11px] uppercase tracking-[0.08em] sm:tracking-[0.15em] transition-all whitespace-nowrap ${activeReportTab === 'activity' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/50 border-2 border-emerald-400' : 'text-gray-400 hover:text-white bg-transparent'}`}
               >
                 FAALİYET ÇİZELGESİ
               </button>
@@ -1857,7 +1866,7 @@ const App = () => {
         />
       </div>
 
-      {showActivity ? (
+      {activeReportTab === 'activity' ? (
         <div className="mb-24 animate-in fade-in duration-1000">
            <div className="bg-white rounded-[2rem] p-4 shadow-2xl border-4 border-emerald-800/20 overflow-hidden relative">
              {isFetchingActivities && (
@@ -1891,11 +1900,17 @@ const App = () => {
              />
            </div>
         </div>
+      ) : activeReportTab === 'location' ? (
+        <LocationStatusGrid
+          fleet={filteredFleet}
+          onSelectAircraft={setSelectedAircraft}
+          onExportExcel={() => exportTableToExcel('location-status-table', `OGM_Konum_Durum_Cizelgesi_${new Date().toISOString().slice(0, 10)}`)}
+        />
       ) : (
         <div className="mb-24 animate-in fade-in duration-1000">
           <div className="flex flex-col lg:flex-row gap-6 lg:justify-between lg:items-end mb-12 px-4 md:px-6">
              <div className="w-full lg:w-3/5">
-                <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white uppercase tracking-tighter italic leading-tight">ENVANTER HAVA ARAÇLARI GÜNLÜK DURUM RAPORU</h2>
+                <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white uppercase tracking-tighter italic leading-tight">GÜNLÜK DURUM RAPORU</h2>
                 {historicalFleet !== null && (
                   <div className="mt-4 bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-2 rounded-xl inline-block font-black text-xs uppercase tracking-widest">
                      Bu rapor geçmiş tarihli veridir.
