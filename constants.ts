@@ -620,37 +620,118 @@ export const MOCK_ACTIVITY_GRID: AircraftActivity[] = [
     kuyrukNo: 'OR-3125',
     cagriKodu: 'ORMAN-03',
     tip: 'Bell-429',
-    dailyStatuses: { '2025-05-01': 'F' }
+    dailyStatuses: {
+      '2026-05-20': 'F', '2026-05-22': 'F', '2026-05-30': 'F', '2026-05-31': 'F',
+      '2026-06-01': 'F', '2026-07-01': 'F', '2026-08-01': 'F', '2026-09-01': 'F'
+    }
   },
   {
     kuyrukNo: 'OR-3126',
     cagriKodu: 'ORMAN-04',
     tip: 'Bell-429',
-    dailyStatuses: {}
+    dailyStatuses: {
+      '2026-07-23': 'B', '2026-08-01': 'F', '2026-08-25': 'B'
+    },
+    intraDayCompletions: {
+      '2026-07-23': true,
+      '2026-08-25': true
+    },
+    intraDayDurations: {
+      '2026-07-23': 300,
+      '2026-08-25': 211
+    },
+    hourlyDescriptions: {
+      '2026-07-23': { '12:00': '50 H BAKIM' },
+      '2026-08-25': { '17:00': '50 Saatlik Bakım' }
+    }
   },
   {
     kuyrukNo: 'OR-3127',
     cagriKodu: 'ORMAN-05',
     tip: 'Bell-429',
-    dailyStatuses: {}
+    dailyStatuses: {
+      '2026-05-30': 'F', '2026-05-31': 'F',
+      '2026-07-10': 'B', '2026-08-13': 'B', '2026-08-31': 'B'
+    },
+    intraDayCompletions: {
+      '2026-07-10': true,
+      '2026-08-31': true
+    },
+    intraDayDurations: {
+      '2026-07-10': 460,
+      '2026-08-31': 302
+    },
+    hourlyDescriptions: {
+      '2026-07-10': { '09:00': '50H BAKIM' },
+      '2026-08-13': { '07:00': '50 H BAKIM' },
+      '2026-08-31': { '11:00': '50H Bakım' }
+    }
   },
   {
     kuyrukNo: 'OR-3131',
     cagriKodu: 'ORMAN-06',
     tip: 'Bell-429',
-    dailyStatuses: {}
+    dailyStatuses: {
+      '2026-05-07': 'B', '2026-05-08': 'B',
+      '2026-07-17': 'B', '2026-08-02': 'B', '2026-09-08': 'B'
+    },
+    intraDayCompletions: {
+      '2026-05-07': true,
+      '2026-05-08': true,
+      '2026-07-17': true,
+      '2026-09-08': true
+    },
+    intraDayDurations: {
+      '2026-05-07': 780,
+      '2026-05-08': 840,
+      '2026-07-17': 255,
+      '2026-09-08': 300
+    },
+    hourlyDescriptions: {
+      '2026-05-07': { '11:00': '900 H FUEL NOZZLE DEĞİŞİMİ (SKYLINE)' },
+      '2026-07-17': { '13:00': '50 H BAKIM' },
+      '2026-08-02': { '21:00': '50 H BAKIM' },
+      '2026-09-08': { '17:00': '50 H BAKIM' }
+    }
   },
   {
     kuyrukNo: 'OR-3133',
     cagriKodu: 'ORMAN-07',
     tip: 'Bell-429',
-    dailyStatuses: {}
+    dailyStatuses: {
+      '2026-03-31': 'B', '2026-06-22': 'A', '2026-06-23': 'B', '2026-08-01': 'F'
+    },
+    intraDayCompletions: {
+      '2026-03-31': true,
+      '2026-06-22': true,
+      '2026-06-23': true
+    },
+    intraDayDurations: {
+      '2026-03-31': 680,
+      '2026-06-22': 840,
+      '2026-06-23': 840
+    },
+    hourlyDescriptions: {
+      '2026-06-22': { '10:00': '900H FUEL NOZZLE DEĞİŞİMİ (SKYLİNE)' }
+    }
   },
   {
     kuyrukNo: 'OR-3192',
     cagriKodu: 'ORMAN-08',
     tip: 'Bell-429',
-    dailyStatuses: {}
+    dailyStatuses: {
+      '2026-05-20': 'F', '2026-05-22': 'F', '2026-07-29': 'B', '2026-08-01': 'F', '2026-08-14': 'B'
+    },
+    intraDayCompletions: {
+      '2026-08-14': true
+    },
+    intraDayDurations: {
+      '2026-08-14': 143
+    },
+    hourlyDescriptions: {
+      '2026-07-29': { '13:00': '50 H BAKIM' },
+      '2026-08-14': { '21:00': '50 H BAKIM' }
+    }
   },
   {
     kuyrukNo: 'OR-2021',

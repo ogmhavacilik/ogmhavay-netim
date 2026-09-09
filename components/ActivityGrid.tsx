@@ -1,8 +1,14 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { AircraftActivity, DailyStatusCode, Aircraft } from '../types';
-import { X, Clock, Calendar, Activity } from 'lucide-react';
+import { X, Clock, Calendar, Activity, Helicopter, Plane, Filter, CheckSquare, Square, EyeOff, Check } from 'lucide-react';
 import { motion } from 'motion/react';
+
+const isHelicopterType = (tip?: string): boolean => {
+  if (!tip) return false;
+  const t = tip.toLocaleUpperCase('tr-TR');
+  return t.includes('T-70') || t.includes('T70') || t.includes('BELL') || t.includes('429') || t.includes('HELİ') || t.includes('HELI');
+};
 
 interface ActivityGridProps {
   activities: AircraftActivity[];
@@ -18,6 +24,118 @@ interface ActivityGridProps {
 
 const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], startDate, endDate, title, onExport, onDayClick, sortByCagriKodu = false, sortByFaydaliSaat = false }) => {
   const [selectedDayView, setSelectedDayView] = useState<{ activity: AircraftActivity, date: Date } | null>(null);
+  const [excludedTypes, setExcludedTypes] = useState<string[]>([]);
+  const [excludedTailNumbers, setExcludedTailNumbers] = useState<string[]>([]);
+  const [activeTailFilterType, setActiveTailFilterType] = useState<string | null>(null);
+
+  // Mevcut tüm hava aracı tipleri
+  const availableTypes = useMemo(() => {
+    const types = Array.from(new Set(activities.map(a => a.tip))).filter(Boolean) as string[];
+    const standardOrder = ['C-650', 'B-360', 'Bell-429', 'AT-802', 'T-70'];
+    return types.sort((a, b) => {
+      const ia = standardOrder.indexOf(a);
+      const ib = standardOrder.indexOf(b);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return a.localeCompare(b);
+    });
+  }, [activities]);
+
+  // İlk yüklemede veya tipler değiştiğinde varsayılan filtre tipini ayarla (öncelik T-70)
+  useEffect(() => {
+    if (!activeTailFilterType && availableTypes.length > 0) {
+      if (availableTypes.includes('T-70')) {
+        setActiveTailFilterType('T-70');
+      } else {
+        setActiveTailFilterType(availableTypes[0]);
+      }
+    }
+  }, [availableTypes, activeTailFilterType]);
+
+  // Tip dışlama / dahil etme aç/kapat (tüm kuyrukları ile birlikte)
+  const toggleExcludeType = (tip: string) => {
+    const isNowExcluded = !excludedTypes.includes(tip);
+    const tailsForType = activities.filter(a => a.tip === tip).map(a => a.kuyrukNo);
+
+    if (isNowExcluded) {
+      setExcludedTypes(prev => [...prev, tip]);
+      setExcludedTailNumbers(prev => Array.from(new Set([...prev, ...tailsForType])));
+    } else {
+      setExcludedTypes(prev => prev.filter(t => t !== tip));
+      setExcludedTailNumbers(prev => prev.filter(t => !tailsForType.includes(t)));
+    }
+  };
+
+  // Münferit kuyruk no dışlama / dahil etme aç/kapat
+  const toggleExcludeTail = (kuyrukNo: string, tip: string) => {
+    const tailsForType = activities.filter(a => a.tip === tip).map(a => a.kuyrukNo);
+    const isCurrentlyExcluded = excludedTailNumbers.includes(kuyrukNo) || excludedTypes.includes(tip);
+
+    if (isCurrentlyExcluded) {
+      // Bu kuyruğu dahil et
+      setExcludedTailNumbers(prev => prev.filter(k => k !== kuyrukNo));
+      // Eğer ana tip hariç bırakılmışsa, bu kuyruk dahil edildiğinde tipin üzerindeki hariçliği kaldır
+      // fakat o tipin diğer kuyruklarını hariç tutulmuş olarak tut
+      setExcludedTypes(prev => prev.filter(t => t !== tip));
+      if (excludedTypes.includes(tip)) {
+        const otherTails = tailsForType.filter(k => k !== kuyrukNo);
+        setExcludedTailNumbers(prev => Array.from(new Set([...prev, ...otherTails])));
+      }
+    } else {
+      // Bu kuyruğu hariç tut
+      const nextExcludedTails = Array.from(new Set([...excludedTailNumbers, kuyrukNo]));
+      setExcludedTailNumbers(nextExcludedTails);
+      // Eğer o tipin tüm kuyrukları hariç olduysa tipi de hariç listesine ekle
+      const allExcluded = tailsForType.every(k => nextExcludedTails.includes(k));
+      if (allExcluded) {
+        setExcludedTypes(prev => Array.from(new Set([...prev, tip])));
+      }
+    }
+  };
+
+  // Belirli bir tipin tüm kuyruklarını dahil et
+  const includeAllTailsForType = (tip: string) => {
+    const tailsForType = activities.filter(a => a.tip === tip).map(a => a.kuyrukNo);
+    setExcludedTypes(prev => prev.filter(t => t !== tip));
+    setExcludedTailNumbers(prev => prev.filter(k => !tailsForType.includes(k)));
+  };
+
+  // Belirli bir tipin tüm kuyruklarını hariç tut
+  const excludeAllTailsForType = (tip: string) => {
+    const tailsForType = activities.filter(a => a.tip === tip).map(a => a.kuyrukNo);
+    setExcludedTypes(prev => Array.from(new Set([...prev, tip])));
+    setExcludedTailNumbers(prev => Array.from(new Set([...prev, ...tailsForType])));
+  };
+
+  // Tüm filtreleri sıfırla (hepsini dahil et)
+  const resetAllFilters = () => {
+    setExcludedTypes([]);
+    setExcludedTailNumbers([]);
+  };
+
+  // Filtrelenmiş faaliyetler (hem tipe hem tek tek kuyruk numarasına göre)
+  const filteredActivities = useMemo(() => {
+    return activities.filter(a => {
+      if (excludedTypes.includes(a.tip)) return false;
+      if (excludedTailNumbers.includes(a.kuyrukNo)) return false;
+      return true;
+    });
+  }, [activities, excludedTypes, excludedTailNumbers]);
+
+  // Seçili tipin kuyruk numaraları listesi
+  const activeTypeActivities = useMemo(() => {
+    if (!activeTailFilterType) return [];
+    const list = activities.filter(a => a.tip === activeTailFilterType);
+    if (activeTailFilterType === 'AT-802') {
+      return [...list].sort((a, b) => a.kuyrukNo.localeCompare(b.kuyrukNo));
+    }
+    const getOrder = (cagriKodu: string) => {
+      const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
+      return match ? parseInt(match[1]) : 999;
+    };
+    return [...list].sort((a, b) => getOrder(a.cagriKodu) - getOrder(b.cagriKodu));
+  }, [activities, activeTailFilterType]);
 
   const [tooltip, setTooltip] = useState<{
     kuyrukNo: string;
@@ -29,9 +147,48 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
     descriptions: string[];
     events: { hour: number; exactMins: number; type: string; status: string; desc: string }[];
     isKarma: boolean;
+    exemptionNote?: string;
     x: number;
     y: number;
   } | null>(null);
+
+  // Aralıksız gayri faallik gün sayısını hesaplayan yardımcı fonksiyon (3 gün kuralı kontrolü için)
+  const getStreakLengthAt = (activity: AircraftActivity, dateStrKey: string, baseDate: Date) => {
+    const s = activity.dailyStatuses[dateStrKey];
+    if (!s || s === 'F' || s === 'FY' || s === 'X') return 0;
+
+    let length = 1;
+    
+    // Geriye doğru aralıksız gayri faallik günlerini say
+    let d = new Date(baseDate);
+    d.setDate(d.getDate() - 1);
+    for (let i = 0; i < 60; i++) {
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const prevS = activity.dailyStatuses[k];
+      if (prevS && prevS !== 'F' && prevS !== 'FY' && prevS !== 'X') {
+        length++;
+        d.setDate(d.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    // İleriye doğru aralıksız gayri faallik günlerini say
+    d = new Date(baseDate);
+    d.setDate(d.getDate() + 1);
+    for (let i = 0; i < 60; i++) {
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const nextS = activity.dailyStatuses[k];
+      if (nextS && nextS !== 'F' && nextS !== 'FY' && nextS !== 'X') {
+        length++;
+        d.setDate(d.getDate() + 1);
+      } else {
+        break;
+      }
+    }
+
+    return length;
+  };
 
   const getStatusMeta = (code: string) => {
     switch (code) {
@@ -76,6 +233,16 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
 
     const meta = getStatusMeta(isKarma ? 'K' : status);
 
+    let exemptionNote: string | undefined = undefined;
+    if (['B', 'BB', 'TBU', 'KM', 'A', 'PB', 'KK', 'TB'].includes(status)) {
+      const streakLen = getStreakLengthAt(act, dateStrKey, date);
+      if (streakLen <= 3) {
+        exemptionNote = `3 Güne Kadar Muaf (${streakLen}. gün - Faaliyet Oranına Gayrı Faal Olarak Yazılmaz)`;
+      } else {
+        exemptionNote = `Aralıksız ${streakLen} Gün Gayrı Faal (Faaliyet Oranından Düşülür)`;
+      }
+    }
+
     setTooltip({
       kuyrukNo: act.kuyrukNo,
       tip: act.tip,
@@ -86,6 +253,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
       descriptions: descs,
       events,
       isKarma,
+      exemptionNote,
       x: e.clientX,
       y: e.clientY
     });
@@ -184,47 +352,9 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
   const calculateRowStats = (activity: AircraftActivity) => {
     let bakim = 0, ariza = 0, olmadi = 0, faal = 0, faalYanginGoreviYapamaz = 0, missing = 0;
 
-    const getStreakLengthAt = (dateStrKey: string, baseDate: Date) => {
-      const s = activity.dailyStatuses[dateStrKey];
-      if (!s || s === 'F' || s === 'FY') return 0;
-
-      let length = 1;
-      
-      // Look backwards
-      let d = new Date(baseDate);
-      d.setDate(d.getDate() - 1);
-      for (let i = 0; i < 30; i++) {
-        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        const prevS = activity.dailyStatuses[k];
-        if (prevS && prevS !== 'F' && prevS !== 'FY') {
-          length++;
-          d.setDate(d.getDate() - 1);
-        } else {
-          break;
-        }
-      }
-
-      // Look forwards
-      d = new Date(baseDate);
-      d.setDate(d.getDate() + 1);
-      for (let i = 0; i < 30; i++) {
-        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        const nextS = activity.dailyStatuses[k];
-        if (nextS && nextS !== 'F' && nextS !== 'FY') {
-          length++;
-          d.setDate(d.getDate() + 1);
-        } else {
-          break;
-        }
-      }
-
-      return length;
-    };
-
     const firstStatusDateKey = Object.keys(activity.dailyStatuses).sort()[0];
     const firstStatusDate = firstStatusDateKey ? new Date(firstStatusDateKey) : null;
 
-    // First pass: Count basic stats
     visibleDates.forEach((date, idx) => {
       const isPastOrToday = todayIndex === -1 ? (date <= currentTime) : (idx <= todayIndex);
       const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -237,43 +367,26 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
       if (isPastOrToday) {
         if (s === undefined || s === '') {
           missing++;
-        } else if (['B', 'BB', 'TBU', 'KM'].includes(s)) {
-          bakim++;
-        } else if (['A', 'PB', 'KK'].includes(s)) {
-          ariza++;
         } else if (s === 'X') {
           olmadi++;
         } else if (s === 'F') {
           faal++;
         } else if (s === 'FY') {
           faalYanginGoreviYapamaz++;
-        }
-      }
-    });
-
-    // Second pass: Calculate effective faal for percentage
-    let effectiveFaal = 0;
-    const totalDowntimeDays = bakim + ariza;
-
-    visibleDates.forEach((date, idx) => {
-      const isPastOrToday = todayIndex === -1 ? (date <= currentTime) : (idx <= todayIndex);
-      const dateStrKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-      let s = activity.dailyStatuses[dateStrKey];
-      
-      if (isPastOrToday && (s === undefined || s === '') && firstStatusDate && date < firstStatusDate) {
-        s = 'X';
-      }
-
-      if (isPastOrToday) {
-        if (s === 'F' || s === 'FY') {
-          effectiveFaal++;
-        } else if (s && !['X', ''].includes(s)) {
-          // Rule: Downtime is ignored for activity rate if:
-          // 1. It is NOT part of a 3D+ streak 
-          // 2. AND the total downtime in this report is < 3 days
-          const streakLen = getStreakLengthAt(dateStrKey, date);
-          if (streakLen < 3 && totalDowntimeDays < 3) {
-            effectiveFaal++;
+        } else {
+          // Gayrı faal durumlar (B, BB, TBU, KM, A, PB, KK, TB, vb.)
+          // Kullanıcı Kuralı: 3 güne kadar (1, 2 veya 3 gün) üst üste sürmeyen gayrı faal durumlar
+          // faaliyet oranına ve gayrı faal sütunlarına adet olarak YAZILMAZ (muaf sayılır ve faal adedine eklenir).
+          // Yalnızca aralıksız 4 gün ve üzeri süren gayrı faal durumlar Bakım/Arıza sütunlarına adet olarak yazılır.
+          const streakLen = getStreakLengthAt(activity, dateStrKey, date);
+          if (streakLen <= 3) {
+            faal++;
+          } else {
+            if (['B', 'BB', 'TBU', 'KM', 'TB'].includes(s)) {
+              bakim++;
+            } else {
+              ariza++;
+            }
           }
         }
       }
@@ -281,14 +394,15 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
 
     const totalGFaal = bakim + ariza + olmadi;
     const totalFaal = faal + faalYanginGoreviYapamaz;
+    const effectiveFaal = totalFaal;
     
     const baseDays = daysElapsed - olmadi - missing;
-    const percentage = baseDays > 0 ? ((effectiveFaal / baseDays) * 100).toFixed(0) : "0";
+    const percentage = baseDays > 0 ? ((totalFaal / baseDays) * 100).toFixed(0) : "0";
     
     return { bakim, ariza, olmadi, faal, totalGFaal, totalFaal, faalYanginGoreviYapamaz, effectiveFaal, percentage, missing };
   };
 
-  // TİP bazlı gruplandırma ve sıralama
+  // TİP bazlı gruplandırma ve sıralama (Filtrelenmiş faaliyetler üzerinden)
   const groupedActivities = useMemo(() => {
     const getOrder = (cagriKodu: string) => {
       const match = String(cagriKodu).match(/ORMAN-(\d+)/i);
@@ -304,17 +418,17 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
         const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
         return isNaN(num) ? 999999 : num;
       };
-      const sorted = [...activities].sort((a, b) => getFaydaliVal(a) - getFaydaliVal(b));
+      const sorted = [...filteredActivities].sort((a, b) => getFaydaliVal(a) - getFaydaliVal(b));
       return { 'TÜMÜ': sorted };
     }
 
     if (sortByCagriKodu) {
-      const sorted = [...activities].sort((a, b) => getOrder(a.cagriKodu) - getOrder(b.cagriKodu));
+      const sorted = [...filteredActivities].sort((a, b) => getOrder(a.cagriKodu) - getOrder(b.cagriKodu));
       return { 'TÜMÜ': sorted };
     }
 
     const groups: { [key: string]: AircraftActivity[] } = {};
-    activities.forEach(act => {
+    filteredActivities.forEach(act => {
       if (!groups[act.tip]) groups[act.tip] = [];
       groups[act.tip].push(act);
     });
@@ -345,7 +459,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
     });
     
     return sortedGroups;
-  }, [activities, fleet, sortByCagriKodu, sortByFaydaliSaat]);
+  }, [filteredActivities, fleet, sortByCagriKodu, sortByFaydaliSaat]);
 
   if (activities.length === 0) return null;
 
@@ -353,6 +467,199 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
     <div className="activity-grid-section bg-white p-2">
       <div className="flex justify-between items-center mb-4 px-2">
          <h3 className="text-4xl font-black text-black tracking-tighter">{isHourlyView ? `${title} - SAATLİK GÖRÜNÜM` : title}</h3>
+      </div>
+
+      {/* HAVA ARACI TİPİ VE KUYRUK NUMARASI DAHİL ETME / HARİÇ TUT FİLTRESİ */}
+      <div className="mb-4 mx-2 p-3.5 bg-slate-50 border-2 border-slate-300 rounded-2xl shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-2.5 pb-2 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-emerald-800" />
+            <span className="text-[12px] font-black uppercase text-slate-800 tracking-wider">
+              HAVA ARACI VE KUYRUK NO FİLTRESİ (DAHİL ET / ÇIKAR)
+            </span>
+            {(excludedTypes.length > 0 || excludedTailNumbers.length > 0) && (
+              <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-black rounded-full border border-red-300 animate-pulse">
+                {activities.length - filteredActivities.length} HAVA ARACI ÇİZELGEDEN ÇIKARILDI
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-bold text-slate-500">
+              Çizelgede: <strong className="text-emerald-700 font-black">{filteredActivities.length}</strong> / {activities.length} Hava Aracı
+            </span>
+            {(excludedTypes.length > 0 || excludedTailNumbers.length > 0) && (
+              <button
+                type="button"
+                onClick={resetAllFilters}
+                className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors flex items-center gap-1 shadow-sm cursor-pointer"
+              >
+                Tümünü Dahil Et (Sıfırla)
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 1. SEVİYE: Hava Aracı Tipleri - Tiklemeli ve Seçmeli */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider mr-1">
+            TİP SEÇİMİ:
+          </span>
+          {availableTypes.map((tip) => {
+            const isTypeExcluded = excludedTypes.includes(tip);
+            const typeActs = activities.filter(a => a.tip === tip);
+            const totalCount = typeActs.length;
+            const includedCount = typeActs.filter(a => !isTypeExcluded && !excludedTailNumbers.includes(a.kuyrukNo)).length;
+            const isFullyExcluded = includedCount === 0;
+            const isPartiallyIncluded = includedCount > 0 && includedCount < totalCount;
+            const isHeli = isHelicopterType(tip);
+            const isActiveFilter = activeTailFilterType === tip;
+
+            return (
+              <div
+                key={tip}
+                className={`inline-flex items-center rounded-xl text-[11px] font-black transition-all select-none border-2 ${
+                  isActiveFilter
+                    ? 'ring-2 ring-emerald-600 border-emerald-600 shadow-md'
+                    : 'border-slate-300 shadow-sm hover:border-slate-400'
+                } ${
+                  isFullyExcluded
+                    ? 'bg-red-50 text-red-700'
+                    : isPartiallyIncluded
+                    ? 'bg-amber-50 text-amber-900 border-amber-400'
+                    : 'bg-white text-slate-800'
+                }`}
+              >
+                {/* Sol Tik Kutusu - Tüm Tipi Dahil Et / Çıkar */}
+                <button
+                  type="button"
+                  title={`${tip} tipindeki tüm hava araçlarını dahil et / hariç tut`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleExcludeType(tip);
+                  }}
+                  className="pl-2.5 pr-1.5 py-1.5 flex items-center justify-center cursor-pointer"
+                >
+                  <div className={`w-4 h-4 rounded flex items-center justify-center border text-[10px] ${
+                    isFullyExcluded
+                      ? 'bg-red-600 border-red-700 text-white font-black'
+                      : isPartiallyIncluded
+                      ? 'bg-amber-500 border-amber-600 text-white font-black'
+                      : 'bg-emerald-600 border-emerald-700 text-white font-black'
+                  }`}>
+                    {isFullyExcluded ? '✕' : isPartiallyIncluded ? '–' : '✓'}
+                  </div>
+                </button>
+
+                {/* Sağ Alan - Tipi Aktif Yap ve Kuyruk Listesini Aç */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTailFilterType(tip)}
+                  className="pr-3 pl-1 py-1.5 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isHeli ? (
+                    <Helicopter className={`w-3.5 h-3.5 ${isFullyExcluded ? 'text-red-500' : 'text-emerald-700'}`} />
+                  ) : (
+                    <Plane className={`w-3.5 h-3.5 ${isFullyExcluded ? 'text-red-500' : 'text-blue-700'}`} />
+                  )}
+                  <span className={isFullyExcluded ? 'line-through decoration-red-600 decoration-2 font-black' : ''}>
+                    {tip}
+                  </span>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ml-0.5 ${
+                    isFullyExcluded
+                      ? 'bg-red-200 text-red-800'
+                      : isPartiallyIncluded
+                      ? 'bg-amber-200 text-amber-900 font-black'
+                      : 'bg-slate-100 text-slate-700'
+                  }`}>
+                    {includedCount}/{totalCount}
+                  </span>
+                  <span className={`text-[10px] ml-1 transition-transform ${isActiveFilter ? 'text-emerald-700 font-black rotate-180' : 'text-slate-400'}`}>
+                    ▼
+                  </span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 2. SEVİYE: Seçilen Tipin Kuyruk Numaraları Alt Paneli (Tikli Seçim) */}
+        {activeTailFilterType && (
+          <div className="mt-3 pt-3 border-t border-slate-200 bg-white/80 p-3 rounded-xl border border-slate-200 shadow-inner">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+              <div className="flex items-center gap-2">
+                {isHelicopterType(activeTailFilterType) ? (
+                  <Helicopter className="w-4 h-4 text-emerald-700" />
+                ) : (
+                  <Plane className="w-4 h-4 text-blue-700" />
+                )}
+                <span className="text-[11px] font-black uppercase text-slate-900 tracking-wider">
+                  [{activeTailFilterType}] KUYRUK NUMARALARI DAHİL ETME / SEÇİM LİSTESİ:
+                </span>
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                  {activeTypeActivities.filter(a => !excludedTypes.includes(a.tip) && !excludedTailNumbers.includes(a.kuyrukNo)).length} / {activeTypeActivities.length} Kuyruk Dahil
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => includeAllTailsForType(activeTailFilterType)}
+                  className="px-2.5 py-1 text-[10px] font-black bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg border border-emerald-300 transition-colors shadow-xs cursor-pointer"
+                >
+                  ✓ Bu Tipin Tümünü Dahil Et
+                </button>
+                <button
+                  type="button"
+                  onClick={() => excludeAllTailsForType(activeTailFilterType)}
+                  className="px-2.5 py-1 text-[10px] font-black bg-red-100 hover:bg-red-200 text-red-800 rounded-lg border border-red-300 transition-colors shadow-xs cursor-pointer"
+                >
+                  ✕ Bu Tipin Tümünü Hariç Tut
+                </button>
+              </div>
+            </div>
+
+            {/* Kuyruk Numaraları Kartları */}
+            <div className="flex flex-wrap gap-2">
+              {activeTypeActivities.map(act => {
+                const isExcluded = excludedTailNumbers.includes(act.kuyrukNo) || excludedTypes.includes(act.tip);
+                const isIncluded = !isExcluded;
+
+                return (
+                  <button
+                    key={act.kuyrukNo}
+                    type="button"
+                    onClick={() => toggleExcludeTail(act.kuyrukNo, act.tip)}
+                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-black select-none border-2 transition-all cursor-pointer ${
+                      isIncluded
+                        ? 'bg-white border-emerald-500 text-slate-900 hover:border-emerald-600 shadow-sm hover:bg-emerald-50/40'
+                        : 'bg-red-50 border-red-400 text-red-700 opacity-80 shadow-inner'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded flex items-center justify-center border text-[10px] ${
+                      isIncluded
+                        ? 'bg-emerald-600 border-emerald-700 text-white font-black'
+                        : 'bg-red-600 border-red-700 text-white font-black'
+                    }`}>
+                      {isIncluded ? '✓' : '✕'}
+                    </div>
+                    <span className={`tracking-tight ${!isIncluded ? 'line-through text-red-700 font-bold' : 'text-slate-900 font-black'}`}>
+                      {act.kuyrukNo}
+                    </span>
+                    {act.cagriKodu && (
+                      <span className={`text-[9px] font-bold ${!isIncluded ? 'text-red-500' : 'text-slate-500'}`}>
+                        {act.cagriKodu}
+                      </span>
+                    )}
+                    {!isIncluded && (
+                      <span className="text-[8px] font-black uppercase text-red-700 bg-red-200/80 px-1 py-0.5 rounded">
+                        HARİÇ
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -461,7 +768,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                       const typeSpan = groupRowSpans[idx];
 
                       return (
-                        <tr key={idx} className="h-7 hover:bg-gray-50">
+                        <tr key={idx} className={`h-7 hover:bg-gray-50 ${showTypeTd && idx > 0 ? 'border-t-2 border-t-slate-800' : ''}`}>
                           <td className="border border-black text-center font-black px-1 text-gray-900">
                             {globalIndex}
                           </td>
@@ -480,8 +787,18 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                           </span>
                         </td>
                         {showTypeTd && (
-                          <td rowSpan={typeSpan} className="border border-black text-center px-1 font-bold bg-gray-50 uppercase">
-                            {act.tip}
+                          <td 
+                            rowSpan={typeSpan} 
+                            className="border border-black border-r-2 border-r-slate-400 text-center px-1.5 py-1 font-bold bg-slate-50 uppercase shadow-sm"
+                          >
+                            <div className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
+                              {isHelicopterType(act.tip) ? (
+                                <Helicopter className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                              ) : (
+                                <Plane className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                              )}
+                              <span className="tracking-tight">{act.tip}</span>
+                            </div>
                           </td>
                         )}
                         <td className="border border-black text-center font-bold px-1">{act.cagriKodu}</td>
@@ -788,7 +1105,7 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
         </div>
         <div className="mt-4 pt-4 border-t border-slate-200">
            <p className="text-[12px] font-black text-red-600 text-center uppercase tracking-wider">
-             ** 3 GÜNE KADAR OLAN GAYRI FAAL DURUMLAR FAALİYET ORANINA YANSITILMAMIŞTIR.
+             ** PEŞ PEŞE 3 GÜNE KADAR (1, 2, 3 GÜN) OLAN GAYRİ FAAL DURUMLAR SÖZLEŞME GEREĞİ MUAFİYET KAPSAMINDA OLUP GAYRİ FAAL ADEDİNE VE FAALİYET ORANINA YANSITILMAZ (FAAL KABUL EDİLİR). YALNIZCA PEŞ PEŞE 4 GÜN VE ÜZERİ SÜREN GAYRİ FAAL DURUMLAR BAKIM/ARIZA ADEDİNE VE GAYRİ FAAL TOPLAMINA EKLENEREK FAALİYET ORANINDAN DÜŞÜLÜR.
            </p>
         </div>
       </div>
@@ -1028,6 +1345,18 @@ const ActivityGrid: React.FC<ActivityGridProps> = ({ activities, fleet = [], sta
                 {tooltip.statusMeta.label}
               </span>
             </div>
+
+            {/* 3 Günlük Muafiyet Bilgisi (Gayrı faal durumlar için) */}
+            {tooltip.exemptionNote && (
+              <div className={`p-2 rounded-lg text-[10px] font-bold border leading-snug flex items-center gap-1.5 ${
+                tooltip.exemptionNote.includes('Muaf') 
+                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-600/40' 
+                  : 'bg-red-950/60 text-red-300 border-red-600/40'
+              }`}>
+                <span>{tooltip.exemptionNote.includes('Muaf') ? '🛡️' : '⚠️'}</span>
+                <span>{tooltip.exemptionNote}</span>
+              </div>
+            )}
 
             {/* Gün İçi Faaliyet Olayları (Varsa) */}
             {tooltip.events && tooltip.events.length > 0 && (

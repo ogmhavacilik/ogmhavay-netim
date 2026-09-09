@@ -211,6 +211,17 @@ export const generateFleetExcelHtml = (fleet: Aircraft[], dateStr: string) => {
   return html;
 };
 
+export const getExcelColumnName = (colIndex: number): string => {
+  let dividend = colIndex + 1;
+  let columnName = '';
+  while (dividend > 0) {
+    const modulo = (dividend - 1) % 26;
+    columnName = String.fromCharCode(65 + modulo) + columnName;
+    dividend = Math.floor((dividend - modulo) / 26);
+  }
+  return columnName;
+};
+
 export const exportTableToExcel = (tableId: string, fileName: string) => {
   const table = document.getElementById(tableId);
   if (!table) return;
@@ -226,6 +237,51 @@ export const exportTableToExcel = (tableId: string, fileName: string) => {
     div.style.height = 'auto';
     div.style.width = 'auto';
   });
+
+  // If this is the activity grid table, inject Excel formulas for the percentage column
+  if (tableId === 'activity-table') {
+    const allRows = Array.from(clone.querySelectorAll('tr'));
+    
+    // Determine the total number of columns from the first header row
+    const headerRow1 = allRows[0];
+    let totalColumns = 0;
+    if (headerRow1) {
+      Array.from(headerRow1.children).forEach(cell => {
+        const colSpan = (cell as HTMLTableCellElement).colSpan || 1;
+        totalColumns += colSpan;
+      });
+    }
+
+    if (totalColumns > 8) {
+      // In ActivityGrid:
+      // Column (totalColumns - 1): FAALİYET %
+      // Column (totalColumns - 2): TOPLAM GÜN SAYISI
+      // Column (totalColumns - 3): TOPLAM FAAL
+      // Column (totalColumns - 6): TOPLAM G.FAAL
+      const colTotalGun = getExcelColumnName(totalColumns - 2);
+      const colTotalFaal = getExcelColumnName(totalColumns - 3);
+
+      allRows.forEach((row, rowIndex) => {
+        const excelRow = rowIndex + 1; // 1-indexed in Excel
+        // Skip the two header rows
+        if (rowIndex < 2) return;
+
+        const cells = Array.from(row.children) as HTMLTableCellElement[];
+        if (cells.length === 0) return;
+
+        // The last cell is always the percentage column
+        const lastCell = cells[cells.length - 1];
+        if (lastCell) {
+          // Excel formula: Faal Gün Sayısı / Toplam Gün Sayısı (Percentage format)
+          const formula = `=IF(${colTotalGun}${excelRow}>0, ${colTotalFaal}${excelRow}/${colTotalGun}${excelRow}, 0)`;
+          lastCell.setAttribute('x:f', formula);
+          lastCell.setAttribute('x:num', '');
+          lastCell.textContent = formula;
+          (lastCell.style as any).msoNumberFormat = '0%';
+        }
+      });
+    }
+  }
 
   // Ensure styles are preserved in the export
   const html = `

@@ -25,6 +25,7 @@ import { exportAT802DailyStatusToPDF, exportOPLToPDF, exportAT802CiktiPDF } from
 import { exportTableToMHTML } from './services/mhtmlService';
 import { MOCK_ACTIVITY_GRID } from './constants';
 import { generateFleetExcelHtml, exportTableToExcel } from './src/services/excelService';
+import { DEFAULT_INTRA_DAY_LOGS } from './src/data/defaultIntraDayLogs';
 import { LocationStatusGrid } from './components/LocationStatusGrid';
 import { X, Download, Activity, Clock } from 'lucide-react';
 import { safeStorage } from './services/safeStorage';
@@ -667,7 +668,23 @@ const App = () => {
       const data = result.data || result;
       const faaliyetLogs = data.faaliyetLog || data.dailyLogs || [];
       const envanterLogs = data.envanterLog || [];
-      const intraDayData = data.intraDayLog || data.intraDayLogs || data.hourlyLogs || [];
+      const rawIntraDay = data.intraDayLog || data.intraDayLogs || data.hourlyLogs || [];
+
+      // DEFAULT_INTRA_DAY_LOGS (784 doğrulanmış saatlik log ve 243 Bell-429 kaydı) ile canlı logları harmanla
+      const intraDayUniqueMap = new Map<string, any>();
+      DEFAULT_INTRA_DAY_LOGS.forEach((item: any) => {
+        const k = item.id || `${item.kuyrukNo}_${item.tarih}_${item.startTime}_${item.endTime}`;
+        intraDayUniqueMap.set(k, item);
+      });
+      rawIntraDay.forEach((item: any) => {
+        const kNo = String(item.kuyrukNo || item['Kuyruk No'] || item.tailNumber || '').trim();
+        const t = String(item.tarih || item.Tarih || '').trim();
+        const sT = String(item.startTime || item.gayriFaalBaslangicSaati || item['GAYRİ FAAL BAŞLANGIÇ SAATİ'] || '').trim();
+        const eT = String(item.endTime || item.faalBaslangicSaati || item['FAAL BAŞLANGIÇ SAATİ'] || '').trim();
+        const k = item.id || `${kNo}_${t}_${sT}_${eT}`;
+        intraDayUniqueMap.set(k, item);
+      });
+      const intraDayData = Array.from(intraDayUniqueMap.values());
       
       // Robust duplicate removal and merging
       const logDataMap = new Map<string, any>();
@@ -820,6 +837,32 @@ const App = () => {
           }
         });
 
+        // Bell-429 kuyruklarının faaliyet haritasında eksiksiz yer almasını garanti et
+        const defaultBell429 = [
+          { kuyrukNo: 'OR-3125', cagriKodu: 'ORMAN-03', tip: 'Bell-429' },
+          { kuyrukNo: 'OR-3126', cagriKodu: 'ORMAN-04', tip: 'Bell-429' },
+          { kuyrukNo: 'OR-3127', cagriKodu: 'ORMAN-05', tip: 'Bell-429' },
+          { kuyrukNo: 'OR-3131', cagriKodu: 'ORMAN-06', tip: 'Bell-429' },
+          { kuyrukNo: 'OR-3133', cagriKodu: 'ORMAN-07', tip: 'Bell-429' },
+          { kuyrukNo: 'OR-3192', cagriKodu: 'ORMAN-08', tip: 'Bell-429' }
+        ];
+        defaultBell429.forEach(b => {
+          if (!activityMap.has(b.kuyrukNo)) {
+            activityMap.set(b.kuyrukNo, {
+              kuyrukNo: b.kuyrukNo,
+              cagriKodu: b.cagriKodu,
+              tip: b.tip,
+              dailyStatuses: {},
+              hourlyStatuses: {},
+              intraDayCompletions: {},
+              intraDayDurations: {},
+              intraDayEvents: {},
+              hourlyDescriptions: {},
+              intraDayStartStatuses: {}
+            });
+          }
+        });
+
         const normalizedEnvanterLog: any[] = [];
 
         // Process Daily Logs
@@ -933,8 +976,10 @@ const App = () => {
           }
         });
 
-        // Process Intra-Day Logs
+        // Process Intra-Day Logs (Saatlik Faaliyet Günlüğü)
         const intraDayGroups = new Map<string, any[]>();
+        let earliestLogDate = '2026-01-01';
+
         intraDayData.forEach((log: any) => {
           const kuyrukNo = String(log.kuyrukNo || log['Kuyruk No'] || log.tailNumber || '').trim();
           if (!kuyrukNo) return;
@@ -953,6 +998,11 @@ const App = () => {
               if (parts.length === 3) {
                 dateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
               }
+            } else if (tarihStr.includes('-')) {
+              const parts = tarihStr.split('-');
+              if (parts.length === 3 && parts[0].length === 4) {
+                dateStr = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+              }
             } else {
               const d = new Date(tarihStr);
               if (!isNaN(d.getTime())) {
@@ -962,6 +1012,10 @@ const App = () => {
           }
           if (!dateStr || dateStr > todayStr) return;
 
+          if (dateStr < earliestLogDate) {
+            earliestLogDate = dateStr;
+          }
+
           const key = `${kuyrukNo}_${dateStr}`;
           if (!intraDayGroups.has(key)) intraDayGroups.set(key, []);
           intraDayGroups.get(key)!.push(log);
@@ -970,9 +1024,13 @@ const App = () => {
         // Track carry-over status per tail
         const tailLastStatusMap = new Map<string, string>();
 
-        // Full date range
-        const startDateObj = new Date(filterStartDate);
-        const endDateObj = new Date(filterEndDate);
+        // Full date range: En erken log tarihinden (veya filterStartDate) bugüne/filterEndDate'e kadar
+        // böylece hangi ay seçilirse seçilsin (Mayıs, Haziran, Temmuz, Ağustos, Eylül vb.) tüm geçmiş saatlik veriler hesaplanmış olur.
+        const startDateStr = filterStartDate < earliestLogDate ? filterStartDate : earliestLogDate;
+        const endDateStr = filterEndDate > todayStr ? filterEndDate : todayStr;
+        
+        const startDateObj = new Date(startDateStr);
+        const endDateObj = new Date(endDateStr);
         const dateRangeArray: string[] = [];
         let walkDate = new Date(startDateObj);
         while (walkDate <= endDateObj) {
@@ -997,47 +1055,89 @@ const App = () => {
             type LogEvent = { hour: number; exactMins: number; type: 'down' | 'up'; status: string; desc: string };
             const events: LogEvent[] = [];
 
+            const parseExactMins = (timeStr: string): number => {
+              if (!timeStr) return -1;
+              const s = String(timeStr).trim();
+              if (!s || s === '-' || s === '0' || s === '00:00') return -1;
+              
+              // Google Sheets time format: "Sat Dec 30 1899 11:20:00 GMT..."
+              if (s.includes('1899') || (s.includes('GMT') && !s.includes('00:00:00'))) {
+                const match = s.match(/(\d{2}):(\d{2}):(\d{2})/);
+                if (match) {
+                  const h = parseInt(match[1], 10);
+                  const m = parseInt(match[2], 10);
+                  if (!isNaN(h) && !isNaN(m)) return h * 60 + m;
+                }
+              }
+
+              // Date strings with 00:00:00 (e.g. "Wed May 20 2026 00:00:00") -> Date only, not a time of day
+              if (s.includes('00:00:00') && (s.includes('202') || s.includes('GMT'))) {
+                return -1;
+              }
+
+              // Date object with non-zero time
+              if (s.includes('GMT') || s.includes('T')) {
+                const match = s.match(/(\d{2}):(\d{2}):(\d{2})/);
+                if (match) {
+                  const h = parseInt(match[1], 10);
+                  const m = parseInt(match[2], 10);
+                  if (!isNaN(h) && !isNaN(m) && (h > 0 || m > 0)) return h * 60 + m;
+                }
+              }
+
+              // Direct HH:mm format (e.g. "11:20", "09:00", "14:00:00")
+              if (s.includes(':')) {
+                const parts = s.split(':');
+                const h = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10);
+                if (!isNaN(h) && !isNaN(m)) return h * 60 + m;
+              }
+
+              return -1;
+            };
+
             logs.forEach(log => {
               const statusRaw = String(log.status || log.Status || log.durum || log.Durum || '').trim().toUpperCase();
               const startStr = String(log.startTime || log.gayriFaalBaslangicSaati || log['GAYRİ FAAL BAŞLANGIÇ SAATİ'] || '').trim();
               const endStr = String(log.endTime || log.faalBaslangicSaati || log['FAAL BAŞLANGIÇ SAATİ'] || '').trim();
               const description = String(log.description || log.aciklama || log.Açıklama || '').trim();
 
-              if (statusRaw === 'FAAL') {
-                // No-op
-              } else if (statusRaw !== '' || startStr !== '' || endStr !== '') {
-                let code = 'B';
-                if (statusRaw.includes('TEKNİK BÜLTEN') || statusRaw.includes('TBU')) code = 'TBU';
-                else if (statusRaw.includes('BAKIM') && statusRaw.includes('BEKLER')) code = 'BB';
-                else if (statusRaw.includes('BAKIM')) code = 'B';
-                else if (statusRaw.includes('PARÇA')) code = 'PB';
-                else if (statusRaw.includes('KABUL')) code = 'KM';
-                else if (statusRaw.includes('KAZA')) code = 'KK';
-                else if (statusRaw.includes('OLMADIĞI')) code = 'X';
-                else if (statusRaw.includes('TECRÜBE')) code = 'TB';
-                else if (statusRaw.includes('ARIZA') || statusRaw.includes('OVERSPEED') || statusRaw.includes('NG')) code = 'A';
-                else if (statusRaw.length > 0) code = statusRaw.substring(0, 2);
+              let code = 'B';
+              if (statusRaw.includes('TEKNİK BÜLTEN') || statusRaw.includes('TBU')) code = 'TBU';
+              else if (statusRaw.includes('BAKIM') && statusRaw.includes('BEKLER')) code = 'BB';
+              else if (statusRaw.includes('BAKIM')) code = 'B';
+              else if (statusRaw.includes('PARÇA')) code = 'PB';
+              else if (statusRaw.includes('KABUL')) code = 'KM';
+              else if (statusRaw.includes('KAZA')) code = 'KK';
+              else if (statusRaw.includes('OLMADIĞI')) code = 'X';
+              else if (statusRaw.includes('TECRÜBE')) code = 'TB';
+              else if (statusRaw.includes('ARIZA') || statusRaw.includes('OVERSPEED') || statusRaw.includes('NG')) code = 'A';
+              else if (statusRaw === 'F' || statusRaw === 'FAAL') code = 'F';
+              else if (statusRaw === 'FY') code = 'FY';
+              else if (statusRaw.length > 0) code = statusRaw.substring(0, 3).trim();
 
-                const parseExactMins = (timeStr: string) => {
-                  if (!timeStr) return -1;
-                  if (timeStr.includes('GMT') || timeStr.includes('T')) {
-                    const match = timeStr.match(/(\d{2}):(\d{2}):(\d{2})/);
-                    if (match) return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
-                    const d = new Date(timeStr);
-                    if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
-                  }
-                  if (!timeStr.includes(':')) return -1;
-                  const parts = timeStr.split(':');
-                  const h = parseInt(parts[0], 10);
-                  const m = parseInt(parts[1], 10);
-                  if (isNaN(h) || isNaN(m)) return -1;
-                  return h * 60 + m;
-                };
+              const sMins = parseExactMins(startStr);
+              const eMins = parseExactMins(endStr);
 
-                const sMins = parseExactMins(startStr);
-                const eMins = parseExactMins(endStr);
-                if (sMins !== -1) events.push({ hour: Math.floor(sMins / 60), exactMins: sMins, type: 'down', status: code, desc: description });
-                if (eMins !== -1) events.push({ hour: Math.floor(eMins / 60), exactMins: eMins, type: 'up', status: code, desc: description });
+              if (code === 'F' || code === 'FY') {
+                // Faal oluş veya faal durumu kaydı
+                if (eMins !== -1) {
+                  events.push({ hour: Math.floor(eMins / 60), exactMins: eMins, type: 'up', status: code, desc: description });
+                } else if (sMins !== -1 && sMins > 0) {
+                  events.push({ hour: Math.floor(sMins / 60), exactMins: sMins, type: 'up', status: code, desc: description });
+                }
+              } else {
+                // Gayri Faal kaydı (B, A, PB, KM, BB, TBU, TB, KK vs.)
+                if (sMins !== -1) {
+                  events.push({ hour: Math.floor(sMins / 60), exactMins: sMins, type: 'down', status: code, desc: description });
+                }
+                if (eMins !== -1) {
+                  events.push({ hour: Math.floor(eMins / 60), exactMins: eMins, type: 'up', status: code, desc: description });
+                }
+                if (sMins === -1 && eMins === -1) {
+                  // Tam gün bakım/arıza
+                  events.push({ hour: 0, exactMins: 0, type: 'down', status: code, desc: description });
+                }
               }
             });
 
@@ -1058,17 +1158,16 @@ const App = () => {
             let initialStatus = previousTailStatus;
             let isDown = (previousTailStatus !== 'F' && previousTailStatus !== 'FY');
 
-            // Smart logic: If first event of day is an 'up' event (Faal başlangıç saati)
+            // Smart logic: Günün ilk olayına göre başlangıç durumu
             if (events.length > 0) {
               if (events[0].type === 'up') {
-                if (previousTailStatus !== 'F' && previousTailStatus !== 'FY') {
-                  isDown = true;
-                  initialStatus = previousTailStatus;
-                } else {
-                  isDown = false;
-                  initialStatus = previousTailStatus === 'FY' ? 'FY' : 'F';
-                }
+                // Gün içinde faal olmuşsa günün başında gayri faaldi
+                isDown = true;
+                initialStatus = (previousTailStatus !== 'F' && previousTailStatus !== 'FY') 
+                  ? previousTailStatus 
+                  : (events[0].status !== 'F' && events[0].status !== 'FY' ? events[0].status : 'B');
               } else if (events[0].type === 'down') {
+                // Gün içinde gayri faale girmişse gün başında faaldi
                 isDown = false;
                 initialStatus = previousTailStatus === 'FY' ? 'FY' : 'F';
               }
@@ -1126,13 +1225,27 @@ const App = () => {
             }
 
             tailLastStatusMap.set(kuyrukNo, currentState);
-            
-            // Ara günlerde ve eksik günlerde önceki durumun (FY dahil) korunması
-            if (act.dailyStatuses[dateStr] === undefined || act.dailyStatuses[dateStr] === '?' || act.dailyStatuses[dateStr] === '') {
-              act.dailyStatuses[dateStr] = currentState as DailyStatusCode;
+
+            // Günlük durum kodunun netleştirilmesi
+            const distinctDownEvents = events.filter(e => e.type === 'down');
+            const primaryDownStatus = distinctDownEvents[0]?.status || (initialStatus !== 'F' && initialStatus !== 'FY' ? initialStatus : 'B');
+
+            if (totalGayriFaalMins >= endOfDayMins) {
+              // Tam gün gayri faal
+              act.dailyStatuses[dateStr] = primaryDownStatus as DailyStatusCode;
+            } else if (totalGayriFaalMins > 0) {
+              // Gün içi saatlik bakım/arıza (Karma gün)
+              act.dailyStatuses[dateStr] = primaryDownStatus as DailyStatusCode;
+              if (!act.intraDayCompletions) act.intraDayCompletions = {};
+              act.intraDayCompletions[dateStr] = true;
+            } else {
+              // Tam gün faal
+              if (act.dailyStatuses[dateStr] === undefined || act.dailyStatuses[dateStr] === '?' || act.dailyStatuses[dateStr] === '') {
+                act.dailyStatuses[dateStr] = (currentState === 'FY' || previousTailStatus === 'FY' ? 'FY' : 'F') as DailyStatusCode;
+              }
             }
 
-            if (logs.length > 0 || dailyStatus !== 'F') {
+            if (logs.length > 0 || totalGayriFaalMins > 0 || act.dailyStatuses[dateStr] !== 'F') {
               if (!act.intraDayDurations) act.intraDayDurations = {};
               act.intraDayDurations[dateStr] = totalGayriFaalMins;
               if (!act.intraDayEvents) act.intraDayEvents = {};

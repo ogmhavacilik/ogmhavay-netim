@@ -173,20 +173,14 @@ export const LocationStatusGrid: React.FC<LocationStatusGridProps> = ({
       return 'Güvercinlik';
     }
 
-    // 2. Yanıklar / Fethiye
-    if (upper.includes('YANIKLAR') && (upper.includes('FETHİYE') || upper.includes('FETHIYE'))) {
-      return 'Yanıklar / Fethiye';
-    }
-    if (upper.includes('FETHİYE') || upper.includes('FETHIYE')) {
-      return 'Fethiye';
-    }
-    if (upper.includes('YANIKLAR')) {
-      return 'Yanıklar';
+    // 2. Yanıklar / Fethiye (Öğretici kural: Yanıklar/Fethiye ile Muğla aynıdır, ayırmaya gerek yok)
+    if (upper.includes('YANIKLAR') || upper.includes('FETHİYE') || upper.includes('FETHIYE')) {
+      return null;
     }
 
-    // 3. VIP kontrolü
+    // 3. VIP kontrolü (Öğretici kural: Ankara (VIP) ile Ankara aynıdır, ayırmaya gerek yok)
     if (upper.includes('VIP')) {
-      return 'VIP';
+      return null;
     }
 
     // Milas içeriyorsa ve başka özel alt meydan yoksa ayrıca belirtme
