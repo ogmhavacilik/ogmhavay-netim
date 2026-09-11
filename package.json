@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.41.0",
+    "@imgly/background-removal": "^1.7.0",
     "cors": "^2.8.6",
     "esbuild": "^0.28.0",
     "express": "^5.2.1",

@@ -5,6 +5,8 @@ import LogRecordsModal from './LogRecordsModal';
 import MaintenanceHistoryModal from './MaintenanceHistoryModal';
 import { fetchOPLData, formatToHHMM } from '../services/sheetService';
 import { cleanDescription } from '../services/cleanUtils';
+import { getAircraftCrew, addYoklamaListener, syncYoklamaData } from '../services/yoklamaService';
+import { Users, Wrench, MapPin, RefreshCw, Sparkles, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface AircraftDetailModalProps {
   aircraft: Aircraft;
@@ -22,6 +24,17 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [oplAlerts, setOplAlerts] = useState<string[]>([]);
   const [isLoadingOPL, setIsLoadingOPL] = useState(false);
+  const [crew, setCrew] = useState(() => getAircraftCrew(aircraft));
+  const [isCrewSyncing, setIsCrewSyncing] = useState(false);
+  const [isCrewExpanded, setIsCrewExpanded] = useState(false);
+
+  useEffect(() => {
+    setCrew(getAircraftCrew(aircraft));
+    const unsub = addYoklamaListener(() => {
+      setCrew(getAircraftCrew(aircraft));
+    });
+    return unsub;
+  }, [aircraft]);
 
   const isBell429 = aircraft.tip === 'Bell-429';
   const isT70 = aircraft.tip === 'T-70';
@@ -694,6 +707,169 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                         </ul>
                       </div>
                     )}
+
+                    {/* GÖREVLİ UÇUŞ EKİBİ (PİLOTLAR VE TEKNİSYENLER) */}
+                    <div className="bg-gradient-to-br from-emerald-50/80 via-teal-50/40 to-slate-50 border-2 border-emerald-200/90 rounded-2xl p-4 shadow-sm transition-all">
+                      <div className={`flex flex-wrap items-center justify-between gap-2 ${isCrewExpanded ? 'mb-3 pb-2.5 border-b border-emerald-200/80' : ''}`}>
+                        <div 
+                          onClick={() => setIsCrewExpanded(prev => !prev)}
+                          className="flex items-center gap-2 cursor-pointer select-none group flex-1 min-w-[200px]"
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-sm group-hover:bg-emerald-800 transition-colors">
+                            <Users className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
+                              <span>GÖREVLİ UÇUŞ EKİBİ</span>
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-full border border-emerald-300/80">
+                                YOKLAMA SİSTEMİ
+                              </span>
+                            </h4>
+                            <div className="text-[10px] font-bold text-emerald-850 flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-3 h-3 text-emerald-650" />
+                              <span>Görev Yeri / Konum: {crew.dutyLocationLabel || aircraft.konum || 'ANKARA'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {crew.pilots.length > 0 && (
+                            <span className="text-[10px] font-black bg-emerald-700 text-white px-2.5 py-1 rounded-lg shadow-2xs">
+                              {crew.pilots.length} Pilot
+                            </span>
+                          )}
+                          {crew.technicians.length > 0 && (
+                            <span className="text-[10px] font-black bg-amber-600 text-white px-2.5 py-1 rounded-lg shadow-2xs">
+                              {crew.technicians.length} Teknisyen
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setIsCrewSyncing(true);
+                              await syncYoklamaData();
+                              setCrew(getAircraftCrew(aircraft));
+                              setIsCrewSyncing(false);
+                            }}
+                            disabled={isCrewSyncing}
+                            title="Yoklama sistemini anlık yenile"
+                            className="p-1.5 rounded-lg bg-white border border-emerald-300 hover:bg-emerald-100 text-emerald-850 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isCrewSyncing ? 'animate-spin' : ''}`} />
+                          </button>
+                          
+                          {/* Açılır / Kapanır Aşağı Ok Butonu */}
+                          <button
+                            type="button"
+                            onClick={() => setIsCrewExpanded(prev => !prev)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-black transition-all shadow-xs cursor-pointer ml-0.5"
+                            title={isCrewExpanded ? "Ekip Listesini Gizle" : "Ekip Listesini Göster"}
+                          >
+                            <span>{isCrewExpanded ? "Kapat" : "Ekibi Gör"}</span>
+                            {isCrewExpanded ? (
+                              <ChevronUp className="w-3.5 h-3.5 stroke-[2.5]" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {isCrewExpanded && (
+                        <>
+                          {crew.allPersonnel.length === 0 ? (
+                            <div className="bg-white/80 border border-dashed border-emerald-300/80 rounded-xl p-3 text-center">
+                              <p className="text-xs font-bold text-emerald-950">Bu hava aracına bağlı aktif görev kaydı bulunmuyor.</p>
+                              <p className="text-[10px] text-emerald-700 mt-0.5">Yoklama sisteminde bu birim ve konuma henüz aktif görev atanmamış veya mesai durumunda olabilir.</p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {/* Pilotlar Kolonu */}
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-900 px-1">
+                                  <span>👨‍✈️ PİLOTLAR ({crew.pilots.length})</span>
+                                </div>
+                                {crew.pilots.length === 0 ? (
+                                  <div className="text-[11px] font-semibold text-gray-400 italic bg-white/60 p-2.5 rounded-xl border border-gray-100">
+                                    Görevli pilot atanmadı
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1.5">
+                                    {crew.pilots.map((pilot, idx) => (
+                                      <div key={idx} className="bg-white rounded-xl p-2.5 border border-emerald-200/80 shadow-2xs flex items-center gap-2.5">
+                                        <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 font-black text-xs flex items-center justify-center shrink-0 border border-emerald-300 overflow-hidden">
+                                          {pilot.photoUrl ? (
+                                            <img
+                                              src={pilot.photoUrl}
+                                              alt={pilot.fullName}
+                                              referrerPolicy="no-referrer"
+                                              className="w-full h-full object-cover"
+                                              onError={(e) => {
+                                                (e.currentTarget as HTMLElement).style.display = 'none';
+                                              }}
+                                            />
+                                          ) : (
+                                            pilot.fullName.charAt(0)
+                                          )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="font-black text-xs text-gray-900 leading-snug break-words">{pilot.fullName}</div>
+                                          {pilot.rank && isNaN(Number(pilot.rank)) && (
+                                            <div className="text-[10px] font-semibold text-emerald-700 truncate">{pilot.rank}</div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Teknisyenler Kolonu */}
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-amber-950 px-1">
+                                  <span>🔧 TEKNİSYENLER ({crew.technicians.length})</span>
+                                </div>
+                                {crew.technicians.length === 0 ? (
+                                  <div className="text-[11px] font-semibold text-gray-400 italic bg-white/60 p-2.5 rounded-xl border border-gray-100">
+                                    Görevli teknisyen atanmadı
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1.5">
+                                    {crew.technicians.map((tech, idx) => (
+                                      <div key={idx} className="bg-white rounded-xl p-2.5 border border-amber-200/80 shadow-2xs flex items-center gap-2.5">
+                                        <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-900 font-black text-xs flex items-center justify-center shrink-0 border border-amber-300 overflow-hidden">
+                                          {tech.photoUrl ? (
+                                            <img
+                                              src={tech.photoUrl}
+                                              alt={tech.fullName}
+                                              referrerPolicy="no-referrer"
+                                              className="w-full h-full object-cover"
+                                              onError={(e) => {
+                                                (e.currentTarget as HTMLElement).style.display = 'none';
+                                              }}
+                                            />
+                                          ) : (
+                                            tech.fullName.charAt(0)
+                                          )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="font-black text-xs text-gray-900 leading-snug break-words">{tech.fullName}</div>
+                                          {tech.rank && isNaN(Number(tech.rank)) && (
+                                            <div className="text-[10px] font-semibold text-amber-700 truncate">{tech.rank}</div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+
                     <div className="min-h-[140px] bg-white p-5 rounded-2xl border border-gray-200 text-gray-500 text-[13px] font-medium leading-relaxed shadow-sm italic whitespace-pre-wrap">
                       {cleanDescription(aircraft.aciklama) ? aircraft.aciklama : "--"}
                     </div>

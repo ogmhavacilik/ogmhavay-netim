@@ -260,6 +260,7 @@ export const exportTableToExcel = (tableId: string, fileName: string) => {
       // Column (totalColumns - 6): TOPLAM G.FAAL
       const colTotalGun = getExcelColumnName(totalColumns - 2);
       const colTotalFaal = getExcelColumnName(totalColumns - 3);
+      const colTotalGayriFaal = getExcelColumnName(totalColumns - 6);
 
       allRows.forEach((row, rowIndex) => {
         const excelRow = rowIndex + 1; // 1-indexed in Excel
@@ -272,8 +273,10 @@ export const exportTableToExcel = (tableId: string, fileName: string) => {
         // The last cell is always the percentage column
         const lastCell = cells[cells.length - 1];
         if (lastCell) {
-          // Excel formula: Faal Gün Sayısı / Toplam Gün Sayısı (Percentage format)
-          const formula = `=IF(${colTotalGun}${excelRow}>0, ${colTotalFaal}${excelRow}/${colTotalGun}${excelRow}, 0)`;
+          // Excel formula with 3-day exemption rule:
+          // Toplam G.Faal sütunu 3 gün ve altı muaf tutulan gayrı faallikleri saymadığından:
+          // Faaliyet Oranı = (Toplam Gün - Toplam G.Faal) / Toplam Gün
+          const formula = `=IF(${colTotalGun}${excelRow}>0, (${colTotalGun}${excelRow}-${colTotalGayriFaal}${excelRow})/${colTotalGun}${excelRow}, 0)`;
           lastCell.setAttribute('x:f', formula);
           lastCell.setAttribute('x:num', '');
           lastCell.textContent = formula;

@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Aircraft, Status } from '../types';
-import { MapPin, Plane, Helicopter, ShieldCheck, AlertTriangle, Download, Search, LayoutGrid, Table, ArrowUpDown, Filter, FileSpreadsheet, Globe } from 'lucide-react';
+import { MapPin, Plane, Helicopter, ShieldCheck, AlertTriangle, Download, Search, LayoutGrid, Table, ArrowUpDown, Filter, FileSpreadsheet, Globe, Users, UserCheck, Wrench, RefreshCw, Sparkles } from 'lucide-react';
 import { exportLocationStatusToExcel, exportLocationStatusToHtml } from '../src/services/locationStatusExcelService';
+import { getAircraftCrew, addYoklamaListener, syncYoklamaData } from '../services/yoklamaService';
 
 interface LocationStatusGridProps {
   fleet: Aircraft[];
@@ -116,6 +117,15 @@ export const LocationStatusGrid: React.FC<LocationStatusGridProps> = ({
   const [viewMode, setViewMode] = useState<'matrix' | 'cards'>('matrix');
   const [sortByCount, setSortByCount] = useState(true);
 
+  // Yoklama Sistemi Dinleyicisi ve Senkronizasyonu
+  const [yoklamaVersion, setYoklamaVersion] = useState(0);
+  const [isYoklamaSyncing, setIsYoklamaSyncing] = useState(false);
+
+  useEffect(() => {
+    const unsub = addYoklamaListener(() => setYoklamaVersion(v => v + 1));
+    return unsub;
+  }, []);
+
   // Normalleştirilmiş konum adı (Öğretici kurallar: ANKARA (VIP) -> ANKARA, YANIKLAR/FETHİYE -> MUĞLA, BODRUM/GÜVERCİNLİK -> MUĞLA, MİLAS -> MUĞLA)
   const normalizeLocation = (loc?: string): string => {
     if (!loc) return 'BELİRTİLMEMİŞ';
@@ -151,7 +161,21 @@ export const LocationStatusGrid: React.FC<LocationStatusGridProps> = ({
   // NOT: MİLAS = MUĞLA'dır ve ayrıca belirtilmesine gerek yoktur (AT-802 Muğla'da tek bölge olduğu için detay gizlenir)
   const getSubLocationDetail = (aircraft: Aircraft, groupLoc?: string): string | null => {
     const raw = (aircraft.konum || '').trim();
+    const fullText = (
+      (aircraft.konum || '') + ' ' +
+      (aircraft.durumAyrintisi || '') + ' ' +
+      (aircraft.aciklama || '') + ' ' +
+      ((aircraft as any).meydan || '')
+    ).toLocaleUpperCase('tr-TR');
+
     if (!raw || raw === '-' || raw === 'YOK' || raw.toLocaleUpperCase('tr-TR') === 'BELİRTİLMEMİŞ') {
+      // Check if details exist in description
+      if (fullText.includes('YANIKLAR') || fullText.includes('FETHİYE') || fullText.includes('FETHIYE')) {
+        return 'Fethiye / Yanıklar';
+      }
+      if (fullText.includes('BODRUM') || fullText.includes('GÜVERCİNLİK') || fullText.includes('GUVERCINLIK')) {
+        return 'Bodrum / Güvercinlik';
+      }
       return null;
     }
 
@@ -163,19 +187,17 @@ export const LocationStatusGrid: React.FC<LocationStatusGridProps> = ({
     }
 
     // 1. Bodrum / Güvercinlik
-    if (upper.includes('BODRUM') && (upper.includes('GÜVERCİNLİK') || upper.includes('GUVERCINLIK'))) {
-      return 'Bodrum / Güvercinlik';
-    }
-    if (upper.includes('BODRUM')) {
-      return 'Bodrum';
-    }
-    if (upper.includes('GÜVERCİNLİK') || upper.includes('GUVERCINLIK')) {
-      return 'Güvercinlik';
+    if (upper.includes('BODRUM') || upper.includes('GÜVERCİNLİK') || upper.includes('GUVERCINLIK') || fullText.includes('BODRUM') || fullText.includes('GÜVERCİNLİK') || fullText.includes('GUVERCINLIK')) {
+      if (upper.includes('BODRUM') || upper.includes('GÜVERCİNLİK') || upper.includes('GUVERCINLIK') || groupLoc === 'MUĞLA') {
+        return 'Bodrum / Güvercinlik';
+      }
     }
 
-    // 2. Yanıklar / Fethiye (Öğretici kural: Yanıklar/Fethiye ile Muğla aynıdır, ayırmaya gerek yok)
-    if (upper.includes('YANIKLAR') || upper.includes('FETHİYE') || upper.includes('FETHIYE')) {
-      return null;
+    // 2. Fethiye / Yanıklar (Kullanıcı Direktifi: Yanıklar veya Fethiye yazarsa Muğla grubuna al ve altına Fethiye / Yanıklar detayını yaz)
+    if (upper.includes('YANIKLAR') || upper.includes('FETHİYE') || upper.includes('FETHIYE') || fullText.includes('YANIKLAR') || fullText.includes('FETHİYE') || fullText.includes('FETHIYE')) {
+      if (upper.includes('YANIKLAR') || upper.includes('FETHİYE') || upper.includes('FETHIYE') || groupLoc === 'MUĞLA') {
+        return 'Fethiye / Yanıklar';
+      }
     }
 
     // 3. VIP kontrolü (Öğretici kural: Ankara (VIP) ile Ankara aynıdır, ayırmaya gerek yok)
@@ -518,8 +540,23 @@ export const LocationStatusGrid: React.FC<LocationStatusGridProps> = ({
               </button>
             </div>
 
-            {/* Excel / Web Sayfası İndir Butonları */}
+            {/* Excel / Web Sayfası / Yoklama Butonları */}
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsYoklamaSyncing(true);
+                  await syncYoklamaData();
+                  setIsYoklamaSyncing(false);
+                }}
+                disabled={isYoklamaSyncing}
+                title="Pilot ve Teknisyen Yoklama Sistemlerini (Google Apps Script) anlık olarak sorgula ve personeli güncelle"
+                className="bg-emerald-950/90 hover:bg-emerald-900 active:scale-95 text-emerald-300 border border-emerald-600/50 hover:border-emerald-500 px-3.5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-md flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isYoklamaSyncing ? 'animate-spin' : ''}`} />
+                <span className="hidden lg:inline text-[11px]">{isYoklamaSyncing ? 'YOKLAMA ALINIYOR...' : 'YOKLAMA YENİLE'}</span>
+              </button>
+
               <button
                 onClick={handleExportExcel}
                 title="Tüm renkleri, kutucukları ve tablo tasarımını koruyan Excel (.xls Web Sayfası) olarak indir"
@@ -633,11 +670,17 @@ export const LocationStatusGrid: React.FC<LocationStatusGridProps> = ({
                                   {aircraftList.map(ac => {
                                     const isFaal = ac.durum === Status.FAAL || ac.durum === Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ;
                                     const subDetail = getSubLocationDetail(ac, group.location);
+                                    const crew = getAircraftCrew(ac);
+                                    const crewTooltip = crew.allPersonnel.length > 0
+                                      ? `\n\n👨‍✈️ GÖREVLİ UÇUŞ EKİBİ (${crew.dutyLocationLabel || ac.konum}):` +
+                                        (crew.pilots.length > 0 ? `\n• Pilotlar: ${crew.pilots.map(p => `${p.fullName}${p.dutyLocationDetail ? ` [${p.dutyLocationDetail}]` : ''}`).join(', ')}` : '') +
+                                        (crew.technicians.length > 0 ? `\n• Teknisyenler: ${crew.technicians.map(t => `${t.fullName}${t.dutyLocationDetail ? ` [${t.dutyLocationDetail}]` : ''}`).join(', ')}` : '')
+                                      : '';
                                     return (
                                       <button
                                         key={ac.kuyrukNo}
                                         onClick={() => onSelectAircraft && onSelectAircraft(ac)}
-                                        title={`${ac.kuyrukNo} (${ac.cagriKodu || 'Çağrı Kodu Yok'})\nTip: ${ac.tip || tip}\nKonum: ${ac.konum || group.location}${subDetail ? ` (${subDetail})` : ''}\nDurum: ${ac.durum} - ${ac.durumTipi || ''}\nAyrıntı: ${ac.durumAyrintisi || '-'}\nKalan Faydalı: ${ac.faydaliSaat ?? '-'} saat\nDetay için tıklayın`}
+                                        title={`${ac.kuyrukNo} (${ac.cagriKodu || 'Çağrı Kodu Yok'})\nTip: ${ac.tip || tip}\nKonum: ${ac.konum || group.location}${subDetail ? ` (${subDetail})` : ''}\nDurum: ${ac.durum} - ${ac.durumTipi || ''}\nAyrıntı: ${ac.durumAyrintisi || '-'}\nKalan Faydalı: ${ac.faydaliSaat ?? '-'} saat${crewTooltip}\nDetay için tıklayın`}
                                         className={`group px-2.5 py-1.5 rounded-xl border text-xs font-black transition-all flex flex-col items-center shadow-sm hover:scale-105 hover:shadow-md cursor-pointer ${
                                           isFaal
                                             ? 'bg-white hover:bg-emerald-50 text-emerald-900 border-emerald-300/90'
@@ -668,6 +711,15 @@ export const LocationStatusGrid: React.FC<LocationStatusGridProps> = ({
                                           <span className="text-[8px] font-black uppercase text-red-700 mt-0.5 bg-red-200/70 px-1.5 rounded">
                                             {ac.durumTipi || 'BAKIMDA'}
                                           </span>
+                                        )}
+                                        {crew.allPersonnel.length > 0 && (
+                                          <div 
+                                            className="flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded border text-[7.5px] font-black tracking-tight bg-emerald-100/90 text-emerald-950 border-emerald-300/80 shadow-2xs"
+                                            title={`Görevli Uçuş Ekibi: ${crew.pilots.length} Pilot, ${crew.technicians.length} Teknisyen`}
+                                          >
+                                            <Users className="w-2.5 h-2.5 text-emerald-700 shrink-0" />
+                                            <span>{crew.pilots.length}P{crew.technicians.length > 0 ? ` + ${crew.technicians.length}T` : ''}</span>
+                                          </div>
                                         )}
                                       </button>
                                     );
@@ -786,10 +838,18 @@ export const LocationStatusGrid: React.FC<LocationStatusGridProps> = ({
                           {aircraftList.map(ac => {
                             const isFaal = ac.durum === Status.FAAL || ac.durum === Status.FAAL_FIREBOSS_GOREVI_YAPAMAZ;
                             const subDetail = getSubLocationDetail(ac, group.location);
+                            const crew = getAircraftCrew(ac);
+                            const crewTooltip = crew.allPersonnel.length > 0
+                              ? `\n\n👨‍✈️ GÖREVLİ UÇUŞ EKİBİ (${crew.dutyLocationLabel || ac.konum}):` +
+                                (crew.pilots.length > 0 ? `\n• Pilotlar: ${crew.pilots.map(p => `${p.fullName}${p.dutyLocationDetail ? ` [${p.dutyLocationDetail}]` : ''}`).join(', ')}` : '') +
+                                (crew.technicians.length > 0 ? `\n• Teknisyenler: ${crew.technicians.map(t => `${t.fullName}${t.dutyLocationDetail ? ` [${t.dutyLocationDetail}]` : ''}`).join(', ')}` : '')
+                              : '';
+
                             return (
                               <button
                                 key={ac.kuyrukNo}
                                 onClick={() => onSelectAircraft && onSelectAircraft(ac)}
+                                title={`${ac.kuyrukNo} (${ac.cagriKodu || 'Çağrı Kodu Yok'})\nTip: ${ac.tip || tip}\nKonum: ${ac.konum || group.location}${subDetail ? ` (${subDetail})` : ''}\nDurum: ${ac.durum} - ${ac.durumTipi || ''}\nAyrıntı: ${ac.durumAyrintisi || '-'}\nKalan Faydalı: ${ac.faydaliSaat ?? '-'} saat${crewTooltip}\nDetay için tıklayın`}
                                 className={`text-left p-2.5 rounded-xl border transition-all hover:scale-[1.02] cursor-pointer ${
                                   isFaal
                                     ? 'bg-white hover:bg-emerald-50/50 border-emerald-200 text-gray-900 shadow-sm'
@@ -818,6 +878,27 @@ export const LocationStatusGrid: React.FC<LocationStatusGridProps> = ({
                                     </span>
                                   )}
                                 </div>
+
+                                {crew.allPersonnel.length > 0 && (
+                                  <div className="mt-2 pt-1.5 border-t border-emerald-100/80 flex flex-col gap-0.5 bg-emerald-50/50 -mx-1 px-1.5 py-1 rounded-lg">
+                                    {crew.pilots.length > 0 && (
+                                      <div className="flex items-center gap-1 text-[8.5px] text-gray-800">
+                                        <span className="font-black text-emerald-800 shrink-0">👨‍✈️</span>
+                                        <span className="truncate font-bold text-emerald-950" title={crew.pilots.map(p => p.fullName).join(', ')}>
+                                          {crew.pilots.map(p => p.fullName).join(', ')}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {crew.technicians.length > 0 && (
+                                      <div className="flex items-center gap-1 text-[8.5px] text-gray-800">
+                                        <span className="font-black text-amber-800 shrink-0">🔧</span>
+                                        <span className="truncate font-bold text-amber-950" title={crew.technicians.map(t => t.fullName).join(', ')}>
+                                          {crew.technicians.map(t => t.fullName).join(', ')}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </button>
                             );
                           })}

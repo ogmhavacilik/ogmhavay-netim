@@ -11,6 +11,10 @@ export const MAIL_LOG_SHEET_ID = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
 export const YAKIT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJVvXLX84N_79x_Yik_flkQ1jjr70Krwqnj6vJ77gUnCSlUcs9oq2MkKpTy2ZIwtU/exec";
 export const YAKIT_SHEET_ID = "1ifdtoxjdr1U0YmMdeeByBEpHbLwEa7OTMoTLbm97WdQ";
 
+// Pilot ve Teknisyen Yoklama Sistemleri
+export const PILOT_YOKLAMA_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrSGyePf9zWvgDsnWVvdBrxCc_yNs7h6NifZKNyqQ-iFDl3StMtGmCwbx-Lvnt-ax9/exec";
+export const TEKNISYEN_YOKLAMA_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzkIYFs3JvIEQkT3Kh-XdLXtKMdsWBaXg6XY91dk_5i16_bCJf6C9zkycklXubUTir5/exec";
+
 export const getCallSignByTail = (tail: string): string => {
   const mapping: Record<string, string> = {
     'OR-0177': 'ORMAN-01',

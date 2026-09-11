@@ -17,6 +17,26 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
+  // In-memory cache and request deduplication for read-heavy Google Apps Script endpoints
+  interface CacheEntry {
+    data: any;
+    status: number;
+    timestamp: number;
+  }
+  const proxyCache = new Map<string, CacheEntry>();
+  const inFlightRequests = new Map<string, Promise<{ success: boolean; data: any; status: number }>>();
+
+  const READ_ACTIONS = new Set([
+    'getAircraftData',
+    'getAircraftSpecificData',
+    'get_init_data',
+    'get_attendance',
+    'onGetAdminPanelData',
+    'getEnvanterLogs',
+    'fetchHistory',
+    'get_data'
+  ]);
+
   // Proxy endpoint for Google Apps Script
   app.post('/api/proxy', async (req, res) => {
     const { url, body, method = 'POST' } = req.body;
@@ -25,7 +45,46 @@ async function startServer() {
       return res.status(400).json({ success: false, error: 'URL is required' });
     }
 
-    try {
+    const action = body && typeof body === 'object' ? body.action : undefined;
+    const isReadAction = action && READ_ACTIONS.has(action);
+    const serializedBody = typeof body === 'string' ? body : JSON.stringify(body || {});
+    const cacheKey = `${method.toUpperCase()}:${url}:${serializedBody}`;
+
+    // 1. Invalidate cache on mutations
+    if (action && !isReadAction) {
+      // Clear relevant cached entries on writes/updates
+      for (const key of proxyCache.keys()) {
+        if (key.includes(url)) {
+          proxyCache.delete(key);
+        }
+      }
+    }
+
+    // 2. Check read cache
+    if (isReadAction) {
+      const cached = proxyCache.get(cacheKey);
+      const ttl = action === 'get_attendance' ? 60000 : 25000; // 60s for attendance, 25s for other reads
+      if (cached && (Date.now() - cached.timestamp < ttl)) {
+        return res.status(200).json({
+          success: true,
+          data: cached.data,
+          status: cached.status,
+          cached: true
+        });
+      }
+    }
+
+    // 3. Deduplicate in-flight requests
+    if (isReadAction && inFlightRequests.has(cacheKey)) {
+      try {
+        const result = await inFlightRequests.get(cacheKey)!;
+        return res.status(200).json(result);
+      } catch (err) {
+        // If in-flight fails, continue to execute fresh attempt
+      }
+    }
+
+    const executeFetch = async (): Promise<{ success: boolean; data: any; status: number }> => {
       let targetUrl = url;
       let fetchOptions: RequestInit = {
         redirect: 'follow',
@@ -47,7 +106,7 @@ async function startServer() {
         fetchOptions.headers = {
           'Content-Type': 'text/plain;charset=utf-8',
         };
-        fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+        fetchOptions.body = serializedBody;
       }
 
       let response: Response | undefined;
@@ -60,7 +119,6 @@ async function startServer() {
           
           if (response.ok) {
             const rawText = await response.text();
-            // Google Apps Script can return HTML on rate limits or internal script errors
             const isHtml = rawText.includes('<!DOCTYPE html>') || rawText.includes('<html') || rawText.includes('Google Docs');
             if (!isHtml) {
               try {
@@ -71,7 +129,6 @@ async function startServer() {
               break; // Success!
             }
           } else {
-            // Stop retrying immediately on 404 or other 4xx client errors (except 429 Rate Limit)
             if (response.status !== 429 && response.status >= 400 && response.status < 500) {
               break;
             }
@@ -86,11 +143,15 @@ async function startServer() {
       }
 
       if (parsedData !== null) {
-        return res.status(200).json({
+        const status = response ? response.status : 200;
+        if (isReadAction) {
+          proxyCache.set(cacheKey, { data: parsedData, status, timestamp: Date.now() });
+        }
+        return {
           success: true,
           data: parsedData,
-          status: response ? response.status : 200
-        });
+          status
+        };
       }
 
       if (response) {
@@ -98,14 +159,34 @@ async function startServer() {
         let fallbackData: any = rawText;
         try { fallbackData = JSON.parse(rawText); } catch (e) {}
 
-        return res.status(200).json({
+        const status = response.status;
+        if (response.ok && isReadAction) {
+          proxyCache.set(cacheKey, { data: fallbackData, status, timestamp: Date.now() });
+        }
+        return {
           success: response.ok,
           data: fallbackData,
-          status: response.status
-        });
+          status
+        };
       }
 
       throw lastError || new Error('Network request failed after 3 attempts');
+    };
+
+    try {
+      if (isReadAction) {
+        const reqPromise = executeFetch();
+        inFlightRequests.set(cacheKey, reqPromise);
+        try {
+          const result = await reqPromise;
+          return res.status(200).json(result);
+        } finally {
+          inFlightRequests.delete(cacheKey);
+        }
+      } else {
+        const result = await executeFetch();
+        return res.status(200).json(result);
+      }
     } catch (error) {
       console.error('Proxy Error:', error);
       res.status(200).json({ 

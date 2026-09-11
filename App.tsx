@@ -18,7 +18,8 @@ import {
   C650_SCRIPT_URL, 
   LOG_SCRIPT_URL,
   MAIL_LOG_SHEET_ID,
-  getCallSignByTail
+  getCallSignByTail,
+  MOCK_AIRCRAFT
 } from './constants';
 import { fetchAircraftDataFromAppsScript, fetchOPLData, formatToHHMM, parseSingleCellToHour, proxyFetch, analyzeStatus } from './services/sheetService';
 import { exportAT802DailyStatusToPDF, exportOPLToPDF, exportAT802CiktiPDF } from './services/pdfService';
@@ -29,6 +30,7 @@ import { DEFAULT_INTRA_DAY_LOGS } from './src/data/defaultIntraDayLogs';
 import { LocationStatusGrid } from './components/LocationStatusGrid';
 import { X, Download, Activity, Clock } from 'lucide-react';
 import { safeStorage } from './services/safeStorage';
+import { syncYoklamaData } from './services/yoklamaService';
 
 const parseTimeToMinutes = (timeStr: string) => {
   if (!timeStr || timeStr === '-' || timeStr === 'undefined') return null;
@@ -57,7 +59,31 @@ const App = () => {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'checking' | 'updated' | 'no-change' | 'error'>('idle');
   const lastSyncSignatureRef = useRef<string>('');
   
-  const [fleet, setFleet] = useState<Aircraft[]>([]);
+  const [fleet, setFleet] = useState<Aircraft[]>(() => {
+    try {
+      const cached = safeStorage.getItem('ogm_fleet_cache_v2');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length >= 10) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Fleet cache read error:', e);
+    }
+    return MOCK_AIRCRAFT;
+  });
+
+  useEffect(() => {
+    if (fleet && fleet.length >= 10) {
+      try {
+        safeStorage.setItem('ogm_fleet_cache_v2', JSON.stringify(fleet));
+      } catch (e) {
+        console.warn('Fleet cache write error:', e);
+      }
+    }
+  }, [fleet]);
+
   const [activities, setActivities] = useState<AircraftActivity[]>(MOCK_ACTIVITY_GRID);
   
   const [selectedAircraft, setSelectedAircraft] = useState<Aircraft | null>(null);
@@ -96,6 +122,11 @@ const App = () => {
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [isGovdeSorguOpen, setIsGovdeSorguOpen] = useState(false);
   const [isFetchingActivities, setIsFetchingActivities] = useState(false);
+
+  // Pilot ve Teknisyen Yoklama Sistemlerini uygulama başlangıcında 1 kez yükle (Sürekli yenileme kapalı)
+  useEffect(() => {
+    syncYoklamaData();
+  }, []);
 
   const [showIntraDayModal, setShowIntraDayModal] = useState(false);
   const [selectedAircraftForIntraDay, setSelectedAircraftForIntraDay] = useState<Aircraft | null>(null);
@@ -1276,30 +1307,33 @@ const App = () => {
     fetchPastLogs().finally(() => setIsFetchingActivities(false));
   };
 
-  const runGlobalSync = useCallback(async () => {
+  const runGlobalSync = useCallback(async (targetType?: string) => {
     setIsSyncing(true);
     setSyncStatus('checking');
 
     try {
+      const targetConfigs = targetType
+        ? SHEET_CONFIGS.filter(c => c.aircraftType.toLowerCase().includes(targetType.toLowerCase()) || targetType.toLowerCase().includes(c.aircraftType.toLowerCase()))
+        : SHEET_CONFIGS;
+
+      const configsToFetch = targetConfigs.length > 0 ? targetConfigs : SHEET_CONFIGS;
+
+      // Parallel fetch with Promise.allSettled for maximum speed
+      const results = await Promise.allSettled(
+        configsToFetch.map(config => fetchAircraftDataFromAppsScript(config.appsScriptUrl, config))
+      );
+
       const fetchedFleet: Aircraft[] = [];
-
-      // Google Apps Script çakışmasını ve kilitlenmesini önlemek için istekler sırayla gönderilir
-      for (const config of SHEET_CONFIGS) {
-        try {
-          const data = await fetchAircraftDataFromAppsScript(config.appsScriptUrl, config);
-          if (data && data.length > 0) {
-            fetchedFleet.push(...(data as Aircraft[]));
-          } else {
-            console.warn(`[SYNC] ${config.aircraftType} verisi alınamadı, mevcut önbellek korunuyor.`);
-          }
-        } catch (e) {
-          console.error(`Sync error for ${config.aircraftType}:`, e);
+      results.forEach((res, idx) => {
+        const config = configsToFetch[idx];
+        if (res.status === 'fulfilled' && res.value && res.value.length > 0) {
+          fetchedFleet.push(...(res.value as Aircraft[]));
+        } else {
+          console.warn(`[SYNC] ${config.aircraftType} verisi canlı kaynaktan alınamadı.`);
         }
-        // Sayfa istekleri arasına 300ms küçük bir es ver
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
+      });
 
-      // Geçmiş logları ana veri çekimi sonrası çek
+      // Background refresh of activity logs without blocking
       fetchPastLogs();
 
       if (fetchedFleet.length > 0) {

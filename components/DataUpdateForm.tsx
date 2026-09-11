@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Aircraft, Status, DailyStatusCode } from '../types';
 import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour, parseSingleCellToHour, proxyFetch } from '../services/sheetService';
-import { LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID } from '../constants';
+import { LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID, MOCK_AIRCRAFT } from '../constants';
 import { safeStorage } from '../services/safeStorage';
 import { cleanDescription } from '../services/cleanUtils';
 
@@ -21,7 +21,7 @@ interface DataUpdateFormProps {
     description: string;
     date: string;
   }) => Promise<boolean>;
-  onTriggerSync?: () => Promise<void>;
+  onTriggerSync?: (targetType?: string) => Promise<void>;
   onUpdateLocalState?: (
     kuyrukNo: string,
     islemTarihi: string,
@@ -221,7 +221,11 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
     }
   };
 
-  const filteredFleet = fleet.filter(a => a.tip === selectedType);
+  const baseFleet = (fleet && fleet.length > 0) ? fleet : MOCK_AIRCRAFT;
+  let filteredFleet = baseFleet.filter(a => a.tip === selectedType);
+  if (filteredFleet.length === 0 && selectedType) {
+    filteredFleet = MOCK_AIRCRAFT.filter(a => a.tip === selectedType);
+  }
 
   const getNextDate = (dateStr: string) => {
     if (!dateStr) return null;
@@ -258,7 +262,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
   };
 
   useEffect(() => {
-    const aircraft = fleet.find(a => a.kuyrukNo === selectedKuyruk);
+    const aircraft = (fleet || []).find(a => a.kuyrukNo === selectedKuyruk) || MOCK_AIRCRAFT.find(a => a.kuyrukNo === selectedKuyruk);
     setSelectedAircraft(aircraft || null);
   }, [selectedKuyruk, fleet]);
 
@@ -852,15 +856,16 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       }
   }, [formData.islemTarihi, selectedKuyruk, envanterLog, isPastDate, selectedType, selectedAircraft]);
 
-  // Trigger a fresh live fetch of flight hours and log data from Apps Script when tail or date changes
+  // Trigger a fast live fetch of flight hours and log data from Apps Script for the selected fleet
   useEffect(() => {
     if (selectedKuyruk && onTriggerSync) {
       setIsRefreshing(true);
-      onTriggerSync().finally(() => {
+      const targetType = selectedType || selectedAircraft?.tip;
+      onTriggerSync(targetType).finally(() => {
         setIsRefreshing(false);
       });
     }
-  }, [selectedKuyruk, formData.islemTarihi, onTriggerSync]);
+  }, [selectedKuyruk, onTriggerSync, selectedType, selectedAircraft?.tip]);
 
   return (
     <div className="min-h-screen bg-[#021a0c] p-4 md:p-12">

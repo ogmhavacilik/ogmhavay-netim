@@ -187,3 +187,49 @@ export interface SnapshotPreview {
 export interface OPLItem {
   [key: string]: any;
 }
+
+export interface YoklamaPerson {
+  id: string;
+  rank?: string;
+  fullName: string;
+  role: string; // 'Pilot' | 'Teknisyen' | 'Memur' | etc.
+  title: string; // e.g. 'BELL-429 PİLOT', 'T-70 TEKNİSYEN', 'C-650 PİLOT'
+  unit: string; // 'AT-802' | 'BELL-429' | 'T-70' | 'B-360' | 'C-650' | 'YÖNETİM' | 'DİĞER'
+  city?: string;
+  activeFrom?: string;
+  activeUntil?: string;
+  tcNo?: string;
+  photoUrl?: string;
+  sourceType: 'pilot' | 'teknisyen';
+  
+  // Daily resolved attendance status
+  status?: string; // 'Mevcut' | 'Görev' | 'İzin' | 'Rapor' | 'Hastane' | etc.
+  dutyLocation?: string; // 'Muğla', 'Antalya', 'İzmir', 'Çanakkale', etc.
+  dutyLocationDetail?: string; // 'YANIKLAR', 'GÜVERCİNLİK', 'MİLAS', etc.
+  dutyType?: string; // 'Planlı' | 'Plansız'
+  leaveType?: string; // 'G.İ', 'F.M.İ', 'Y.İ' etc.
+  note?: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  personId: string;
+  date: string; // YYYY-MM-DD
+  status: string; // 'Mevcut' | 'Görev' | 'İzin' | etc.
+  dutyLocation?: string;
+  dutyLocationDetail?: string;
+  dutyType?: string;
+  leaveType?: string;
+  note?: string;
+  month?: string;
+  year?: string;
+}
+
+export interface AircraftCrewInfo {
+  pilots: YoklamaPerson[];
+  technicians: YoklamaPerson[];
+  allPersonnel: YoklamaPerson[];
+  dutyLocationLabel?: string;
+  dutyLocationDetail?: string;
+  isAnkaraBaseCrew?: boolean;
+}
