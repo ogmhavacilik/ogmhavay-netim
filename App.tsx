@@ -71,7 +71,7 @@ const App = () => {
     } catch (e) {
       console.warn('Fleet cache read error:', e);
     }
-    return MOCK_AIRCRAFT;
+    return [];
   });
 
   useEffect(() => {
@@ -84,7 +84,7 @@ const App = () => {
     }
   }, [fleet]);
 
-  const [activities, setActivities] = useState<AircraftActivity[]>(MOCK_ACTIVITY_GRID);
+  const [activities, setActivities] = useState<AircraftActivity[]>([]);
   
   const [selectedAircraft, setSelectedAircraft] = useState<Aircraft | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
