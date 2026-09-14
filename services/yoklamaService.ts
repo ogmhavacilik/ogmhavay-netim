@@ -545,10 +545,21 @@ export const getAircraftCrew = (
           if (isEligible) {
             const detail = (resolved.dutyLocationDetail || '').toLocaleUpperCase('tr-TR').trim();
             
-            // Kural: Teknik Ekip biriminde çalışan personeller Antalya görevine giderse, detay yok ise AT-802'dir
-            if (dutyCity === 'ANTALYA' && isTeknikEkip && person.role === 'Teknisyen' && !detail) {
-              if (acUnit !== 'AT-802') {
-                continue; // Detaysız Antalya teknik ekip görevlendirmeleri yalnızca AT-802'ye atanır
+            if (isTeknikEkip && person.role === 'Teknisyen') {
+              if (dutyCity === 'ANTALYA' && !detail) {
+                if (acUnit !== 'AT-802') continue; // Detaysız Antalya teknik ekip görevlendirmeleri yalnızca AT-802'ye atanır
+              }
+              if (dutyCity === 'ÇANAKKALE') {
+                if (acUnit !== 'AT-802') continue; // Çanakkale teknik ekip her zaman AT-802
+              }
+              if (dutyCity === 'MUĞLA') {
+                if (acUnit === 'BELL-429') continue; // Sadece Muğla yazsa bile Bell-429 yazma
+
+                if (detail.includes('MİLAS') || detail.includes('MILAS')) {
+                  if (acUnit !== 'AT-802') continue; // Milas ise AT-802
+                } else if (detail.includes('GÜVERCİNLİK') || detail.includes('GUVERCINLIK') || detail.includes('BODRUM') || detail.includes('YANIKLAR') || detail.includes('FETHİYE') || detail.includes('FETHIYE')) {
+                  if (acUnit !== 'T-70') continue; // Güvercinlik/Yanıklar ise T-70
+                }
               }
             }
             
