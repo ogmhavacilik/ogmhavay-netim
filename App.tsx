@@ -1460,7 +1460,7 @@ const App = () => {
       // AT-802 Test Tarihi Kontrolleri
       if (aircraft.tip === 'AT-802') {
         const checkTestDate = (dateStr: string | undefined, label: string) => {
-          if (!dateStr || dateStr === '-' || dateStr === 'N/A') return;
+          if (!dateStr || dateStr === '-' || String(dateStr).trim() === '' || dateStr === 'N/A') return;
           
           let lastDate: Date;
           const parts = dateStr.split('.');
@@ -1481,10 +1481,14 @@ const App = () => {
           const today = new Date();
           today.setHours(0, 0, 0, 0);
 
-          // Calculate difference in days
+          // Calculate difference in days (from today to the next test date)
+          // If diffDays is 2, it means the test is due in 2 days.
+          // If diffDays is 0, it means the test is due today.
+          // If diffDays is negative, it means the test is overdue.
           const diffTime = nextDate.getTime() - today.getTime();
           const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
           
+          // Only show alerts if the test is due in 2 days or less
           if (diffDays <= 2 && diffDays >= 0) {
             alerts.push(`${label}: Haftalık çalışmaya son ${diffDays} gün kaldı!`);
           } else if (diffDays < 0) {
