@@ -5,7 +5,7 @@ import LogRecordsModal from './LogRecordsModal';
 import MaintenanceHistoryModal from './MaintenanceHistoryModal';
 import { fetchOPLData, formatToHHMM } from '../services/sheetService';
 import { cleanDescription } from '../services/cleanUtils';
-import { getAircraftCrew, addYoklamaListener, syncYoklamaData } from '../services/yoklamaService';
+import { getAircraftCrew, addYoklamaListener, syncYoklamaData, isYoklamaSyncInProgress, hasLiveYoklamaSynced } from '../services/yoklamaService';
 import { Users, Wrench, MapPin, RefreshCw, Sparkles, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface AircraftDetailModalProps {
@@ -25,13 +25,18 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
   const [oplAlerts, setOplAlerts] = useState<string[]>([]);
   const [isLoadingOPL, setIsLoadingOPL] = useState(false);
   const [crew, setCrew] = useState(() => getAircraftCrew(aircraft));
-  const [isCrewSyncing, setIsCrewSyncing] = useState(false);
+  const [isCrewSyncing, setIsCrewSyncing] = useState(() => isYoklamaSyncInProgress() || !hasLiveYoklamaSynced());
   const [isCrewExpanded, setIsCrewExpanded] = useState(false);
 
   useEffect(() => {
     setCrew(getAircraftCrew(aircraft));
+    if (!hasLiveYoklamaSynced()) {
+      setIsCrewSyncing(true);
+      syncYoklamaData().finally(() => setIsCrewSyncing(false));
+    }
     const unsub = addYoklamaListener(() => {
       setCrew(getAircraftCrew(aircraft));
+      setIsCrewSyncing(isYoklamaSyncInProgress());
     });
     return unsub;
   }, [aircraft]);
@@ -733,6 +738,12 @@ const AircraftDetailModal: React.FC<AircraftDetailModalProps> = ({ aircraft, act
                         </div>
 
                         <div className="flex items-center gap-2">
+                          {(isCrewSyncing || !hasLiveYoklamaSynced()) && (
+                            <span className="text-[10px] font-black bg-amber-500/90 text-white px-2.5 py-1 rounded-lg shadow-2xs flex items-center gap-1.5 animate-pulse">
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              Canlı Yoklama Yükleniyor...
+                            </span>
+                          )}
                           {crew.pilots.length > 0 && (
                             <span className="text-[10px] font-black bg-emerald-700 text-white px-2.5 py-1 rounded-lg shadow-2xs">
                               {crew.pilots.length} Pilot

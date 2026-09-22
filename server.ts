@@ -46,13 +46,14 @@ async function startServer() {
     }
 
     const action = body && typeof body === 'object' ? body.action : undefined;
+    const bypassCache = body && typeof body === 'object' ? Boolean(body.bypassCache || body.nocache || body.force) : false;
     const isReadAction = action && READ_ACTIONS.has(action);
     const serializedBody = typeof body === 'string' ? body : JSON.stringify(body || {});
     const cacheKey = `${method.toUpperCase()}:${url}:${serializedBody}`;
 
-    // 1. Invalidate cache on mutations
-    if (action && !isReadAction) {
-      // Clear relevant cached entries on writes/updates
+    // 1. Invalidate cache on mutations or when bypassCache is requested
+    if ((action && !isReadAction) || bypassCache) {
+      // Clear relevant cached entries on writes/updates or explicit force sync
       for (const key of proxyCache.keys()) {
         if (key.includes(url)) {
           proxyCache.delete(key);
@@ -60,8 +61,8 @@ async function startServer() {
       }
     }
 
-    // 2. Check read cache
-    if (isReadAction) {
+    // 2. Check read cache (skipped if bypassCache is true)
+    if (isReadAction && !bypassCache) {
       const cached = proxyCache.get(cacheKey);
       const ttl = action === 'get_attendance' ? 60000 : 25000; // 60s for attendance, 25s for other reads
       if (cached && (Date.now() - cached.timestamp < ttl)) {

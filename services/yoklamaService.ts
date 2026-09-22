@@ -220,11 +220,35 @@ export const mapPersonData = (raw: any, sourceType: 'pilot' | 'teknisyen'): Yokl
  * Maps attendance raw record from Google Apps Script / Sheet
  */
 export const mapAttendanceRecord = (raw: any, sourceType: 'pilot' | 'teknisyen'): AttendanceRecord => {
-  let dateVal = raw.date || raw.DATE || '';
-  if (dateVal && typeof dateVal === 'string' && dateVal.includes('T')) {
-    dateVal = dateVal.slice(0, 10);
+  let dateVal = raw.date || raw.DATE || raw.tarih || raw.TARIH || '';
+  if (typeof dateVal === 'string') {
+    dateVal = dateVal.trim();
+    if (dateVal.includes('T')) {
+      dateVal = dateVal.slice(0, 10);
+    } else if (dateVal.includes('.')) {
+      const parts = dateVal.split('.');
+      if (parts.length === 3 && parts[2].length === 4) {
+        dateVal = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+    } else if (dateVal.includes('/')) {
+      const parts = dateVal.split(' ')[0].split('/');
+      if (parts.length === 3 && parts[2].length === 4) {
+        let day = parts[0].padStart(2, '0');
+        let month = parts[1].padStart(2, '0');
+        const year = parts[2];
+        if (parseInt(month) > 12) {
+          const tmp = month;
+          month = day;
+          day = tmp;
+        }
+        dateVal = `${year}-${month}-${day}`;
+      }
+    }
   } else if (dateVal instanceof Date) {
-    dateVal = dateVal.toISOString().slice(0, 10);
+    const yyyy = dateVal.getFullYear();
+    const mm = String(dateVal.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateVal.getDate()).padStart(2, '0');
+    dateVal = `${yyyy}-${mm}-${dd}`;
   }
 
   const rawPersonId = String(raw.personId || raw.PERSON_ID || raw.person_id || '');
@@ -648,38 +672,63 @@ export const getAircraftCrew = (
 /**
  * Fetch latest live attendance data from Google Apps Script via proxy
  */
-export const syncYoklamaData = async (): Promise<boolean> => {
+export const syncYoklamaData = async (force: boolean = false): Promise<boolean> => {
   if (isSyncing) return false;
   const now = Date.now();
-  // If recent sync occurred and both groups have valid data, keep cache
-  if (now - lastSyncTime < 60000 && cachedPilots.length >= 10 && cachedTechs.length >= 10) {
+  // If recent sync occurred and both groups have valid data, keep cache unless forced
+  if (!force && now - lastSyncTime < 60000 && cachedPilots.length >= 10 && cachedTechs.length >= 10) {
     return true;
   }
 
   isSyncing = true;
   try {
     const [pInitRes, pAttRes, tInitRes, tAttRes] = await Promise.allSettled([
-      proxyFetch(PILOT_YOKLAMA_SCRIPT_URL, { action: 'get_init_data' }),
-      proxyFetch(PILOT_YOKLAMA_SCRIPT_URL, { action: 'get_attendance' }),
-      proxyFetch(TEKNISYEN_YOKLAMA_SCRIPT_URL, { action: 'get_init_data' }),
-      proxyFetch(TEKNISYEN_YOKLAMA_SCRIPT_URL, { action: 'get_attendance' }),
+      proxyFetch(PILOT_YOKLAMA_SCRIPT_URL, { action: 'get_init_data', bypassCache: force }),
+      proxyFetch(PILOT_YOKLAMA_SCRIPT_URL, { action: 'get_attendance', bypassCache: force }),
+      proxyFetch(TEKNISYEN_YOKLAMA_SCRIPT_URL, { action: 'get_init_data', bypassCache: force }),
+      proxyFetch(TEKNISYEN_YOKLAMA_SCRIPT_URL, { action: 'get_attendance', bypassCache: force }),
     ]);
 
     let hasChanges = false;
 
-    // 1. Process Pilot Personnel independently (never clear if response is invalid)
+    // Helper functions to extract array safely from any Google Apps Script response format
+    const extractPersonnelArray = (resVal: any): any[] => {
+      if (!resVal) return [];
+      if (Array.isArray(resVal)) return resVal;
+      if (Array.isArray(resVal.personnel)) return resVal.personnel;
+      if (Array.isArray(resVal.data?.personnel)) return resVal.data.personnel;
+      if (Array.isArray(resVal.data)) return resVal.data;
+      if (Array.isArray(resVal.pilots)) return resVal.pilots;
+      if (Array.isArray(resVal.techs)) return resVal.techs;
+      return [];
+    };
+
+    const extractAttendanceArray = (resVal: any): any[] => {
+      if (!resVal) return [];
+      if (Array.isArray(resVal)) return resVal;
+      if (Array.isArray(resVal.attendance)) return resVal.attendance;
+      if (Array.isArray(resVal.pilotAttendance)) return resVal.pilotAttendance;
+      if (Array.isArray(resVal.techAttendance)) return resVal.techAttendance;
+      if (Array.isArray(resVal.data?.attendance)) return resVal.data.attendance;
+      if (Array.isArray(resVal.data?.pilotAttendance)) return resVal.data.pilotAttendance;
+      if (Array.isArray(resVal.data?.techAttendance)) return resVal.data.techAttendance;
+      if (Array.isArray(resVal.data)) return resVal.data;
+      return [];
+    };
+
+    // 1. Process Pilot Personnel independently
     if (pInitRes.status === 'fulfilled' && pInitRes.value) {
-      const pilotsRaw = pInitRes.value?.data?.personnel || pInitRes.value?.personnel;
-      if (Array.isArray(pilotsRaw) && pilotsRaw.length >= 5) {
+      const pilotsRaw = extractPersonnelArray(pInitRes.value);
+      if (pilotsRaw.length >= 5) {
         cachedPilots = pilotsRaw.map((p: any) => mapPersonData(p, 'pilot'));
         hasChanges = true;
       }
     }
 
-    // 2. Process Technician Personnel independently (never clear if response is invalid)
+    // 2. Process Technician Personnel independently
     if (tInitRes.status === 'fulfilled' && tInitRes.value) {
-      const techsRaw = tInitRes.value?.data?.personnel || tInitRes.value?.personnel;
-      if (Array.isArray(techsRaw) && techsRaw.length >= 5) {
+      const techsRaw = extractPersonnelArray(tInitRes.value);
+      if (techsRaw.length >= 5) {
         cachedTechs = techsRaw.map((p: any) => mapPersonData(p, 'teknisyen'));
         hasChanges = true;
       }
@@ -687,7 +736,7 @@ export const syncYoklamaData = async (): Promise<boolean> => {
 
     // 3. Process Pilot Attendance independently
     if (pAttRes.status === 'fulfilled' && pAttRes.value) {
-      const pAtt = Array.isArray(pAttRes.value?.data) ? pAttRes.value.data : (Array.isArray(pAttRes.value) ? pAttRes.value : []);
+      const pAtt = extractAttendanceArray(pAttRes.value);
       if (pAtt.length >= 5) {
         cachedPilotAttendance = pAtt.map((a: any) => mapAttendanceRecord(a, 'pilot'));
         hasChanges = true;
@@ -696,7 +745,7 @@ export const syncYoklamaData = async (): Promise<boolean> => {
 
     // 4. Process Technician Attendance independently
     if (tAttRes.status === 'fulfilled' && tAttRes.value) {
-      const tAtt = Array.isArray(tAttRes.value?.data) ? tAttRes.value.data : (Array.isArray(tAttRes.value) ? tAttRes.value : []);
+      const tAtt = extractAttendanceArray(tAttRes.value);
       if (tAtt.length >= 5) {
         cachedTechAttendance = tAtt.map((a: any) => mapAttendanceRecord(a, 'teknisyen'));
         hasChanges = true;

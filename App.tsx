@@ -123,9 +123,9 @@ const App = () => {
   const [isGovdeSorguOpen, setIsGovdeSorguOpen] = useState(false);
   const [isFetchingActivities, setIsFetchingActivities] = useState(false);
 
-  // Pilot ve Teknisyen Yoklama Sistemlerini uygulama başlangıcında 1 kez yükle (Sürekli yenileme kapalı)
+  // Pilot ve Teknisyen Yoklama Sistemlerini uygulama başlangıcında 1 kez en güncel canlı veriyle yükle
   useEffect(() => {
-    syncYoklamaData();
+    syncYoklamaData(true);
   }, []);
 
   const [showIntraDayModal, setShowIntraDayModal] = useState(false);
