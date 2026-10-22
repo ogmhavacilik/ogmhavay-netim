@@ -2,11 +2,11 @@
 import { PlatformType, Status, StatusType, Aircraft, AircraftActivity } from './types';
 
 export const BELL_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0eed7bLawR72nNG3VO3XEH_Qhe3sjIOJqcUpmFvWEQfd0SCRNgkqleb6MhHVnLA7V/exec";
-export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw_wW_VnaVtfroh3Y9-tJk5RfSx2XVkOilH8QQL4HIezb0jK32qI_XNs-Gj_8i-rnBiIw/exec";
+export const AT802_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzchuzAoy7bh6yX9taMowF0tU4tfS9-QMLCONd3JV1yB0honLP6jqnDw2y_ZJjQ5x2cFw/exec";
 export const T70_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwvC8peKrqCpy1g13HQPzy4L9w3vC_ZG9IvVt8UBmyVE5wdJU5y8TJDKfzC1C6VIOCfEQ/exec"; 
 export const B360_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrbIvbXLDJBC2_s9PeevqjIiIIWkDZ6kd2AoYG-4qnsFHatVT8AG9hVFb-3M_e-QJ8Gg/exec";
 export const C650_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjm3OUnrM_Ki6fyVG_PqpqEkNtoc18fgf3lEPtZRtC-T2-e_ecyneHduXjfygoLjr5/exec";
-export const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxpL3IhBRLYMEb3LpgUOCo_7U126-uE3WwActB0JJmKR8yvxfIun0bL7W6Jj6AOU_q-qQ/exec";
+export const LOG_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhb3yYBSgz2qUlAJIoBnpAft1g1MEiyGXAkYPxL3Zegs3QkzalmjeAmGRMREabGgTltg/exec";
 export const MAIL_LOG_SHEET_ID = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
 export const YAKIT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJVvXLX84N_79x_Yik_flkQ1jjr70Krwqnj6vJ77gUnCSlUcs9oq2MkKpTy2ZIwtU/exec";
 export const YAKIT_SHEET_ID = "1ifdtoxjdr1U0YmMdeeByBEpHbLwEa7OTMoTLbm97WdQ";

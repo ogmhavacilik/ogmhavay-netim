@@ -1189,3 +1189,359 @@ export const fetchYakitData = async (): Promise<YakitKaydi[]> => {
     return [];
   }
 };
+
+// ----------------------------------------------------
+// AT-802 BAKIM TAKİP SERVİSİ
+// ----------------------------------------------------
+
+export interface AT802BakimTakipRow {
+  rowIndex: number; // 4 to 36
+  inspection: string; // Col A
+  description: string; // Col B
+  tsn: string; // Col C (TSN)
+  t8n?: string; // Backward compatibility
+  formulaC?: string; // Col C TSN formülü
+  intervalo: string; // Col D
+  ttg: string; // Col E
+  currentVal: string; // Col F
+  rowSpan?: number;
+  isContinuation?: boolean;
+  isDate?: boolean;
+  isOtRow?: boolean;
+  isReadOnly?: boolean;
+}
+
+export interface AT802BakimTakipData {
+  sheetName: string;
+  headerInfo: {
+    registration: string;
+    programRef: string;
+    date: string;
+    tsn: string;
+    t8n?: string;
+  };
+  rows: AT802BakimTakipRow[];
+  motorSicakRowIndex?: number;
+  lastShowRowIndex?: number;
+  error?: string;
+}
+
+export const calculateLiveTSNValue = (fValStr: string, dValStr: string): string => {
+  if (!fValStr || !dValStr) return '';
+  const cleanF = fValStr.trim();
+  const cleanD = dValStr.trim().replace(/\s*d$/i, '');
+  if (!cleanF || !cleanD) return '';
+
+  // 1. Saat toplama (HH:MM veya HHH:MM, örn: 940:00 + 100:00 = 1040:00)
+  const parseToMinutes = (val: string): number | null => {
+    if (val.includes(':')) {
+      const parts = val.split(':');
+      if (parts.length >= 2) {
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (!isNaN(h) && !isNaN(m)) {
+          return h * 60 + m;
+        }
+      }
+    }
+    const num = parseFloat(val.replace(',', '.'));
+    if (!isNaN(num)) {
+      return Math.round(num * 60);
+    }
+    return null;
+  };
+
+  const fMin = parseToMinutes(cleanF);
+  const dMin = parseToMinutes(cleanD);
+
+  if (fMin !== null && dMin !== null) {
+    const sumMin = fMin + dMin;
+    const hours = Math.floor(sumMin / 60);
+    const mins = sumMin % 60;
+    return `${hours}:${String(mins).padStart(2, '0')}`;
+  }
+
+  // 2. Takvim / Gün toplama (Tarih + gün sayısı)
+  const parseDate = (val: string): Date | null => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+      const [y, m, d] = val.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+    const parts = val.split(/[\.\-\/]/);
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      }
+      let year = Number(parts[2]);
+      if (year < 100) year += 2000;
+      return new Date(year, Number(parts[1]) - 1, Number(parts[0]));
+    }
+    return null;
+  };
+
+  const days = parseFloat(cleanD);
+  const dt = parseDate(cleanF);
+  if (dt && !isNaN(days)) {
+    const resDt = new Date(dt.getTime() + days * 86400 * 1000);
+    const dd = String(resDt.getDate()).padStart(2, '0');
+    const mm = String(resDt.getMonth() + 1).padStart(2, '0');
+    const yy = String(resDt.getFullYear()).slice(-2);
+    if (cleanF.includes('/')) return `${dd}/${mm}/${yy}`;
+    return `${dd}.${mm}.${resDt.getFullYear()}`;
+  }
+
+  const numF = parseFloat(cleanF.replace(',', '.'));
+  const numD = parseFloat(cleanD.replace(',', '.'));
+  if (!isNaN(numF) && !isNaN(numD)) {
+    return String(numF + numD);
+  }
+
+  return '';
+};
+
+export const fetchAT802BakimTakipData = async (
+  url: string,
+  sheetId: string,
+  kuyrukNo: string,
+  acTT?: string
+): Promise<AT802BakimTakipData> => {
+  const cleanTail = kuyrukNo ? kuyrukNo.toUpperCase() : "OR-2028";
+  const numPart = cleanTail.replace(/\D/g, '') || "2028";
+  const sheetName = `${numPart} Bakım Takip`;
+
+  const cleanUrl = url?.trim();
+  if (!cleanUrl || !cleanUrl.startsWith('http')) {
+    console.error("fetchAT802BakimTakipData: Geçersiz veya boş Apps Script URL:", url);
+    return {
+      sheetName,
+      headerInfo: {
+        registration: cleanTail,
+        programRef: "-",
+        date: "-",
+        tsn: acTT || "-",
+        t8n: acTT || "-"
+      },
+      rows: [],
+      error: "Google Apps Script URL'si bulunamadı veya geçersiz. Lütfen ayarları kontrol ediniz."
+    };
+  }
+
+  try {
+    const res = await proxyFetch(cleanUrl, {
+      action: 'getAT802BakimTakipData',
+      sheetId,
+      kuyrukNo,
+      bypassCache: true
+    });
+
+    if (res && res.success && res.data) {
+      const serverData = res.data;
+      const rawRows = Array.isArray(serverData.data) ? serverData.data : (Array.isArray(serverData) ? serverData : null);
+      const rawFormulas = Array.isArray(serverData.formulas) ? serverData.formulas : null;
+
+      if (rawRows && rawRows.length > 0) {
+        // "MOTOR SICAK KISIM KONTROLÜ" satırını dinamik tara
+        let motorSicakRowIndex = 30;
+        let hasOtInRaw = false;
+
+        for (let i = 0; i < rawRows.length; i++) {
+          const rIndex = i + 4;
+          const rData = rawRows[i] || [];
+          const colA = String(rData[0] || '').trim();
+          const colB = String(rData[1] || '').trim();
+          const colE = String(rData[4] || '').trim().toUpperCase();
+          const combined = (colA + ' ' + colB).toLocaleUpperCase('tr-TR');
+          if (combined.includes('MOTOR SICAK KISIM')) {
+            motorSicakRowIndex = rIndex;
+          }
+          if (colE === 'O.T' || colE === 'OT' || colE.includes('O.T')) {
+            hasOtInRaw = true;
+          }
+        }
+
+        // Eğer e-tablodan dönen veri O.T satırını henüz içermiyorsa, getRawData ile O.T satırını (A31:G31) ekle
+        if (!hasOtInRaw && motorSicakRowIndex > 0) {
+          try {
+            const otRowIndex = motorSicakRowIndex + 1;
+            const otRes = await proxyFetch(cleanUrl, {
+              action: 'getRawData',
+              sheetId,
+              sheetName: serverData.sheetName || sheetName,
+              range: `A${otRowIndex}:G${otRowIndex}`,
+              bypassCache: true
+            });
+            const otRowData = Array.isArray(otRes) ? otRes[0] : (otRes?.data ? otRes.data[0] : null);
+            if (otRowData && otRowData.length >= 6) {
+              rawRows.push(otRowData);
+              if (rawFormulas) rawFormulas.push([]);
+            }
+          } catch (otErr) {
+            console.warn("O.T satırı ek okuma hatası:", otErr);
+          }
+        }
+
+        let lastShowRowIndex = motorSicakRowIndex;
+        // Son satır olarak O.T satırını da dahil et
+        for (let i = 0; i < rawRows.length; i++) {
+          const rIndex = i + 4;
+          const rData = rawRows[i] || [];
+          const colE = String(rData[4] || '').trim().toUpperCase();
+          if (rIndex > motorSicakRowIndex && (colE.includes('O.T') || colE.includes('OT') || rIndex === motorSicakRowIndex + 1)) {
+            lastShowRowIndex = rIndex;
+            break;
+          }
+        }
+
+        const mappedRows: AT802BakimTakipRow[] = [];
+        let lastInspection = "";
+
+        for (let i = 0; i < rawRows.length; i++) {
+          const rIndex = i + 4;
+          // O.T satırından sonraki satırları gösterme
+          if (rIndex > lastShowRowIndex) {
+            break;
+          }
+
+          const rData = rawRows[i] || [];
+          const rFormulas = (rawFormulas && rawFormulas[i]) ? rawFormulas[i] : [];
+          const colA = String(rData[0] || '').trim();
+          const colB = String(rData[1] || '').trim();
+          const colC = String(rData[2] || '').trim();
+          const formulaC = rFormulas[2] ? String(rFormulas[2]).trim() : '';
+          const colD = String(rData[3] || '').trim();
+          let colE = String(rData[4] || '').trim();
+          const colF = String(rData[5] || '').trim();
+
+          const isOtRow = rIndex > motorSicakRowIndex;
+          if (isOtRow) {
+            colE = "O.T";
+          }
+
+          const isHeader = rIndex === 4;
+          const isDate = rIndex === 5;
+          const isContinuation = !colA && !!lastInspection && rIndex > 5 && !isOtRow;
+          if (colA && !isOtRow) lastInspection = colA;
+
+          mappedRows.push({
+            rowIndex: rIndex,
+            inspection: colA || (isOtRow ? "" : ""),
+            description: colB || (isOtRow ? "O.T" : ""),
+            tsn: colC,
+            t8n: colC,
+            formulaC: isOtRow ? "" : formulaC,
+            intervalo: isOtRow ? "" : colD,
+            ttg: colE,
+            currentVal: colF,
+            isContinuation,
+            isDate,
+            isOtRow,
+            isReadOnly: false
+          });
+        }
+
+        // Calculate rowspans (starting at row 6: 25 SAATLİK BAKIM)
+        for (let i = 0; i < mappedRows.length; i++) {
+          if (mappedRows[i].inspection && !mappedRows[i].isContinuation && mappedRows[i].rowIndex >= 6) {
+            let span = 1;
+            for (let j = i + 1; j < mappedRows.length; j++) {
+              if (mappedRows[j].isContinuation) {
+                span++;
+              } else {
+                break;
+              }
+            }
+            mappedRows[i].rowSpan = span;
+          }
+        }
+
+        const rawTsn = serverData.headerInfo?.t8n || serverData.headerInfo?.tsn || acTT || "";
+
+        return {
+          sheetName: serverData.sheetName || sheetName,
+          headerInfo: {
+            registration: serverData.headerInfo?.registration || cleanTail,
+            programRef: serverData.headerInfo?.programRef || "-",
+            date: serverData.headerInfo?.date || "-",
+            tsn: rawTsn,
+            t8n: rawTsn
+          },
+          rows: mappedRows,
+          motorSicakRowIndex,
+          lastShowRowIndex
+        };
+      }
+    }
+
+    // Gerçek e-tablo verisi alınamadığında ASLA sahte/mock veri dönme!
+    return {
+      sheetName,
+      headerInfo: {
+        registration: cleanTail,
+        programRef: "-",
+        date: "-",
+        tsn: acTT || "-",
+        t8n: acTT || "-"
+      },
+      rows: [],
+      error: res?.error || `Google E-Tablosu ('${sheetName}') verisi okunamadı veya boş döndü.`
+    };
+  } catch (err: any) {
+    console.error("fetchAT802BakimTakipData fetch hatası:", err);
+    return {
+      sheetName,
+      headerInfo: {
+        registration: cleanTail,
+        programRef: "-",
+        date: "-",
+        tsn: acTT || "-",
+        t8n: acTT || "-"
+      },
+      rows: [],
+      error: err?.message || `Google E-Tablosu ('${sheetName}') ile bağlantı kurulamadı.`
+    };
+  }
+};
+
+export const updateAT802BakimTakipData = async (
+  url: string,
+  sheetId: string,
+  kuyrukNo: string,
+  inputs: Record<number, string>,
+  maxRowIndex: number = 40,
+  changedRows?: number[],
+  updatedFormulas?: Record<number, string>
+): Promise<{ success: boolean; message?: string }> => {
+  const cleanUrl = url?.trim();
+  if (!cleanUrl || !cleanUrl.startsWith('http')) {
+    return { success: true, message: "Yerel test modunda kaydedildi (URL tanımsız)." };
+  }
+
+  // Kullanıcı kuralı: F sütununda veri yazarken en az satır 6'dan (25 Saatlik Bakım) en son "O.T" satırına kadar yaz!
+  const sanitizedInputs: Record<number, string> = {};
+  Object.keys(inputs).forEach(k => {
+    const rNum = parseInt(k, 10);
+    if (rNum === 5 || (rNum >= 6 && rNum <= maxRowIndex)) {
+      sanitizedInputs[rNum] = inputs[rNum];
+    }
+  });
+
+  try {
+    const res = await proxyFetch(cleanUrl, {
+      action: 'insertAT802BakimTakipColumn',
+      sheetId,
+      kuyrukNo,
+      inputs: sanitizedInputs,
+      changedRows: changedRows || [],
+      updatedFormulas: updatedFormulas || {},
+      bypassCache: true
+    });
+
+    if (res && res.success) {
+      return { success: true, message: res.data?.message || "Yeni bakım başarıyla eklendi." };
+    }
+    return { success: false, message: res?.error || "Kayıt sırasında hata oluştu." };
+  } catch (err: any) {
+    console.error("updateAT802BakimTakipData error:", err);
+    return { success: false, message: err?.message || "Sunucu bağlantı hatası." };
+  }
+};

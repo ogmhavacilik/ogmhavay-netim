@@ -5,9 +5,12 @@ import { createServer as createViteServer } from 'vite';
 import { setGlobalDispatcher, Agent } from 'undici';
 
 setGlobalDispatcher(new Agent({
-  headersTimeout: 120000,
-  bodyTimeout: 120000,
-  connectTimeout: 30000
+  headersTimeout: 90000,
+  bodyTimeout: 90000,
+  connectTimeout: 30000,
+  keepAliveTimeout: 30000,
+  keepAliveMaxTimeout: 90000,
+  pipelining: 0
 }));
 
 async function startServer() {
@@ -29,6 +32,7 @@ async function startServer() {
   const READ_ACTIONS = new Set([
     'getAircraftData',
     'getAircraftSpecificData',
+    'getAT802BakimTakipData',
     'get_init_data',
     'get_attendance',
     'onGetAdminPanelData',
@@ -89,6 +93,7 @@ async function startServer() {
       let targetUrl = url;
       let fetchOptions: RequestInit = {
         redirect: 'follow',
+        signal: AbortSignal.timeout(90000)
       };
 
       if (method.toUpperCase() === 'GET') {
@@ -111,35 +116,49 @@ async function startServer() {
       }
 
       let response: Response | undefined;
-      let lastError: any;
       let parsedData: any = null;
 
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      // Mutations (such as insertColumn, updateAircraftData) MUST NEVER BE RETRIED to avoid duplicate insertions
+      const maxAttempts = isReadAction ? 2 : 1;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
           response = await fetch(targetUrl, fetchOptions);
           
           if (response.ok) {
             const rawText = await response.text();
             const isHtml = rawText.includes('<!DOCTYPE html>') || rawText.includes('<html') || rawText.includes('Google Docs');
-            if (!isHtml) {
-              try {
-                parsedData = JSON.parse(rawText);
-              } catch (e) {
-                parsedData = rawText;
-              }
-              break; // Success!
+            if (isHtml) {
+              // Target is returning HTML (e.g. login/permissions/page not found). Do not retry in a loop.
+              return {
+                success: false,
+                data: null,
+                status: 200
+              };
             }
+            try {
+              parsedData = JSON.parse(rawText);
+            } catch (e) {
+              parsedData = rawText;
+            }
+            break; // Success!
           } else {
             if (response.status !== 429 && response.status >= 400 && response.status < 500) {
               break;
             }
           }
-        } catch (err) {
-          lastError = err;
+        } catch (err: any) {
+          // Timeout or connection error
+          if (attempt === 2) {
+            return {
+              success: false,
+              data: null,
+              status: 504
+            };
+          }
         }
 
-        if (attempt < 3) {
-          await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 800));
         }
       }
 
@@ -155,23 +174,11 @@ async function startServer() {
         };
       }
 
-      if (response) {
-        const rawText = await response.text().catch(() => '');
-        let fallbackData: any = rawText;
-        try { fallbackData = JSON.parse(rawText); } catch (e) {}
-
-        const status = response.status;
-        if (response.ok && isReadAction) {
-          proxyCache.set(cacheKey, { data: fallbackData, status, timestamp: Date.now() });
-        }
-        return {
-          success: response.ok,
-          data: fallbackData,
-          status
-        };
-      }
-
-      throw lastError || new Error('Network request failed after 3 attempts');
+      return {
+        success: false,
+        data: null,
+        status: response ? response.status : 504
+      };
     };
 
     try {
@@ -188,13 +195,11 @@ async function startServer() {
         const result = await executeFetch();
         return res.status(200).json(result);
       }
-    } catch (error) {
-      console.error('Proxy Error:', error);
+    } catch (error: any) {
       res.status(200).json({ 
         success: false, 
         data: null,
-        error: error instanceof Error ? error.message : 'Internal Server Error',
-        details: String(error)
+        error: error instanceof Error ? error.message : 'Internal Server Error'
       });
     }
   });

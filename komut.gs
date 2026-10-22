@@ -747,6 +747,301 @@ function doPost(e) {
     }
 
 
+    // 🟡 AT-802 BAKIM TAKİP VERİSİ SORGULAMA (A4:F35)
+    if (action === "getAT802BakimTakipData") {
+      var kNo = String(params.kuyrukNo || "").trim();
+      var digits = kNo.replace(/\D/g, "");
+      var cleanKNo = kNo.replace(/[-\s]/g, "").toUpperCase();
+
+      var targetSheet = null;
+      var allSheets = ss.getSheets();
+
+      for (var s = 0; s < allSheets.length; s++) {
+        var sName = allSheets[s].getName().trim();
+        var sNameNorm = sName.replace(/[\s\.-]/g, "").toLocaleUpperCase("tr-TR");
+        if (digits && sNameNorm.indexOf(digits) !== -1 && (sNameNorm.indexOf("BAKIM") !== -1 || sNameNorm.indexOf("TAKIP") !== -1)) {
+          targetSheet = allSheets[s];
+          break;
+        }
+      }
+      if (!targetSheet && digits) {
+        for (var s = 0; s < allSheets.length; s++) {
+          var sNameNorm = allSheets[s].getName().replace(/[\s\.-]/g, "").toLocaleUpperCase("tr-TR");
+          if (sNameNorm.indexOf(digits) !== -1) {
+            targetSheet = allSheets[s];
+            break;
+          }
+        }
+      }
+      if (!targetSheet) {
+        for (var s = 0; s < allSheets.length; s++) {
+          var sNameNorm = allSheets[s].getName().replace(/[\s\.-]/g, "").toLocaleUpperCase("tr-TR");
+          if (sNameNorm.indexOf(cleanKNo) !== -1) {
+            targetSheet = allSheets[s];
+            break;
+          }
+        }
+      }
+
+      if (!targetSheet) {
+        return jsonError("Sayfa bulunamadı: " + kNo + " Bakım Takip");
+      }
+
+      try {
+        var headVals = targetSheet.getRange("A1:F2").getDisplayValues();
+        var headerInfo = {
+          registration: headVals[1][0] || kNo,
+          programRef: headVals[1][1] || "",
+          date: headVals[1][2] || "",
+          t8n: headVals[1][4] || ""
+        };
+
+        // Sayfayı tara: "MOTOR SICAK KISIM KONTROLÜ" yazan satırı bul
+        var motorSicakRow = 30;
+        var maxScan = Math.min(targetSheet.getLastRow(), 50);
+        if (maxScan >= 6) {
+          var scanVals = targetSheet.getRange(1, 1, maxScan, 2).getDisplayValues();
+          for (var r = 0; r < scanVals.length; r++) {
+            var txt = (scanVals[r][0] + " " + scanVals[r][1]).toLocaleUpperCase("tr-TR");
+            if (txt.indexOf("MOTOR SICAK KISIM") !== -1) {
+              motorSicakRow = r + 1;
+              break;
+            }
+          }
+        }
+
+        // MOTOR SICAK KISIM KONTROLÜ'nün hemen altındaki satırı tara (O.T satırı)
+        var lastShowRow = motorSicakRow;
+        var maxCheckOT = Math.min(targetSheet.getLastRow(), motorSicakRow + 5);
+        if (maxCheckOT > motorSicakRow) {
+          var postVals = targetSheet.getRange(motorSicakRow + 1, 1, maxCheckOT - motorSicakRow, 6).getDisplayValues();
+          for (var p = 0; p < postVals.length; p++) {
+            var pColE = String(postVals[p][4] || "").trim().toUpperCase();
+            var pColB = String(postVals[p][1] || "").trim().toUpperCase();
+            if (pColE.indexOf("O.T") !== -1 || pColE === "OT" || pColB.indexOf("O.T") !== -1 || p === 0) {
+              lastShowRow = motorSicakRow + 1 + p;
+              break;
+            }
+          }
+        }
+        if (lastShowRow === motorSicakRow && targetSheet.getLastRow() > motorSicakRow) {
+          lastShowRow = motorSicakRow + 1;
+        }
+
+        // Sadece A4'ten lastShowRow'a kadar (O.T satırı dahil) olan verileri ve formülleri oku
+        var numRowsToRead = (lastShowRow - 4 + 1);
+        var dataRange = targetSheet.getRange(4, 1, numRowsToRead, 6);
+        var dataValues = dataRange.getDisplayValues();
+        var dataFormulas = dataRange.getFormulas();
+
+        return jsonSuccess({
+          sheetName: targetSheet.getName(),
+          headerInfo: headerInfo,
+          data: dataValues,
+          formulas: dataFormulas,
+          motorSicakRowIndex: motorSicakRow,
+          lastShowRowIndex: lastShowRow
+        });
+      } catch (err) {
+        return jsonError("Bakım takip verileri okunurken hata: " + err.toString());
+      }
+    }
+
+    // 🟡 AT-802 BAKIM TAKİP VERİSİ GÜNCELLEME (F SÜTUNUNA SOLA SÜTUN EKLEME)
+    if (action === "insertAT802BakimTakipColumn" || action === "updateAT802BakimTakip") {
+      var kNo = String(params.kuyrukNo || "").trim();
+      var digits = kNo.replace(/\D/g, "");
+      var cleanKNo = kNo.replace(/[-\s]/g, "").toUpperCase();
+      var inputs = params.inputs || {};
+      var changedRows = params.changedRows || [];
+      var updatedFormulas = params.updatedFormulas || {};
+
+      var targetSheet = null;
+      var allSheets = ss.getSheets();
+      for (var s = 0; s < allSheets.length; s++) {
+        var sName = allSheets[s].getName().trim();
+        var sNameNorm = sName.replace(/[\s\.-]/g, "").toLocaleUpperCase("tr-TR");
+        if (digits && sNameNorm.indexOf(digits) !== -1 && (sNameNorm.indexOf("BAKIM") !== -1 || sNameNorm.indexOf("TAKIP") !== -1)) {
+          targetSheet = allSheets[s];
+          break;
+        }
+      }
+      if (!targetSheet && digits) {
+        for (var s = 0; s < allSheets.length; s++) {
+          var sNameNorm = allSheets[s].getName().replace(/[\s\.-]/g, "").toLocaleUpperCase("tr-TR");
+          if (sNameNorm.indexOf(digits) !== -1) {
+            targetSheet = allSheets[s];
+            break;
+          }
+        }
+      }
+      if (!targetSheet) {
+        for (var s = 0; s < allSheets.length; s++) {
+          var sNameNorm = allSheets[s].getName().replace(/[\s\.-]/g, "").toLocaleUpperCase("tr-TR");
+          if (sNameNorm.indexOf(cleanKNo) !== -1) {
+            targetSheet = allSheets[s];
+            break;
+          }
+        }
+      }
+
+      if (!targetSheet) {
+        return jsonError("Sayfa bulunamadı: " + kNo + " Bakım Takip");
+      }
+
+      try {
+        // "MOTOR SICAK KISIM KONTROLÜ" ve "O.T" satırlarını dinamik tespit et
+        var motorSicakRow = 30;
+        var maxCheckRow = Math.min(targetSheet.getLastRow(), 50);
+        if (maxCheckRow >= 6) {
+          var scanRange = targetSheet.getRange(1, 1, maxCheckRow, 2).getDisplayValues();
+          for (var sr = 0; sr < scanRange.length; sr++) {
+            var rowText = (scanRange[sr][0] + " " + scanRange[sr][1]).toLocaleUpperCase("tr-TR");
+            if (rowText.indexOf("MOTOR SICAK KISIM") !== -1) {
+              motorSicakRow = sr + 1;
+              break;
+            }
+          }
+        }
+
+        // O.T satırı: motorSicakRow'un hemen altındaki satır (örn: Satır 31)
+        var endInputRow = motorSicakRow + 1;
+        var maxCheckOT = Math.min(targetSheet.getLastRow(), motorSicakRow + 5);
+        if (maxCheckOT > motorSicakRow) {
+          var postVals = targetSheet.getRange(motorSicakRow + 1, 1, maxCheckOT - motorSicakRow, 6).getDisplayValues();
+          for (var p = 0; p < postVals.length; p++) {
+            var pColE = String(postVals[p][4] || "").trim().toUpperCase();
+            var pColB = String(postVals[p][1] || "").trim().toUpperCase();
+            if (pColE.indexOf("O.T") !== -1 || pColE === "OT" || pColB.indexOf("O.T") !== -1) {
+              endInputRow = motorSicakRow + 1 + p;
+              break;
+            }
+          }
+        }
+
+        var totalCopyRows = Math.max(endInputRow + 2, 36);
+
+        // Sütun eklemeden önce mevcut formülleri oku (C sütunu TSN formülleri için)
+        var preFormulas = targetSheet.getRange(1, 1, totalCopyRows, 6).getFormulas();
+
+        // 1. F sütununun soluna (6. sütun) yeni sütun ekle
+        targetSheet.insertColumnBefore(6);
+
+        // 2. Formatları koru: Yeni F sütununa eski F (şimdi G olan, index 7) sütununun format ve stillerini kopyala
+        var sourceRange = targetSheet.getRange(1, 7, totalCopyRows, 1);
+        var destRange = targetSheet.getRange(1, 6, totalCopyRows, 1);
+        sourceRange.copyTo(destRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+
+        // 3. Sütun genişliğini ayarla
+        var oldColWidth = targetSheet.getColumnWidth(7);
+        if (oldColWidth > 0) {
+          targetSheet.setColumnWidth(6, oldColWidth);
+        }
+
+        // 4. Eski sütundaki (G sütunu, index 7) değerleri oku
+        var oldDisplayVals = targetSheet.getRange(1, 7, totalCopyRows, 1).getDisplayValues();
+
+        // 5. Yeni F sütunu başlıkları ve Eski F sütunu başlığı (Before)
+        targetSheet.getRange(1, 6).setValue(oldDisplayVals[0][0]);
+        targetSheet.getRange(2, 6).setValue(oldDisplayVals[1][0]);
+        targetSheet.getRange(3, 6).setValue(oldDisplayVals[2][0]);
+        // Satır 4: Yeni F sütununda başlık "Last", sağa kayan eski F sütununda başlık "Before"!
+        targetSheet.getRange(4, 6).setValue("Last");
+        targetSheet.getRange(4, 7).setValue("Before");
+
+        // F5: Tarih
+        if (inputs["5"] !== undefined && inputs["5"] !== "") {
+          targetSheet.getRange(5, 6).setValue(inputs["5"]);
+        } else {
+          targetSheet.getRange(5, 6).setValue(oldDisplayVals[4][0]);
+        }
+
+        // Değişen satırların tespiti
+        var actualChangedRows = {};
+        if (Array.isArray(changedRows)) {
+          for (var c = 0; c < changedRows.length; c++) {
+            actualChangedRows[String(changedRows[c])] = true;
+          }
+        }
+
+        // F6'dan endInputRow'a (O.T satırı dahil) kadar kullanıcı verilerini yaz.
+        // YENİ EKLENEN F SÜTUNUNDA DEĞİŞEN VERİNİN SADECE O SATIRIN DOLGUSU "YEŞİL" (#bbf7d0) OLSUN!
+        for (var r = 6; r <= endInputRow; r++) {
+          var valToWrite = inputs[String(r)] !== undefined ? inputs[String(r)] : inputs[r];
+          var oldCellVal = oldDisplayVals[r - 1] ? oldDisplayVals[r - 1][0] : "";
+
+          var isChanged = false;
+          if (actualChangedRows[String(r)] || actualChangedRows[r]) {
+            isChanged = true;
+          } else if (valToWrite !== undefined && valToWrite !== null && String(valToWrite).trim() !== "" && String(valToWrite).trim() !== String(oldCellVal).trim()) {
+            isChanged = true;
+          }
+
+          if (valToWrite === undefined || valToWrite === null || valToWrite === "") {
+            valToWrite = oldCellVal;
+          }
+          if (valToWrite !== undefined && valToWrite !== null) {
+            targetSheet.getRange(r, 6).setValue(valToWrite);
+          }
+
+          // Kullanıcı kuralı: Sadece değişen satırın dolgusu yeşil olsun!
+          if (isChanged) {
+            targetSheet.getRange(r, 6).setBackground("#bbf7d0"); // Yeşil dolgu
+          } else {
+            // Değişmeyen satırda yeşil dolgu olmasın (varsayılan)
+            targetSheet.getRange(r, 6).setBackground(null);
+          }
+
+          // Kural: Yalnızca motorSicakRow'a kadar olan (O.T hariç) ve verisi değişen satırlarda TSN (C sütunu) formülü güncellenir
+          if (isChanged && r <= motorSicakRow) {
+            var targetFormula = "";
+            if (updatedFormulas && (updatedFormulas[String(r)] || updatedFormulas[r])) {
+              targetFormula = updatedFormulas[String(r)] || updatedFormulas[r];
+            } else {
+              var prevFormula = (preFormulas[r - 1] && preFormulas[r - 1][2]) ? preFormulas[r - 1][2] : "";
+              var secondComp = "D" + r;
+              if (prevFormula && prevFormula.indexOf("+") !== -1) {
+                var fParts = prevFormula.replace(/^=/, "").split("+");
+                if (fParts.length >= 2) {
+                  secondComp = fParts[1].trim();
+                }
+              }
+              targetFormula = "=F" + r + "+" + secondComp;
+            }
+
+            if (targetFormula) {
+              targetSheet.getRange(r, 3).setFormula(targetFormula);
+            }
+          }
+        }
+
+        // endInputRow'dan sonraki satırlar varsa (formül/not vb.), formülleri bozulmadan kopyalanır
+        var totalRows = targetSheet.getLastRow();
+        if (totalRows > endInputRow) {
+          try {
+            var diffRows = totalRows - endInputRow;
+            var srcNotes = targetSheet.getRange(endInputRow + 1, 7, diffRows, 1);
+            var dstNotes = targetSheet.getRange(endInputRow + 1, 6, diffRows, 1);
+            srcNotes.copyTo(dstNotes, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+          } catch (fErr) {
+            for (var r = endInputRow + 1; r <= totalRows; r++) {
+              if (oldDisplayVals[r - 1] && oldDisplayVals[r - 1][0] !== undefined) {
+                targetSheet.getRange(r, 6).setValue(oldDisplayVals[r - 1][0]);
+              }
+            }
+          }
+        }
+
+        SpreadsheetApp.flush();
+
+        return jsonSuccess({
+          message: "Yeni bakım takip sütunu başarıyla eklendi, başlıklar (Last/Before) ve yeşil dolgular ayarlandı."
+        });
+      } catch (err) {
+        return jsonError("Bakım takip sütunu eklenirken hata: " + err.toString());
+      }
+    }
+
     // 🟠 GÜNCELLEME AKSİYONU
     if (action === "updateAircraftData") {
       var sheetName = params.sheetName || "";

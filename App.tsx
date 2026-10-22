@@ -213,10 +213,10 @@ const App = () => {
           }
           if (!isPastDate) {
             if (updates.konum !== undefined) updatedAc.konum = updates.konum;
-            if (updates.durum !== undefined) updatedAc.durum = updates.durum;
+            if (updates.durum !== undefined) updatedAc.durum = updates.durum as Status;
             if (updates.durumAyrintisi !== undefined) updatedAc.durumAyrintisi = updates.durumAyrintisi;
             if (updates.aciklama !== undefined) updatedAc.aciklama = updates.aciklama;
-            if (updates.assignedCode !== undefined) updatedAc.assignedCode = updates.assignedCode;
+            if (updates.assignedCode !== undefined) updatedAc.assignedCode = updates.assignedCode as DailyStatusCode;
             
             if (updates.bakim50H !== undefined) updatedAc.bakim50H = updates.bakim50H;
             if (updates.bakimTakvim !== undefined) updatedAc.bakimTakvim = updates.bakimTakvim;
@@ -1587,6 +1587,9 @@ const App = () => {
             govdeStr = formatToHHMM(govdeSaat, rowTip);
           }
 
+          const baseAc = fleet.find(f => f.kuyrukNo === (row.kuyrukNo || ''));
+          const cfg = SHEET_CONFIGS.find(c => c.aircraftType === rowTip);
+
           return {
             kuyrukNo: row.kuyrukNo || '',
             cagriKodu: getCallSignByTail(row.kuyrukNo || ''),
@@ -1598,8 +1601,10 @@ const App = () => {
             aciklama: row.aciklama || '',
             govdeUcusSaati: govdeStr,
             assignedCode: row.analizKodu as DailyStatusCode || 'F',
-            appsScriptUrl: '',
-            sheetId: ''
+            appsScriptUrl: baseAc?.appsScriptUrl || cfg?.appsScriptUrl || '',
+            sheetId: baseAc?.sheetId || cfg?.sheetId || '',
+            sheetName: baseAc?.sheetName || cfg?.sheetName || '',
+            mapping: baseAc?.mapping || cfg?.mapping
           };
         });
 

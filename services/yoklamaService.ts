@@ -16,6 +16,7 @@ let attendanceByPersonMap = new Map<string, AttendanceRecord[]>();
 
 let isSyncing = false;
 let lastSyncTime = 0;
+let hasLiveSynced = false;
 
 const rebuildAttendanceIndex = () => {
   const map = new Map<string, AttendanceRecord[]>();
@@ -50,6 +51,9 @@ export const notifyListeners = () => {
 
 export const getCachedPersonnel = (): YoklamaPerson[] => cachedPersonnel;
 export const getCachedAttendance = (): AttendanceRecord[] => cachedAttendance;
+
+export const isYoklamaSyncInProgress = (): boolean => isSyncing;
+export const hasLiveYoklamaSynced = (): boolean => hasLiveSynced || (lastSyncTime > 0 && Date.now() - lastSyncTime < 300000);
 
 /**
  * Normalizes an aircraft model string to one of the 5 standard units:
@@ -677,10 +681,12 @@ export const syncYoklamaData = async (force: boolean = false): Promise<boolean> 
   const now = Date.now();
   // If recent sync occurred and both groups have valid data, keep cache unless forced
   if (!force && now - lastSyncTime < 60000 && cachedPilots.length >= 10 && cachedTechs.length >= 10) {
+    hasLiveSynced = true;
     return true;
   }
 
   isSyncing = true;
+  notifyListeners();
   try {
     const [pInitRes, pAttRes, tInitRes, tAttRes] = await Promise.allSettled([
       proxyFetch(PILOT_YOKLAMA_SCRIPT_URL, { action: 'get_init_data', bypassCache: force }),
@@ -775,12 +781,14 @@ export const syncYoklamaData = async (force: boolean = false): Promise<boolean> 
       notifyListeners();
     }
 
+    hasLiveSynced = true;
     return true;
   } catch (err) {
     console.error('Error syncing yoklama data:', err);
     return false;
   } finally {
     isSyncing = false;
+    notifyListeners();
   }
 };
 

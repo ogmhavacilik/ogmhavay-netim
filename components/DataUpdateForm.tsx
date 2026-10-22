@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { Aircraft, Status, DailyStatusCode } from '../types';
-import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour, parseSingleCellToHour, proxyFetch } from '../services/sheetService';
-import { LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID, MOCK_AIRCRAFT } from '../constants';
+import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour, parseSingleCellToHour, proxyFetch, fetchAT802BakimTakipData, updateAT802BakimTakipData, calculateLiveTSNValue, AT802BakimTakipData } from '../services/sheetService';
+import { LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID, MOCK_AIRCRAFT, AT802_SCRIPT_URL, BELL_SCRIPT_URL, T70_SCRIPT_URL, B360_SCRIPT_URL, C650_SCRIPT_URL } from '../constants';
 import { safeStorage } from '../services/safeStorage';
 import { cleanDescription } from '../services/cleanUtils';
 
@@ -158,10 +158,17 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isUpdateCompleted, setIsUpdateCompleted] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning', text: string } | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
 
-  const [at802Step, setAt802Step] = useState<1 | 2>(1);
+  const [at802Step, setAt802Step] = useState<1 | 2 | 3>(1);
+  const [dailyDataSavedForAt802, setDailyDataSavedForAt802] = useState(false);
+  const [showBakimTakipModal, setShowBakimTakipModal] = useState(false);
+  const [bakimTakipLoading, setBakimTakipLoading] = useState(false);
+  const [bakimTakipSaving, setBakimTakipSaving] = useState(false);
+  const [bakimTakipData, setBakimTakipData] = useState<AT802BakimTakipData | null>(null);
+  const [bakimTakipInputs, setBakimTakipInputs] = useState<Record<number, string>>({});
+  const [bakimTakipMsg, setBakimTakipMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [isLoadingSpecific, setIsLoadingSpecific] = useState(false);
   const [at802Data, setAt802Data] = useState({
     acTT: '',
@@ -290,6 +297,188 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
       }
       return newState;
     });
+  };
+
+  // "MOTOR SICAK KISIM KONTROLÜ" satır numarası
+  const motorSicakRowIndex = useMemo(() => {
+    if (bakimTakipData?.motorSicakRowIndex) return bakimTakipData.motorSicakRowIndex;
+    if (!bakimTakipData?.rows) return 33;
+    const found = bakimTakipData.rows.find(r =>
+      (r.inspection && r.inspection.toLocaleUpperCase('tr-TR').includes('MOTOR SICAK KISIM')) ||
+      (r.description && r.description.toLocaleUpperCase('tr-TR').includes('MOTOR SICAK KISIM'))
+    );
+    return found ? found.rowIndex : (bakimTakipData.motorSicakRowIndex || 33);
+  }, [bakimTakipData]);
+
+  // Son gösterilecek ve düzenlenebilecek satır (MOTOR SICAK KISIM KONTROLÜ'nün altındaki "O.T" satırı dahil)
+  const maxBakimRowIndex = useMemo(() => {
+    if (bakimTakipData?.lastShowRowIndex) return bakimTakipData.lastShowRowIndex;
+    if (bakimTakipData?.rows && bakimTakipData.rows.length > 0) {
+      const lastRow = bakimTakipData.rows[bakimTakipData.rows.length - 1];
+      if (lastRow && lastRow.rowIndex > motorSicakRowIndex) return lastRow.rowIndex;
+    }
+    return motorSicakRowIndex + 1;
+  }, [bakimTakipData, motorSicakRowIndex]);
+
+  const targetScriptUrl = useMemo(() => {
+    if (!selectedAircraft) return '';
+    if (selectedAircraft.tip === 'AT-802') return AT802_SCRIPT_URL;
+    if (selectedAircraft.appsScriptUrl && selectedAircraft.appsScriptUrl.startsWith('http')) {
+      return selectedAircraft.appsScriptUrl;
+    }
+    switch (selectedAircraft.tip) {
+      case 'Bell-429': return BELL_SCRIPT_URL;
+      case 'T-70': return T70_SCRIPT_URL;
+      case 'B-360': return B360_SCRIPT_URL;
+      case 'C-650': return C650_SCRIPT_URL;
+      default: return selectedAircraft.appsScriptUrl || '';
+    }
+  }, [selectedAircraft]);
+
+  const targetSheetId = useMemo(() => {
+    if (!selectedAircraft) return '';
+    if (selectedAircraft.sheetId && selectedAircraft.sheetId.trim() !== '') return selectedAircraft.sheetId;
+    switch (selectedAircraft.tip) {
+      case 'AT-802': return '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4';
+      case 'T-70': return '10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw';
+      case 'B-360': return '1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0';
+      case 'C-650': return '1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE';
+      default: return selectedAircraft.sheetId || '';
+    }
+  }, [selectedAircraft]);
+
+  const loadBakimTakip = async (kuyrukNo: string) => {
+    if (!selectedAircraft) return;
+    setBakimTakipLoading(true);
+    setBakimTakipMsg(null);
+    try {
+      const data = await fetchAT802BakimTakipData(
+        targetScriptUrl,
+        targetSheetId,
+        kuyrukNo,
+        at802Data.acTT || selectedAircraft.govdeUcusSaati || ''
+      );
+      setBakimTakipData(data);
+      const initialInputs: Record<number, string> = {};
+      const now = new Date();
+      const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      
+      const maxCutoff = data.lastShowRowIndex || (data.motorSicakRowIndex ? data.motorSicakRowIndex + 1 : 34);
+      data.rows.forEach(r => {
+        if (r.rowIndex === 5) {
+          initialInputs[5] = todayIso;
+        } else if (r.rowIndex >= 6 && r.rowIndex <= maxCutoff) {
+          // 6. satır (25 Saatlik Bakım) dahil "O.T" satırına kadar veri girişi yapılır
+          initialInputs[r.rowIndex] = r.currentVal || "";
+        }
+      });
+      setBakimTakipInputs(initialInputs);
+    } catch (e) {
+      console.error("Bakım takip verileri yüklenemedi:", e);
+    } finally {
+      setBakimTakipLoading(false);
+    }
+  };
+
+  const handleBakimTakipInputChange = (rowIdx: number, val: string) => {
+    // "O.T" satırından sonraki satırlara veri yazılması engellenir
+    if (rowIdx > maxBakimRowIndex) return;
+    setBakimTakipInputs(prev => ({ ...prev, [rowIdx]: val }));
+  };
+
+  // F sütununda hangi satırdaki veri değiştiyse o satırın TSN formülü (C sütunu) ilk bileşeni yeni F sütunu hücresi olur.
+  // Örnek: 100 SAATLİK BAKIM (satır 8) değiştiğinde "=J8+D8" yerine "=F8+D8" olur.
+  // Bu yalnızca verisi değişen satırda uygulanır.
+  const bakimTakipRowFormulas = useMemo(() => {
+    if (!bakimTakipData || !bakimTakipData.rows) {
+      return { changedRows: [] as number[], updatedFormulas: {} as Record<number, string>, liveCValues: {} as Record<number, string> };
+    }
+    const changedRows: number[] = [];
+    const updatedFormulas: Record<number, string> = {};
+    const liveCValues: Record<number, string> = {};
+
+    bakimTakipData.rows.forEach(r => {
+      if (r.rowIndex < 6 || r.rowIndex > maxBakimRowIndex) return;
+      const userVal = bakimTakipInputs[r.rowIndex];
+      const origVal = r.currentVal || '';
+
+      // Değer değişti mi kontrolü (kullanıcı yeni bir değer girmiş veya değiştirmiş)
+      if (userVal !== undefined && userVal.trim() !== '' && userVal.trim() !== origVal.trim()) {
+        changedRows.push(r.rowIndex);
+
+        // O.T satırında TSN formülü (C sütunu) yoktur, bu nedenle sadece normal bakım satırlarında formül oluşturulur
+        if (!r.isOtRow && r.rowIndex <= motorSicakRowIndex) {
+          let secondPart = `D${r.rowIndex}`;
+          if (r.formulaC && r.formulaC.includes('+')) {
+            const parts = r.formulaC.replace(/^=/, '').split('+');
+            if (parts.length >= 2) {
+              secondPart = parts[1].trim();
+            }
+          }
+          updatedFormulas[r.rowIndex] = `=F${r.rowIndex}+${secondPart}`;
+
+          // Canlı C değeri hesaplama (F hücresindeki yeni değer + D hücresindeki Interval)
+          const computedVal = calculateLiveTSNValue(userVal, r.intervalo);
+          if (computedVal) {
+            liveCValues[r.rowIndex] = computedVal;
+          }
+        }
+      }
+    });
+
+    return { changedRows, updatedFormulas, liveCValues };
+  }, [bakimTakipData, bakimTakipInputs, motorSicakRowIndex, maxBakimRowIndex]);
+
+  const handleSaveBakimTakip = async () => {
+    if (!selectedAircraft) return;
+    setBakimTakipSaving(true);
+    setBakimTakipMsg(null);
+    try {
+      const { changedRows, updatedFormulas } = bakimTakipRowFormulas;
+
+      // Satır 6'dan maxBakimRowIndex'e kadar olan verileri filtrele ve gönder
+      const inputsToSend: Record<number, string> = {};
+      if (bakimTakipInputs[5]) inputsToSend[5] = bakimTakipInputs[5];
+      for (let r = 6; r <= maxBakimRowIndex; r++) {
+        if (bakimTakipInputs[r] !== undefined && bakimTakipInputs[r] !== null) {
+          inputsToSend[r] = bakimTakipInputs[r];
+        }
+      }
+
+      const result = await updateAT802BakimTakipData(
+        targetScriptUrl,
+        targetSheetId,
+        selectedAircraft.kuyrukNo,
+        inputsToSend,
+        maxBakimRowIndex,
+        changedRows,
+        updatedFormulas
+      );
+      if (result.success) {
+        setBakimTakipMsg({
+          type: 'success',
+          text: result.message || 'Yeni bakım verileri başarıyla kaydedildi ve sola sütun eklendi! Ana sayfaya yönlendiriliyorsunuz...'
+        });
+        setDailyDataSavedForAt802(false);
+        // 2-KAYDET VE SOLA SUTUN EKLE BUTON ADI "YENİ BAKIMI EKLE" OLACAK SONRA OTOMATİK OLARAK ANASAYFAYA AT-802 FİLTRELENMİŞ ŞEKİLDE ATACAK.
+        setTimeout(() => {
+          if (onTriggerSync) onTriggerSync();
+          onSuccess('AT-802');
+        }, 1200);
+      } else {
+        setBakimTakipMsg({
+          type: 'error',
+          text: result.message || 'Hata oluştu.'
+        });
+        setBakimTakipSaving(false);
+      }
+    } catch (err: any) {
+      setBakimTakipMsg({
+        type: 'error',
+        text: err?.message || 'Bağlantı hatası oluştu.'
+      });
+      setBakimTakipSaving(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -520,8 +709,8 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
 
       let mainUpdateResult = { success: true, message: '' };
       const uRes = await updateAircraftData(
-        selectedAircraft.appsScriptUrl || '',
-        selectedAircraft.sheetId || '',
+        targetScriptUrl,
+        targetSheetId,
         selectedAircraft.kuyrukNo,
         { 
           ...finalData, 
@@ -577,52 +766,10 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
             setMessage({ type: 'warning', text: 'Geçmiş gün verisi güncellenemedi: ' + pastLogResult.message });
           }
       } else {
-        // GÜNCEL TARİH (BUGÜN): Mevcut merkezi loglama tetiklenir
+        // GÜNCEL TARİH (BUGÜN): Hızlı ve gecikmesiz merkezi loglama
         try {
-          // --- USER REQUEST: Read the freshly updated values from the individual aircraft sheet first ---
-          let updatedAcGovdeSaat = finalData.govdeUcusSaati || finalData.acTT || selectedAircraft.govdeUcusSaati || 0;
-          let updatedAcFaydaliSaat = finalData.faydaliSaat || selectedAircraft.faydaliSaat || 0;
-
-          try {
-            const fetchedResult = await proxyFetch(selectedAircraft.appsScriptUrl || '', {
-              sheetId: selectedAircraft.sheetId,
-              sheetName: selectedAircraft.sheetName || '',
-              mapping: selectedAircraft.mapping,
-              action: 'getAircraftData',
-              fetchTechnicalDetails: selectedAircraft.tip === 'AT-802'
-            });
-
-            if (fetchedResult && fetchedResult.success && Array.isArray(fetchedResult.data)) {
-              const targetAc = fetchedResult.data.find((a: any) => 
-                String(a.kuyrukNo || "").trim().toUpperCase() === String(selectedAircraft.kuyrukNo).trim().toUpperCase()
-              );
-              if (targetAc) {
-                // Prevent Google Sheets replication lag/reversion:
-                // Only overwrite our local updated hours if the fetched spreadsheet hours are strictly greater than or equal to our local hours.
-                let fetchedGovdeVal = selectedAircraft.tip === 'AT-802' ? (targetAc.acTT || targetAc.govdeUcusSaati) : targetAc.govdeUcusSaati;
-                
-                if (fetchedGovdeVal) {
-                  const fetchedGovdeRaw = parseSingleCellToHour(fetchedGovdeVal, selectedAircraft.tip);
-                  const localGovdeRaw = parseSingleCellToHour(updatedAcGovdeSaat, selectedAircraft.tip);
-                  
-                  if (fetchedGovdeRaw !== null && localGovdeRaw !== null) {
-                    if (fetchedGovdeRaw >= localGovdeRaw) {
-                      updatedAcGovdeSaat = fetchedGovdeVal;
-                    } else {
-                      console.warn(`[LAG DETECTION] Ignored lagging/smaller flight hours (${fetchedGovdeRaw}) from fetched spreadsheet. Kept fresh input/form values (${localGovdeRaw}).`);
-                    }
-                  } else {
-                    updatedAcGovdeSaat = fetchedGovdeVal;
-                  }
-                }
-
-                updatedAcFaydaliSaat = targetAc.faydaliSaat !== undefined && targetAc.faydaliSaat !== null ? targetAc.faydaliSaat : updatedAcFaydaliSaat;
-                console.log("Newly read aircraft values from Excel (with lag protection):", { updatedAcGovdeSaat, updatedAcFaydaliSaat });
-              }
-            }
-          } catch (readError) {
-             console.warn("Could not read freshly updated Excel data, falling back to local form values:", readError);
-          }
+          const updatedAcGovdeSaat = finalData.govdeUcusSaati || finalData.acTT || formData.govdeUcusSaati || selectedAircraft.govdeUcusSaati || 0;
+          const updatedAcFaydaliSaat = finalData.faydaliSaat || formData.faydaliSaat || selectedAircraft.faydaliSaat || 0;
 
           // Log flight hours with decimal support for specific types
           const getFormattedHourForLog = (val: any) => {
@@ -630,7 +777,6 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
             const decimalTypes = ['Bell-429', 'B-360', 'C-650'];
             if (decimalTypes.includes(selectedAircraft.tip)) {
               const parsed = parseSingleCellToHour(val, selectedAircraft.tip);
-              // Send as number for decimal types to prevent string parsing issues on sever
               return parsed !== null ? parsed : val;
             }
             // For T-70 and AT-802, use HH:mm format in the log
@@ -646,7 +792,8 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           const logGovdeSaat = getFormattedHourForLog(updatedAcGovdeSaat);
           const logFaydaliSaat = getFormattedHourForLog(updatedAcFaydaliSaat);
 
-          await proxyFetch(LOG_SCRIPT_URL, {
+          // Merkezi loglama arka planda asenkron çalışır, Step 2 güncelleme butonunu 25 saniye dondurmaz
+          const logTask = proxyFetch(LOG_SCRIPT_URL, {
             action: 'logSingleAircraftActivity',
             data: {
               date: formattedDate,
@@ -660,11 +807,21 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
               aciklama: formData.aciklama,
               analizKodu: analysis.code
             }
+          }).then(() => {
+            console.log("Merkezi log başarıyla kaydedildi.");
+          }).catch((logError) => {
+            console.error("Merkezi log güncellenirken hata oluştu:", logError);
           });
+
+          // AT-802 için beklemeden doğrudan Step 3'e geç; diğer tipler için en fazla 2 sn bekle
+          if (selectedAircraft.tip !== 'AT-802') {
+            await Promise.race([logTask, new Promise((res) => setTimeout(res, 2000))]);
+          }
+
           setMessage({ type: 'success', text: 'Veriler ve merkezi log başarıyla güncellendi.' });
         } catch (logError) {
-          console.error("Merkezi log güncellenirken hata oluştu:", logError);
-          setMessage({ type: 'warning', text: 'Hava aracı dosyası güncellendi ancak merkezi log yapılamadı.' });
+          console.error("Log işlem hatası:", logError);
+          setMessage({ type: 'warning', text: 'Hava aracı güncellendi.' });
         }
         
         if (onUpdateLocalState) {
@@ -694,7 +851,13 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
 
       // Clear draft on success
       safeStorage.removeItem(`draft_${selectedAircraft.kuyrukNo}_${formData.islemTarihi}`);
-      setIsUpdateCompleted(true);
+      
+      if (selectedAircraft.tip === 'AT-802') {
+        setDailyDataSavedForAt802(true);
+        setShowBakimTakipModal(true);
+      } else {
+        setIsUpdateCompleted(true);
+      }
 
     } catch (error) {
       setMessage({ type: 'error', text: 'Bağlantı hatası oluştu.' });
@@ -954,6 +1117,10 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                       onChange={(e) => {
                         setSelectedKuyruk(e.target.value);
                         initializationRef.current = '';
+                        setDailyDataSavedForAt802(false);
+                        setBakimTakipData(null);
+                        setBakimTakipInputs({});
+                        setAt802Step(1);
                       }}
                       className="w-full bg-black/40 border-2 border-white/10 rounded-2xl px-4 md:px-6 py-4 text-white font-bold focus:border-emerald-500 outline-none transition-all appearance-none"
                     >
@@ -1300,6 +1467,56 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                   </form>
                 ) : selectedAircraft.tip === 'AT-802' ? (
                   <form onSubmit={handleSubmit} className="space-y-8 md:space-y-10">
+                    {/* ADIM NAVİGASYON BAŞLIĞI */}
+                    <div className="flex items-center space-x-2 sm:space-x-3 mb-6 bg-black/40 p-2 rounded-2xl border border-white/10 overflow-x-auto custom-scrollbar">
+                      <button
+                        type="button"
+                        onClick={() => setAt802Step(1)}
+                        className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-xl text-xs font-black tracking-wider transition-all flex items-center justify-center space-x-2 ${at802Step === 1 ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'}`}
+                      >
+                        <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[10px]">1</span>
+                        <span>TEKNİK VERİLER</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAt802Step(2)}
+                        className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-xl text-xs font-black tracking-wider transition-all flex items-center justify-center space-x-2 ${at802Step === 2 ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'}`}
+                      >
+                        <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[10px]">2</span>
+                        <span>GÜNLÜK DURUM</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!dailyDataSavedForAt802) {
+                            setMessage({
+                              type: 'warning',
+                              text: 'Adım 3\'e geçebilmek için lütfen önce Adım 2\'deki "GÜNCELLE" butonuna basarak güncel verileri kaydediniz.'
+                            });
+                            return;
+                          }
+                          setAt802Step(3);
+                          if (selectedAircraft && !bakimTakipData) {
+                            loadBakimTakip(selectedAircraft.kuyrukNo);
+                          }
+                        }}
+                        className={`flex-1 min-w-[160px] py-2.5 px-3 rounded-xl text-xs font-black tracking-wider transition-all flex items-center justify-center space-x-2 ${
+                          at802Step === 3 
+                            ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' 
+                            : dailyDataSavedForAt802 
+                              ? 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10' 
+                              : 'bg-white/5 text-gray-500 opacity-60 cursor-not-allowed'
+                        }`}
+                        title={dailyDataSavedForAt802 ? "Bakım Takip Verileri" : "Önce Adım 2'deki Güncelle butonuna basınız"}
+                      >
+                        <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[10px]">3</span>
+                        <span>BAKIM TAKİP VERİLERİ</span>
+                        {!dailyDataSavedForAt802 && (
+                          <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded ml-1 font-bold">Kayıt Sonrası</span>
+                        )}
+                      </button>
+                    </div>
+
                     {at802Step === 1 && (
                       <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                         <h3 className="text-xl font-black text-emerald-500 uppercase tracking-widest mb-6">ADIM 1: TEKNİK VERİLER ({selectedAircraft.kuyrukNo} GENEL)</h3>
@@ -1458,6 +1675,333 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                         </div>
                       </div>
                     )}
+
+                    {at802Step === 3 && (
+                      <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-[11px] tracking-wider uppercase border border-emerald-500/30">
+                                AT-802 ÖZEL MODÜLÜ
+                              </span>
+                              <span className="text-gray-400 text-xs">Sayfa: {bakimTakipData?.sheetName || `${selectedAircraft.kuyrukNo.replace(/\D/g, '')} Bakım Takip`}</span>
+                            </div>
+                            <h3 className="text-xl font-black text-emerald-500 uppercase tracking-widest mt-1">
+                              ADIM 3: BAKIM TAKİP VERİLERİ ({selectedAircraft.kuyrukNo})
+                            </h3>
+                            <p className="text-xs text-gray-300 font-medium mt-1">
+                              F sütunu seçili şekilde sola yeni bir sütun eklenir, mevcut veriler ve güncellenen değerler formatı korunarak aktarılır.
+                            </p>
+                          </div>
+                          <div className="flex items-center space-x-3">
+                            <button
+                              type="button"
+                              onClick={() => loadBakimTakip(selectedAircraft.kuyrukNo)}
+                              disabled={bakimTakipLoading}
+                              className="bg-white/10 hover:bg-white/20 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center space-x-2 border border-white/10"
+                            >
+                              {bakimTakipLoading ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              ) : (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                              )}
+                              <span>Yeniden Oku</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {bakimTakipLoading ? (
+                          <div className="flex flex-col items-center justify-center py-20 bg-white/5 rounded-2xl border border-white/10 space-y-4">
+                            <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                            <p className="text-white/70 text-sm font-bold uppercase tracking-wider">
+                              Bakım Takip Sayfası Getiriliyor ({selectedAircraft.kuyrukNo.replace(/\D/g, '')} Bakım Takip)...
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-6">
+                            {/* CANLI VERİ HATA / UYARI EKRANI (SAHTE VERİ ASLA GÖSTERİLMEZ) */}
+                            {(!bakimTakipData?.rows?.length || bakimTakipData?.error) && (
+                              <div className="p-4 bg-red-950/80 border-2 border-red-500 rounded-xl text-red-200 text-xs sm:text-sm font-bold flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+                                <div className="flex items-center space-x-3">
+                                  <span className="text-2xl">⚠️</span>
+                                  <div>
+                                    <p className="font-extrabold text-white uppercase tracking-wider">
+                                      Canlı E-Tablo Verisi Alınamadı ({selectedAircraft.kuyrukNo})
+                                    </p>
+                                    <p className="text-red-300 text-xs mt-0.5">
+                                      {bakimTakipData?.error || "Google E-Tablosu ('" + (bakimTakipData?.sheetName || `${selectedAircraft.kuyrukNo.replace(/\D/g, '')} Bakım Takip`) + "') verisine ulaşılamadı. Havacılık bakım ve uçuş güvenliği nedeniyle kesinlikle sahte veya tahmini veri gösterilmemektedir."}
+                                    </p>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => loadBakimTakip(selectedAircraft.kuyrukNo)}
+                                  disabled={bakimTakipLoading}
+                                  className="bg-red-600 hover:bg-red-500 text-white font-black px-4 py-2 rounded-lg text-xs uppercase tracking-wider transition-all whitespace-nowrap shadow flex items-center space-x-1"
+                                >
+                                  <span>Yeniden Oku</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {/* ÜST BAŞLIK ALANI (GÖRSELDEKİ BİREBİR TASARIM - TAM SIĞAN DÜZEN) */}
+                            <div className="w-full border-2 border-black bg-white rounded-xl p-2.5 text-black shadow-lg">
+                              <div className="grid grid-cols-12 gap-0 border border-gray-400 text-[11px] sm:text-xs w-full">
+                                {/* Satır 1 Başlıklar */}
+                                <div className="col-span-3 border-r border-b border-gray-400 p-2 font-black text-center bg-gray-100 text-gray-700 uppercase">
+                                  Registration:
+                                </div>
+                                <div className="col-span-6 border-r border-b border-gray-400 p-2 font-black text-center bg-gray-100 text-gray-700 uppercase">
+                                  Maintenance Program ref.:
+                                </div>
+                                <div className="col-span-1 border-r border-b border-gray-400 p-2 font-black text-center bg-gray-100 text-gray-700 uppercase">
+                                  Date
+                                </div>
+                                <div className="col-span-2 border-b border-gray-400 p-2 font-black text-center bg-gray-100 text-gray-700 uppercase">
+                                  TSN:
+                                </div>
+
+                                {/* Satır 2 Değerler */}
+                                <div className="col-span-3 border-r border-gray-400 p-2 font-black text-lg sm:text-2xl text-blue-700 text-center flex items-center justify-center bg-white">
+                                  {bakimTakipData?.headerInfo.registration || selectedAircraft.kuyrukNo}
+                                </div>
+                                <div className="col-span-6 border-r border-gray-400 p-2 text-center text-[10px] sm:text-xs space-y-0.5 bg-white">
+                                  <div>
+                                    <span className="font-bold text-gray-800">CAMO: </span>
+                                    <span className="text-blue-700 font-extrabold">Titan Firefighting</span>
+                                    <span className="text-gray-400 mx-1.5">|</span>
+                                    <span className="text-blue-700 font-extrabold">CAMO.ES.011</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-bold text-gray-800">Ref: </span>
+                                    <span className="text-blue-700 font-black">PMA-AT802-FB</span>
+                                  </div>
+                                  <div className="text-[10px] text-gray-500 font-medium">
+                                    [Ed.03-Rev.00G / 20-03-23]
+                                  </div>
+                                </div>
+                                <div className="col-span-1 border-r border-gray-400 p-1 text-center font-bold text-blue-700 flex items-center justify-center bg-white text-[11px] sm:text-xs">
+                                  {bakimTakipData?.headerInfo.date || '-'}
+                                </div>
+                                <div className="col-span-2 p-1 text-center font-black text-blue-700 flex items-center justify-center bg-white text-base sm:text-lg">
+                                  {bakimTakipData?.headerInfo.tsn || bakimTakipData?.headerInfo.t8n || at802Data.acTT || selectedAircraft.govdeUcusSaati || "-"}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* ANA TABLO (A4:F36 - SAĞA SOLA KAYDIRMASIZ TAM SIĞAN TABLO) */}
+                            <div className="w-full border-2 border-black rounded-xl overflow-hidden bg-white shadow-2xl">
+                              <table className="w-full table-fixed text-left border-collapse">
+                                <colgroup>
+                                  <col className="w-[18%]" />
+                                  <col className="w-[34%]" />
+                                  <col className="w-[11%]" />
+                                  <col className="w-[11%]" />
+                                  <col className="w-[11%]" />
+                                  <col className="w-[15%]" />
+                                </colgroup>
+                                <thead>
+                                  {/* Satır 4 Başlık */}
+                                  <tr className="bg-[#e5e7eb] text-black font-black border-b border-black">
+                                    <th className="border border-black p-2 text-center uppercase tracking-wider text-[11px] sm:text-xs">
+                                      Inspection
+                                    </th>
+                                    <th className="border border-black p-2 text-center uppercase tracking-wider text-[11px] sm:text-xs">
+                                      Description
+                                    </th>
+                                    <th colSpan={3} className="border border-black p-2 text-center uppercase tracking-wider text-[11px] sm:text-xs">
+                                      Next Inspection
+                                    </th>
+                                    <th className="border border-black p-2 text-center uppercase tracking-wider text-[11px] sm:text-xs bg-emerald-800 text-white">
+                                      <div className="flex flex-col items-center leading-tight">
+                                        <span className="font-black text-[11px] sm:text-xs">F SÜTUNU: Last</span>
+                                        <span className="text-[9px] text-emerald-200 font-normal">Sola Eklenecek (Eski F: Before)</span>
+                                      </div>
+                                    </th>
+                                  </tr>
+                                  {/* Satır 5 Alt Başlık */}
+                                  <tr className="bg-[#e5e7eb] text-black font-black border-b-2 border-black text-center text-xs">
+                                    <th className="border border-black p-1 bg-gray-200 text-gray-500 font-medium text-[9px] sm:text-[10px] italic">
+                                      A4: Inspection
+                                    </th>
+                                    <th className="border border-black p-1 bg-gray-200 text-gray-500 font-medium text-[9px] sm:text-[10px] italic">
+                                      B4: Description
+                                    </th>
+                                    <th className="border border-black p-1 text-[10px] sm:text-xs font-black">TSN</th>
+                                    <th className="border border-black p-1 text-[10px] sm:text-xs font-black">Interval</th>
+                                    <th className="border border-black p-1 text-blue-700 font-black text-[10px] sm:text-xs">TTG</th>
+                                    <th className="border border-black p-1 bg-emerald-100 text-emerald-950">
+                                      <div className="space-y-0.5">
+                                        <div className="text-[9px] sm:text-[10px] uppercase tracking-wider font-black text-emerald-900">F5: TARİH SEÇİMİ</div>
+                                        <input
+                                          type="date"
+                                          value={bakimTakipInputs[5] || ''}
+                                          onChange={(e) => handleBakimTakipInputChange(5, e.target.value)}
+                                          className="w-full bg-white text-black font-black text-[10px] sm:text-xs px-1.5 py-1 border-2 border-emerald-600 rounded shadow-sm outline-none focus:ring-2 focus:ring-emerald-400 text-center"
+                                        />
+                                      </div>
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody className="text-black text-[11px] sm:text-xs">
+                                  {(bakimTakipData?.rows || []).filter(r => r.rowIndex >= 6 && r.rowIndex <= maxBakimRowIndex).map((row) => {
+                                    const isRowChanged = bakimTakipRowFormulas.changedRows.includes(row.rowIndex);
+                                    const newFormula = bakimTakipRowFormulas.updatedFormulas[row.rowIndex];
+                                    const liveCVal = bakimTakipRowFormulas.liveCValues[row.rowIndex];
+                                    const displayCVal = (isRowChanged && liveCVal) ? liveCVal : (row.tsn || row.t8n);
+
+                                    return (
+                                      <tr key={row.rowIndex} className={`hover:bg-amber-50/20 border-b border-black ${isRowChanged ? 'bg-green-50/30' : row.isOtRow ? 'bg-blue-50/20' : ''}`}>
+                                        {/* Kolon A: Inspection (Rowspan ile birleşmiş hücreler) */}
+                                        {row.isOtRow ? (
+                                          <td className="border border-black p-1 sm:p-1.5 font-bold text-center bg-gray-100 text-gray-400 text-[10px] sm:text-xs">
+                                            -
+                                          </td>
+                                        ) : row.inspection ? (
+                                          <td
+                                            rowSpan={row.rowSpan || 1}
+                                            className="border border-black p-1 sm:p-1.5 font-black text-center bg-[#e5e7eb] text-gray-900 align-middle uppercase text-[10px] sm:text-xs tracking-tight break-words"
+                                          >
+                                            {row.inspection}
+                                          </td>
+                                        ) : null}
+
+                                        {/* Kolon B: Description */}
+                                        <td className="border border-black p-1 sm:p-1.5 font-semibold text-gray-800 text-[10px] sm:text-xs leading-tight break-words">
+                                          {row.isOtRow ? (
+                                            <span className="font-black text-blue-900 bg-blue-100 px-2 py-0.5 rounded border border-blue-300">
+                                              O.T
+                                            </span>
+                                          ) : row.description.includes('PCE-RZ0317') ? (
+                                            <span>
+                                              H.S.I. s/n <span className="text-blue-700 font-black underline">PCE-RZ0317</span>
+                                            </span>
+                                          ) : row.description.includes('FRDS') ? (
+                                            <span className="whitespace-pre-line">
+                                              FH-PE-D + FH-PE-S + FH-PE1m-<span className="text-blue-700 font-bold">FRDS (G-III)</span>
+                                              {'\n'}GARMIN GPS BAT. INSP.
+                                            </span>
+                                          ) : (
+                                            row.description
+                                          )}
+                                        </td>
+
+                                        {/* Kolon C: T8N / TSN (Canlı veri, değişen satırda turuncu çerçeve, turuncu dolgu ve yanıp sönen animasyon) */}
+                                        <td
+                                          className={`p-1 text-center transition-all ${
+                                            row.isOtRow
+                                              ? 'border border-black font-bold text-gray-400 bg-gray-50'
+                                              : isRowChanged
+                                                ? 'border-2 border-orange-500 bg-orange-100 animate-pulse text-orange-950 shadow-inner'
+                                                : 'border border-black font-bold text-gray-900 bg-white'
+                                          }`}
+                                        >
+                                          {row.isOtRow ? (
+                                            <span className="text-gray-400 font-bold">-</span>
+                                          ) : (
+                                            <>
+                                              <div className={`truncate ${isRowChanged ? 'font-black text-xs sm:text-sm text-orange-900 drop-shadow-sm' : 'font-bold text-[10px] sm:text-xs'}`}>
+                                                {displayCVal}
+                                              </div>
+                                              {isRowChanged && newFormula ? (
+                                                <div className="text-[9px] text-white font-mono font-black bg-orange-600 border border-orange-700 px-1.5 py-0.5 rounded shadow mt-0.5 inline-block">
+                                                  {newFormula}
+                                                </div>
+                                              ) : row.formulaC ? (
+                                                <div className="text-[8px] text-gray-400 font-mono" title={`Mevcut formül: ${row.formulaC}`}>
+                                                  {row.formulaC}
+                                                </div>
+                                              ) : null}
+                                            </>
+                                          )}
+                                        </td>
+
+                                        {/* Kolon D: Intervalo */}
+                                        <td className="border border-black p-1 text-center font-bold text-[10px] sm:text-xs text-gray-900 truncate">
+                                          {row.isOtRow ? (
+                                            <span className="text-gray-400 font-bold">-</span>
+                                          ) : row.intervalo.endsWith('d') ? (
+                                            <span className="text-emerald-700 font-extrabold">{row.intervalo}</span>
+                                          ) : (
+                                            row.intervalo
+                                          )}
+                                        </td>
+
+                                        {/* Kolon E: TTG / O.T */}
+                                        <td className="border border-black p-1 text-center font-black text-[10px] sm:text-xs text-blue-700 truncate">
+                                          {row.isOtRow ? (
+                                            <span className="bg-blue-600 text-white px-2.5 py-0.5 rounded font-black text-xs shadow-sm">
+                                              O.T
+                                            </span>
+                                          ) : (
+                                            row.ttg
+                                          )}
+                                        </td>
+
+                                        {/* Kolon F: Düzenlenebilir Veri Girişi (Değişen satırın dolgusu yeşil) */}
+                                        <td className={`border border-black p-0.5 sm:p-1 text-center transition-all ${isRowChanged ? 'bg-green-100' : 'bg-amber-50/40'}`}>
+                                          <input
+                                            type="text"
+                                            value={bakimTakipInputs[row.rowIndex] ?? row.currentVal ?? ''}
+                                            onChange={(e) => handleBakimTakipInputChange(row.rowIndex, e.target.value)}
+                                            placeholder={row.currentVal || (row.isOtRow ? '093/25' : '-')}
+                                            className={`w-full text-center border text-[10px] sm:text-xs py-1 px-1 rounded shadow-sm outline-none transition-all ${
+                                              isRowChanged
+                                                ? 'bg-green-200 border-2 border-green-600 font-black text-green-950 ring-2 ring-green-400 ring-inset shadow-inner'
+                                                : 'bg-white border-gray-400 font-bold text-black hover:border-green-500 focus:border-green-600 focus:bg-green-50/50'
+                                            }`}
+                                          />
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {bakimTakipMsg && (
+                              <div className={`p-4 md:p-6 rounded-2xl font-bold text-sm ${bakimTakipMsg.type === 'success' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                                {bakimTakipMsg.text}
+                              </div>
+                            )}
+
+                            {/* ADIM 3 BUTONLARI */}
+                            <div className="flex flex-col sm:flex-row items-center gap-4 pt-4">
+                              <button
+                                type="button"
+                                onClick={() => setAt802Step(2)}
+                                className="w-full sm:w-auto bg-white/10 hover:bg-white/20 text-white font-black py-4 px-8 rounded-2xl uppercase tracking-widest transition-all text-xs"
+                              >
+                                GERİ: GÜNLÜK DURUM
+                              </button>
+                              
+                              <button
+                                type="button"
+                                onClick={handleSaveBakimTakip}
+                                disabled={bakimTakipSaving}
+                                className="flex-1 w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900 text-white font-black py-4 px-8 rounded-2xl uppercase tracking-[0.15em] shadow-2xl transition-all flex items-center justify-center space-x-3 text-sm"
+                              >
+                                {bakimTakipSaving ? (
+                                  <>
+                                    <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    <span>YENİ BAKIM EKLENİYOR...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    <span>YENİ BAKIMI EKLE</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </form>
                 ) : (
                   <div className="text-center py-20 opacity-30">
@@ -1475,6 +2019,62 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           )}
         </div>
       </div>
+
+      {/* AT-802 BAKIM TAKİP GEÇİŞ DİYALOĞU (KOŞULLU PENCERE) */}
+      {showBakimTakipModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-gradient-to-b from-gray-900 to-black border-2 border-emerald-500/60 rounded-3xl max-w-lg w-full p-8 shadow-[0_0_60px_rgba(16,185,129,0.3)] text-center space-y-6 animate-in zoom-in-95 duration-200">
+            <div className="w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-500/40 mx-auto flex items-center justify-center text-emerald-400 shadow-xl">
+              <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div className="space-y-2">
+              <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-xs tracking-wider uppercase border border-emerald-500/30">
+                GÜNCELLEME TAMAMLANDI
+              </span>
+              <h3 className="text-2xl font-black text-white uppercase tracking-tight mt-2">
+                {selectedAircraft?.kuyrukNo} VERİLERİ KAYDEDİLDİ
+              </h3>
+              <p className="text-gray-300 text-xs font-semibold leading-relaxed">
+                Teknik ve günlük durum verileri başarıyla sisteme ve Excel tablosuna yazıldı.
+              </p>
+            </div>
+            <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-2xl p-5 text-emerald-300 text-base font-black shadow-inner">
+              "Bakım Takip Verileri" (Adım 3) kısmına geçilsin mi?
+            </div>
+            <div className="grid grid-cols-2 gap-4 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBakimTakipModal(false);
+                  if (onTriggerSync) onTriggerSync();
+                  onSuccess('AT-802');
+                }}
+                className="bg-white/10 hover:bg-white/20 text-gray-200 font-black py-4 px-6 rounded-2xl uppercase tracking-wider transition-all border border-white/10 text-xs"
+              >
+                HAYIR (ANA SAYFA)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBakimTakipModal(false);
+                  setAt802Step(3);
+                  if (selectedAircraft) {
+                    loadBakimTakip(selectedAircraft.kuyrukNo);
+                  }
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 px-6 rounded-2xl uppercase tracking-wider shadow-xl shadow-emerald-950 transition-all flex items-center justify-center space-x-2 text-xs"
+              >
+                <span>EVET (ADIM 3)</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
