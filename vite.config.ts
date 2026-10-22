@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     const isGithubPages = process.env.BUILD_FOR_GHPAGES === 'true' || process.env.GITHUB_ACTIONS === 'true';
+    
     return {
       base: isGithubPages ? '/ogmhavay-netim/' : '/',
       server: {
@@ -18,10 +19,11 @@ export default defineConfig(({ mode }) => {
       plugins: [react()],
       build: {
         outDir: isGithubPages ? 'docs' : 'dist',
+        emptyOutDir: true,
       },
       resolve: {
         alias: {
-          '@': path.resolve(__dirname, '.'),
+          '@': path.resolve(__dirname, './'),
         }
       }
     };
