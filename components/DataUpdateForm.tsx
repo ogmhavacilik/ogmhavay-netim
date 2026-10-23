@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { Aircraft, Status, DailyStatusCode } from '../types';
-import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour, parseSingleCellToHour, proxyFetch, fetchAT802BakimTakipData, updateAT802BakimTakipData, calculateLiveTSNValue, AT802BakimTakipData } from '../services/sheetService';
+import { updateAircraftData, fetchAircraftSpecificData, analyzeStatus, updatePastEnvanterLog, formatGovdeHour, parseSingleCellToHour, proxyFetch, fetchAT802BakimTakipData, updateAT802BakimTakipData, calculateLiveTSNValue, formatTSNDateDisplay, AT802BakimTakipData } from '../services/sheetService';
 import { LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID, MOCK_AIRCRAFT, AT802_SCRIPT_URL, BELL_SCRIPT_URL, T70_SCRIPT_URL, B360_SCRIPT_URL, C650_SCRIPT_URL } from '../constants';
 import { safeStorage } from '../services/safeStorage';
 import { cleanDescription } from '../services/cleanUtils';
@@ -369,7 +369,25 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
           initialInputs[5] = todayIso;
         } else if (r.rowIndex >= 6 && r.rowIndex <= maxCutoff) {
           // 6. satır (25 Saatlik Bakım) dahil "O.T" satırına kadar veri girişi yapılır
-          initialInputs[r.rowIndex] = r.currentVal || "";
+          const isDate = r.isDate ||
+            r.intervalo?.endsWith('d') ||
+            (r.intervalo && /^\d+$/.test(r.intervalo.trim()) && (
+              r.inspection?.toUpperCase().includes('AY') ||
+              r.inspection?.toUpperCase().includes('YIL') ||
+              r.inspection?.toUpperCase().includes('HAFTA') ||
+              r.description?.toUpperCase().includes('FRDS') ||
+              r.description?.toUpperCase().includes('BAT.') ||
+              String(r.currentVal || '').includes('/') ||
+              String(r.tsn || '').includes('/') ||
+              String(r.currentVal || '').includes('.') ||
+              String(r.tsn || '').includes('.')
+            )) ||
+            /^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(String(r.currentVal || '').trim()) ||
+            /^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(String(r.tsn || '').trim()) ||
+            (/^\d{5}$/.test(String(r.currentVal || '').trim()) && parseInt(String(r.currentVal).trim(), 10) > 30000) ||
+            (/^\d{5}$/.test(String(r.tsn || '').trim()) && parseInt(String(r.tsn).trim(), 10) > 30000);
+
+          initialInputs[r.rowIndex] = (isDate && r.currentVal) ? formatTSNDateDisplay(r.currentVal) : (r.currentVal || "");
         }
       });
       setBakimTakipInputs(initialInputs);
@@ -1783,7 +1801,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                                   </div>
                                 </div>
                                 <div className="col-span-1 border-r border-gray-400 p-1 text-center font-bold text-blue-700 flex items-center justify-center bg-white text-[11px] sm:text-xs">
-                                  {bakimTakipData?.headerInfo.date || '-'}
+                                  {bakimTakipData?.headerInfo.date ? formatTSNDateDisplay(bakimTakipData.headerInfo.date) : '-'}
                                 </div>
                                 <div className="col-span-2 p-1 text-center font-black text-blue-700 flex items-center justify-center bg-white text-base sm:text-lg">
                                   {bakimTakipData?.headerInfo.tsn || bakimTakipData?.headerInfo.t8n || at802Data.acTT || selectedAircraft.govdeUcusSaati || "-"}
@@ -1850,7 +1868,31 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                                     const isRowChanged = bakimTakipRowFormulas.changedRows.includes(row.rowIndex);
                                     const newFormula = bakimTakipRowFormulas.updatedFormulas[row.rowIndex];
                                     const liveCVal = bakimTakipRowFormulas.liveCValues[row.rowIndex];
-                                    const displayCVal = (isRowChanged && liveCVal) ? liveCVal : (row.tsn || row.t8n);
+                                    let displayCVal = (isRowChanged && liveCVal) ? liveCVal : (row.tsn || row.t8n);
+
+                                    // Tarih bazlı bakım satırlarında (örn: 1 AYLIK, 3 AYLIK, YILLIK BAKIM veya d içerenler)
+                                    // görünümün daima gün ay yıl (DD.MM.YYYY) olarak kalmasını sağla, asla rakama veya saate dönmesin!
+                                    const isDateRow = row.isDate ||
+                                                      row.intervalo?.endsWith('d') ||
+                                                      (row.intervalo && /^\d+$/.test(row.intervalo.trim()) && (
+                                                        row.inspection?.toUpperCase().includes('AY') ||
+                                                        row.inspection?.toUpperCase().includes('YIL') ||
+                                                        row.inspection?.toUpperCase().includes('HAFTA') ||
+                                                        row.description?.toUpperCase().includes('FRDS') ||
+                                                        row.description?.toUpperCase().includes('BAT.') ||
+                                                        String(row.currentVal || '').includes('/') ||
+                                                        String(row.tsn || '').includes('/') ||
+                                                        String(row.currentVal || '').includes('.') ||
+                                                        String(row.tsn || '').includes('.')
+                                                      )) ||
+                                                      /^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(String(row.currentVal || '').trim()) ||
+                                                      /^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(String(row.tsn || '').trim()) ||
+                                                      (/^\d{5}$/.test(String(row.currentVal || '').trim()) && parseInt(String(row.currentVal).trim(), 10) > 30000) ||
+                                                      (/^\d{5}$/.test(String(row.tsn || '').trim()) && parseInt(String(row.tsn).trim(), 10) > 30000);
+
+                                    if (isDateRow) {
+                                      displayCVal = formatTSNDateDisplay(displayCVal);
+                                    }
 
                                     return (
                                       <tr key={row.rowIndex} className={`hover:bg-amber-50/20 border-b border-black ${isRowChanged ? 'bg-green-50/30' : row.isOtRow ? 'bg-blue-50/20' : ''}`}>
@@ -1944,9 +1986,13 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                                         <td className={`border border-black p-0.5 sm:p-1 text-center transition-all ${isRowChanged ? 'bg-green-100' : 'bg-amber-50/40'}`}>
                                           <input
                                             type="text"
-                                            value={bakimTakipInputs[row.rowIndex] ?? row.currentVal ?? ''}
+                                            value={
+                                              bakimTakipInputs[row.rowIndex] !== undefined
+                                                ? bakimTakipInputs[row.rowIndex]
+                                                : (isDateRow && row.currentVal ? formatTSNDateDisplay(row.currentVal) : (row.currentVal ?? ''))
+                                            }
                                             onChange={(e) => handleBakimTakipInputChange(row.rowIndex, e.target.value)}
-                                            placeholder={row.currentVal || (row.isOtRow ? '093/25' : '-')}
+                                            placeholder={isDateRow && row.currentVal ? formatTSNDateDisplay(row.currentVal) : (row.currentVal || (row.isOtRow ? '093/25' : '-'))}
                                             className={`w-full text-center border text-[10px] sm:text-xs py-1 px-1 rounded shadow-sm outline-none transition-all ${
                                               isRowChanged
                                                 ? 'bg-green-200 border-2 border-green-600 font-black text-green-950 ring-2 ring-green-400 ring-inset shadow-inner'

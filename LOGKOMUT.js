@@ -370,9 +370,14 @@ function doPost(e) {
         // Mevcut kaydı güncelle (SON GÖNDERİM'i koru)
         rowData[7] = data[foundRow - 1][7];
         mailSheet.getRange(foundRow, 1, 1, 8).setValues([rowData]);
+        mailSheet.getRange(foundRow, 5).setNote("BASE:" + time);
+        mailSheet.getRange(foundRow, 5).setNumberFormat("@");
       } else {
         // Yeni kayıt ekle
         mailSheet.appendRow(rowData);
+        var lastR = mailSheet.getLastRow();
+        mailSheet.getRange(lastR, 5).setNote("BASE:" + time);
+        mailSheet.getRange(lastR, 5).setNumberFormat("@");
       }
       return jsonSuccess({ id: id });
     }
@@ -2438,6 +2443,44 @@ function sendDailyReports() {
           
           // --- 3. DAMGALAMA ---
           mailSheet.getRange(i + 1, lastSentIdx + 1).setValue("'" + todayStr);
+
+          // --- 4. SAATİ 1 DAKİKA İLERİ AT / PAZARI PAZARTESİYE BAĞLAYAN GECE SIFIRLA ---
+          var colTime = -1;
+          for (var h = 0; h < headers.length; h++) {
+            if (headers[h].toString().toUpperCase() === "SAAT") {
+              colTime = h;
+              break;
+            }
+          }
+          if (colTime === -1) colTime = 4;
+
+          var timeCell = mailSheet.getRange(i + 1, colTime + 1);
+          var cellNote = timeCell.getNote() || "";
+          var baseTime = "";
+          if (cellNote && cellNote.indexOf("BASE:") !== -1) {
+            baseTime = cellNote.replace("BASE:", "").trim();
+          } else {
+            baseTime = String(time).trim();
+            timeCell.setNote("BASE:" + baseTime);
+          }
+
+          // d.getDay() === 0 -> Pazar günüdür. Pazar günü maili atıldıktan sonra,
+          // pazarı pazartesiye bağlayan gece için saat orijinal taban saate (örn: 06:30) geri döner!
+          // Diğer günlerde (Pazartesi-Cumartesi) her gün saat 1 dakika ileri atar (örn: 06:30 -> 06:31 -> 06:32 ...)
+          var nextTimeStr = "";
+          if (d.getDay() === 0) {
+            nextTimeStr = baseTime;
+          } else {
+            var curMin = timeToMinutes(time);
+            var nextMin = (curMin + 1) % (24 * 60);
+            var nHour = Math.floor(nextMin / 60);
+            var nMin = nextMin % 60;
+            nextTimeStr = (nHour < 10 ? "0" + nHour : "" + nHour) + ":" + (nMin < 10 ? "0" + nMin : "" + nMin);
+          }
+
+          timeCell.setNumberFormat("@");
+          timeCell.setValue(nextTimeStr);
+
           SpreadsheetApp.flush();
         }
       }
@@ -2499,10 +2542,47 @@ function debugAutoMail() {
   );
 }
 
+function resetWeeklyMailTimesIfMonday(ss) {
+  try {
+    var now = new Date();
+    // 1 = Pazartesi (Pazarı Pazartesiye bağlayan gece garanti kontrolü)
+    if (now.getDay() === 1) {
+      var mailSheet = findSheet(ss, "mail log");
+      if (!mailSheet) return;
+      var data = mailSheet.getDataRange().getDisplayValues();
+      var headers = data[0].map(function(h) { return String(h).trim(); });
+      var colTime = -1;
+      for (var h = 0; h < headers.length; h++) {
+        if (headers[h].toUpperCase() === "SAAT") { colTime = h; break; }
+      }
+      if (colTime === -1) colTime = 4;
+
+      for (var r = 1; r < data.length; r++) {
+        var timeCell = mailSheet.getRange(r + 1, colTime + 1);
+        var note = timeCell.getNote() || "";
+        if (note && note.indexOf("BASE:") !== -1) {
+          var baseTime = note.replace("BASE:", "").trim();
+          if (baseTime && String(data[r][colTime]).trim() !== baseTime) {
+            timeCell.setNumberFormat("@");
+            timeCell.setValue(baseTime);
+          }
+        }
+      }
+      SpreadsheetApp.flush();
+    }
+  } catch (e) {
+    console.error("resetWeeklyMailTimesIfMonday hatası: " + e.toString());
+  }
+}
+
 function performDailyMidnightLogging() {
   var ss =
     SpreadsheetApp.getActiveSpreadsheet() ||
     SpreadsheetApp.openById("1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg");
+  
+  // Pazarı Pazartesiye bağlayan gece saatleri orijinal başlangıç saatine resetle
+  resetWeeklyMailTimesIfMonday(ss);
+
   var logSheet = findSheet(ss, "Envanter Log");
   if (!logSheet) {
     logSheet = ss.insertSheet("Envanter Log");

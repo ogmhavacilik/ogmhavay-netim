@@ -198,9 +198,14 @@ function doPost(e) {
         // Mevcut kaydı güncelle (SON GÖNDERİM'i koru)
         rowData[7] = data[foundRow - 1][7];
         mailSheet.getRange(foundRow, 1, 1, 8).setValues([rowData]);
+        mailSheet.getRange(foundRow, 5).setNote("BASE:" + time);
+        mailSheet.getRange(foundRow, 5).setNumberFormat("@");
       } else {
         // Yeni kayıt ekle
         mailSheet.appendRow(rowData);
+        var lastR = mailSheet.getLastRow();
+        mailSheet.getRange(lastR, 5).setNote("BASE:" + time);
+        mailSheet.getRange(lastR, 5).setNumberFormat("@");
       }
       return jsonSuccess({ id: id });
     }
@@ -1338,6 +1343,37 @@ function sendDailyReports() {
           // --- 3. DAMGALAMA ---
           // Mail başarıyla gittikten sonra hücreye bugünün tarihini yazıyoruz
           mailSheet.getRange(i + 1, colLastSent + 1).setValue("'" + todayStr);
+
+          // --- 4. SAATİ 1 DAKİKA İLERİ AT / PAZARI PAZARTESİYE BAĞLAYAN GECE SIFIRLA ---
+          var colTime = headers.indexOf("SAAT");
+          if (colTime === -1) colTime = 4;
+
+          var timeCell = mailSheet.getRange(i + 1, colTime + 1);
+          var cellNote = timeCell.getNote() || "";
+          var baseTime = "";
+          if (cellNote && cellNote.indexOf("BASE:") !== -1) {
+            baseTime = cellNote.replace("BASE:", "").trim();
+          } else {
+            baseTime = String(targetTime).trim();
+            timeCell.setNote("BASE:" + baseTime);
+          }
+
+          // now.getDay() === 0 -> Pazar günüdür. Pazar günü maili atıldıktan sonra,
+          // pazarı pazartesiye bağlayan gece için saat orijinal taban saate (örn: 06:30) geri döner!
+          // Diğer günlerde (Pazartesi-Cumartesi) her gün saat 1 dakika ileri atar (örn: 06:30 -> 06:31 -> 06:32 ...)
+          var nextTimeStr = "";
+          if (now.getDay() === 0) {
+            nextTimeStr = baseTime;
+          } else {
+            var curMin = timeToMinutes(targetTime);
+            var nextMin = (curMin + 1) % (24 * 60);
+            var nHour = Math.floor(nextMin / 60);
+            var nMin = nextMin % 60;
+            nextTimeStr = (nHour < 10 ? "0" + nHour : "" + nHour) + ":" + (nMin < 10 ? "0" + nMin : "" + nMin);
+          }
+
+          timeCell.setNumberFormat("@");
+          timeCell.setValue(nextTimeStr);
           
           // Sayfayı anlık olarak zorla güncelle (Flush), mükerrerliği %100 engeller
           SpreadsheetApp.flush();
@@ -1500,8 +1536,42 @@ function getSheetAsExcel(ssId, name, sheetName) {
  * Gece yarısı otomatik loglama yapan fonksiyon.
  * Bu fonksiyonun her gece 00:00 - 01:00 arasında çalışacak şekilde tetiklenmesi gerekir.
  */
+function resetWeeklyMailTimesIfMonday(ss) {
+  try {
+    var now = new Date();
+    // 1 = Pazartesi (Pazarı Pazartesiye bağlayan gece garanti kontrolü)
+    if (now.getDay() === 1) {
+      var mailSheet = findSheet(ss, "mail log");
+      if (!mailSheet) return;
+      var data = mailSheet.getDataRange().getDisplayValues();
+      var headers = data[0].map(function(h) { return String(h).trim(); });
+      var colTime = headers.indexOf("SAAT");
+      if (colTime === -1) colTime = 4;
+
+      for (var r = 1; r < data.length; r++) {
+        var timeCell = mailSheet.getRange(r + 1, colTime + 1);
+        var note = timeCell.getNote() || "";
+        if (note && note.indexOf("BASE:") !== -1) {
+          var baseTime = note.replace("BASE:", "").trim();
+          if (baseTime && String(data[r][colTime]).trim() !== baseTime) {
+            timeCell.setNumberFormat("@");
+            timeCell.setValue(baseTime);
+          }
+        }
+      }
+      SpreadsheetApp.flush();
+    }
+  } catch (e) {
+    console.error("resetWeeklyMailTimesIfMonday hatası: " + e.toString());
+  }
+}
+
 function syncFleetToLogs() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Pazarı Pazartesiye bağlayan gece saatleri orijinal başlangıç saatine resetle
+  resetWeeklyMailTimesIfMonday(ss);
+
   var platformConfigs = [
     { type: 'Bell-429', id: '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ', range: 'A3:O8', map: {kNo:0, durum:12, detail:13, desc:14, loc:11, gHour:4, fHour:8} },
     { type: 'AT-802', id: '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4', sheet: 'GÜNLÜK DURUM', range: 'B3:AL16', map: {kNo:0, durum:1, detail:2, desc:36, loc:3, gHour:4, fHour:20} },

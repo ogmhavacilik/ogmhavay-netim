@@ -1226,13 +1226,176 @@ export interface AT802BakimTakipData {
   error?: string;
 }
 
+/**
+ * Format any date value or Excel serial into a clean Turkish Date display in Gün Ay Yıl (DD.MM.YYYY)
+ */
+export const formatTSNDateDisplay = (val: string | undefined | null): string => {
+  if (!val || val === '-' || val === '') return val || '';
+  const s = String(val).trim();
+
+  // If it's a flight hour (contains ':' like 100:00 or 940:00), do not touch it
+  if (s.includes(':')) {
+    return s;
+  }
+
+  // Handle Excel serial date (e.g. 45892)
+  if (/^\d{5}$/.test(s)) {
+    const serial = parseInt(s, 10);
+    if (serial > 30000 && serial < 70000) {
+      const dt = new Date((serial - 25569) * 86400 * 1000);
+      const m = dt.getUTCMonth() + 1;
+      const d = dt.getUTCDate();
+      const y = dt.getUTCFullYear();
+      return `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`;
+    }
+  }
+
+  // Handle ISO date (e.g. 2026-10-21T00:00:00.000Z or 2026-10-21)
+  if (s.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const isoPart = s.split('T')[0];
+    const [y, m, d] = isoPart.split('-').map(Number);
+    if (y && m && d) {
+      return `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`;
+    }
+  }
+
+  // Handle slash, dot, or dash dates (e.g. 10/21/2026, 9/16/2025, 21.10.2026, 21-10-2026)
+  const dateMatch = s.match(/^(\d{1,4})([\/\.\-])(\d{1,4})\2(\d{2,4})$/);
+  if (dateMatch) {
+    const p1 = parseInt(dateMatch[1], 10);
+    const sep = dateMatch[2];
+    const p2 = parseInt(dateMatch[3], 10);
+    let p3 = parseInt(dateMatch[4], 10);
+    if (p3 < 100) p3 += 2000;
+
+    let day = p1;
+    let month = p2;
+    let year = p3;
+
+    if (p1 > 1000) {
+      // YYYY-MM-DD or YYYY.MM.DD
+      year = p1;
+      month = p2;
+      day = p3;
+    } else {
+      year = p3;
+      if (sep === '.') {
+        // Turkish dot standard: DD.MM.YYYY
+        if (p2 > 12 && p1 <= 12) {
+          month = p1;
+          day = p2;
+        } else {
+          day = p1;
+          month = p2;
+        }
+      } else if (sep === '/') {
+        // Google Sheets US slash standard: M/D/YYYY
+        if (p1 > 12) {
+          day = p1;
+          month = p2;
+        } else if (p2 > 12) {
+          month = p1;
+          day = p2;
+        } else {
+          // If both <= 12, Google Sheets AT-802 sheet uses Month/Day/Year
+          month = p1;
+          day = p2;
+        }
+      } else {
+        // Hyphen: DD-MM-YYYY or MM-DD-YYYY
+        if (p1 > 12) {
+          day = p1;
+          month = p2;
+        } else {
+          month = p1;
+          day = p2;
+        }
+      }
+    }
+
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1900) {
+      return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${year}`;
+    }
+  }
+
+  return s;
+};
+
 export const calculateLiveTSNValue = (fValStr: string, dValStr: string): string => {
   if (!fValStr || !dValStr) return '';
   const cleanF = fValStr.trim();
   const cleanD = dValStr.trim().replace(/\s*d$/i, '');
   if (!cleanF || !cleanD) return '';
 
-  // 1. Saat toplama (HH:MM veya HHH:MM, örn: 940:00 + 100:00 = 1040:00)
+  // 1. ÖNCELİK: TARİH KONTROLÜ (Takvim / Gün Toplama: Tarih + Gün Sayısı)
+  // Eğer cleanF bir tarih formatındaysa (örn: 10/21/2026, 9/16/2025, 21.10.2026, 2026-10-21),
+  // ASLA saat/dakikaya veya ham rakama dönüştürülmez, daima Gün Ay Yıl (DD.MM.YYYY) olarak döner!
+  const isDatePattern = !cleanF.includes(':') && (
+    /^\d{4}[-\.\/]\d{1,2}[-\.\/]\d{1,2}$/.test(cleanF) ||
+    /^\d{1,2}[-\.\/]\d{1,2}[-\.\/]\d{2,4}$/.test(cleanF)
+  );
+
+  if (isDatePattern) {
+    const delimiter = cleanF.includes('/') ? '/' : cleanF.includes('.') ? '.' : cleanF.includes('-') ? '-' : null;
+    if (delimiter) {
+      let y: number | null = null;
+      let m: number | null = null;
+      let d: number | null = null;
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(cleanF)) {
+        const parts = cleanF.split('-').map(Number);
+        y = parts[0];
+        m = parts[1];
+        d = parts[2];
+      } else {
+        const parts = cleanF.split(delimiter).map(p => parseInt(p.trim(), 10));
+        if (parts.length === 3 && !parts.some(isNaN)) {
+          if (parts[0] > 1000) {
+            y = parts[0];
+            m = parts[1];
+            d = parts[2];
+          } else {
+            let yr = parts[2];
+            if (yr < 100) yr += 2000;
+            y = yr;
+
+            if (delimiter === '.') {
+              d = parts[0];
+              m = parts[1];
+            } else {
+              // Slash (/) formatı: E-Tabloda AT-802 için M/D/YYYY (örn: 9/16/2025, 10/21/2026) kullanılır
+              if (parts[0] > 12) {
+                d = parts[0];
+                m = parts[1];
+              } else if (parts[1] > 12) {
+                m = parts[0];
+                d = parts[1];
+              } else {
+                m = parts[0];
+                d = parts[1];
+              }
+            }
+          }
+        }
+      }
+
+      if (y !== null && m !== null && d !== null) {
+        const days = parseFloat(cleanD.replace(/[^\d\.\-]/g, ''));
+        if (!isNaN(days)) {
+          // Date sınıfı ile gün ekleme (ay ve yıl taşmalarını otomatik ve hatasız hesaplar)
+          const resDate = new Date(y, m - 1, d + days);
+          const resY = resDate.getFullYear();
+          const resM = resDate.getMonth() + 1;
+          const resD = resDate.getDate();
+
+          // Daima gün ay yıl (DD.MM.YYYY) formatında dön
+          return `${String(resD).padStart(2, '0')}.${String(resM).padStart(2, '0')}.${resY}`;
+        }
+      }
+    }
+  }
+
+  // 2. SAAT TOPLAMA (HH:MM veya HHH:MM, örn: 940:00 + 100:00 = 1040:00)
   const parseToMinutes = (val: string): number | null => {
     if (val.includes(':')) {
       const parts = val.split(':');
@@ -1244,9 +1407,12 @@ export const calculateLiveTSNValue = (fValStr: string, dValStr: string): string 
         }
       }
     }
-    const num = parseFloat(val.replace(',', '.'));
-    if (!isNaN(num)) {
-      return Math.round(num * 60);
+    // Sadece / veya - içermeyen saf sayıları saat olarak kabul et (tarihleri asla parse etme!)
+    if (!val.includes('/') && !val.includes('-')) {
+      const num = parseFloat(val.replace(',', '.'));
+      if (!isNaN(num) && /^\d+(\.\d+)?$/.test(val.replace(',', '.'))) {
+        return Math.round(num * 60);
+      }
     }
     return null;
   };
@@ -1261,39 +1427,13 @@ export const calculateLiveTSNValue = (fValStr: string, dValStr: string): string 
     return `${hours}:${String(mins).padStart(2, '0')}`;
   }
 
-  // 2. Takvim / Gün toplama (Tarih + gün sayısı)
-  const parseDate = (val: string): Date | null => {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
-      const [y, m, d] = val.split('-').map(Number);
-      return new Date(y, m - 1, d);
+  // 3. Genel Sayı Toplama (Saat veya Tarih formatı olmayan salt sayılar için)
+  if (!cleanF.includes('/') && !cleanF.includes('-') && !cleanD.includes('/') && !cleanD.includes('-')) {
+    const numF = parseFloat(cleanF.replace(',', '.'));
+    const numD = parseFloat(cleanD.replace(',', '.'));
+    if (!isNaN(numF) && !isNaN(numD)) {
+      return String(numF + numD);
     }
-    const parts = val.split(/[\.\-\/]/);
-    if (parts.length === 3) {
-      if (parts[0].length === 4) {
-        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-      }
-      let year = Number(parts[2]);
-      if (year < 100) year += 2000;
-      return new Date(year, Number(parts[1]) - 1, Number(parts[0]));
-    }
-    return null;
-  };
-
-  const days = parseFloat(cleanD);
-  const dt = parseDate(cleanF);
-  if (dt && !isNaN(days)) {
-    const resDt = new Date(dt.getTime() + days * 86400 * 1000);
-    const dd = String(resDt.getDate()).padStart(2, '0');
-    const mm = String(resDt.getMonth() + 1).padStart(2, '0');
-    const yy = String(resDt.getFullYear()).slice(-2);
-    if (cleanF.includes('/')) return `${dd}/${mm}/${yy}`;
-    return `${dd}.${mm}.${resDt.getFullYear()}`;
-  }
-
-  const numF = parseFloat(cleanF.replace(',', '.'));
-  const numD = parseFloat(cleanD.replace(',', '.'));
-  if (!isNaN(numF) && !isNaN(numD)) {
-    return String(numF + numD);
   }
 
   return '';
@@ -1418,7 +1558,24 @@ export const fetchAT802BakimTakipData = async (
           }
 
           const isHeader = rIndex === 4;
-          const isDate = rIndex === 5;
+          const isDate = rIndex === 5 ||
+            colD.endsWith('d') ||
+            (colD && /^\d+$/.test(colD.trim()) && (
+              colA.toLocaleUpperCase('tr-TR').includes('AY') ||
+              colA.toLocaleUpperCase('tr-TR').includes('YIL') ||
+              colA.toLocaleUpperCase('tr-TR').includes('HAFTA') ||
+              colB.toLocaleUpperCase('tr-TR').includes('FRDS') ||
+              colB.toLocaleUpperCase('tr-TR').includes('BAT.') ||
+              colF.includes('/') || colC.includes('/') ||
+              colF.includes('.') || colC.includes('.')
+            )) ||
+            (/^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(colF)) ||
+            (/^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(colC)) ||
+            (/^\d{5}$/.test(colF) && parseInt(colF, 10) > 30000 && parseInt(colF, 10) < 70000) ||
+            (/^\d{5}$/.test(colC) && parseInt(colC, 10) > 30000 && parseInt(colC, 10) < 70000);
+
+          const formattedColC = isDate ? formatTSNDateDisplay(colC) : colC;
+          const formattedColF = isDate ? formatTSNDateDisplay(colF) : colF;
           const isContinuation = !colA && !!lastInspection && rIndex > 5 && !isOtRow;
           if (colA && !isOtRow) lastInspection = colA;
 
@@ -1426,12 +1583,12 @@ export const fetchAT802BakimTakipData = async (
             rowIndex: rIndex,
             inspection: colA || (isOtRow ? "" : ""),
             description: colB || (isOtRow ? "O.T" : ""),
-            tsn: colC,
-            t8n: colC,
+            tsn: formattedColC,
+            t8n: formattedColC,
             formulaC: isOtRow ? "" : formulaC,
             intervalo: isOtRow ? "" : colD,
             ttg: colE,
-            currentVal: colF,
+            currentVal: formattedColF,
             isContinuation,
             isDate,
             isOtRow,
@@ -1461,7 +1618,7 @@ export const fetchAT802BakimTakipData = async (
           headerInfo: {
             registration: serverData.headerInfo?.registration || cleanTail,
             programRef: serverData.headerInfo?.programRef || "-",
-            date: serverData.headerInfo?.date || "-",
+            date: formatTSNDateDisplay(serverData.headerInfo?.date) || "-",
             tsn: rawTsn,
             t8n: rawTsn
           },
