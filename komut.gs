@@ -8,6 +8,7 @@ function doPost(e) {
     if (!e || !e.postData || !e.postData.contents) return jsonError("Post verisi alınamadı.");
     var params = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.openById(params.sheetId);
+    ss.setSpreadsheetTimeZone("Europe/Istanbul");
     var action = (params.action || "getAircraftData").toString().trim();
     var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
 

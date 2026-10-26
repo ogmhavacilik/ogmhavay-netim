@@ -1872,6 +1872,10 @@ const App = () => {
           runGlobalSync();
           setCurrentView('dashboard');
         }}
+        onSelectOtherAircraft={(kuyrukNo) => {
+          setFilterTail(kuyrukNo);
+          setCurrentView('landing');
+        }}
       />
     );
   }

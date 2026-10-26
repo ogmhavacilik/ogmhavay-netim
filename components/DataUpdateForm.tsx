@@ -2089,7 +2089,7 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
             <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-2xl p-5 text-emerald-300 text-base font-black shadow-inner">
               "Bakım Takip Verileri" (Adım 3) kısmına geçilsin mi?
             </div>
-            <div className="grid grid-cols-2 gap-4 pt-2">
+            <div className="grid grid-cols-3 gap-4 pt-2">
               <button
                 type="button"
                 onClick={() => {
@@ -2116,6 +2116,28 @@ const DataUpdateForm: React.FC<DataUpdateFormProps> = ({ fleet, envanterLog, onB
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                 </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBakimTakipModal(false);
+                  setSelectedKuyruk('');
+                  setSelectedAircraft(null);
+                  setAt802Step(1);
+                  setAt802Data({
+                    acTT: '',
+                    landings: '',
+                    starts: '',
+                    flights: '',
+                    frdsTest: '',
+                    motorCalisma: ''
+                  });
+                  setBakimTakipData(null);
+                  setBakimTakipInputs({});
+                }}
+                className="bg-sky-600 hover:bg-sky-500 text-white font-black py-4 px-6 rounded-2xl uppercase tracking-wider shadow-xl shadow-sky-950 transition-all flex items-center justify-center text-xs"
+              >
+                DİĞER HAVA ARACI GÜNCELLE
               </button>
             </div>
           </div>

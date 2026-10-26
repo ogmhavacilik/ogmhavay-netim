@@ -65,6 +65,7 @@ function doPost(e) {
     if (params.kuyrukNo) Logger.log("Kuyruk No: " + params.kuyrukNo);
 
     var ss = SpreadsheetApp.openById(params.sheetId);
+    ss.setSpreadsheetTimeZone("Europe/Istanbul");
     var action = (params.action || "getAircraftData").toString().trim();
 
     // 🟡 PDF EXPORT AKSİYONU (AT-802 ÇIKTI - 100 SAAT TAKİP)
