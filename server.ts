@@ -38,7 +38,11 @@ async function startServer() {
     'onGetAdminPanelData',
     'getEnvanterLogs',
     'fetchHistory',
-    'get_data'
+    'get_data',
+    'getFileMetadata',
+    'getVersionHistory',
+    'getSurumGecmisi',
+    'getFileLastUpdated'
   ]);
 
   // Proxy endpoint for Google Apps Script

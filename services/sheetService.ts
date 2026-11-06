@@ -1,5 +1,5 @@
 import { SheetConfig, Aircraft, Status, StatusType, DailyStatusCode, OPLItem } from '../types';
-import { getCallSignByTail, MOCK_AIRCRAFT, YAKIT_SCRIPT_URL, YAKIT_SHEET_ID, LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID } from '../constants';
+import { getCallSignByTail, MOCK_AIRCRAFT, YAKIT_SCRIPT_URL, YAKIT_SHEET_ID, LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID, BELL_SCRIPT_URL, AT802_SCRIPT_URL, T70_SCRIPT_URL, B360_SCRIPT_URL, C650_SCRIPT_URL } from '../constants';
 
 /**
  * Durum metinlerini analiz ederek faaliyet kodunu belirler.
@@ -1701,4 +1701,258 @@ export const updateAT802BakimTakipData = async (
     console.error("updateAT802BakimTakipData error:", err);
     return { success: false, message: err?.message || "Sunucu bağlantı hatası." };
   }
+};
+
+/**
+ * Hava Aracı Tiplerinin Online Excel E-Tablo ve Script Yapılandırması
+ */
+export const AIRCRAFT_TYPE_SHEET_MAP: Record<string, { 
+  sheetId: string; 
+  scriptUrl: string; 
+  sheetName?: string;
+  headerCell?: string;
+  kuyrukCell?: string;
+}> = {
+  'AT-802': {
+    sheetId: '1vyGHaD5k1H11Fokl5wUKB0fadJGmOugjbd42zLdtDz4',
+    scriptUrl: AT802_SCRIPT_URL,
+    sheetName: 'GÜNLÜK DURUM',
+    headerCell: 'AL1:AL3',
+    kuyrukCell: 'B3:B5'
+  },
+  'Bell-429': {
+    sheetId: '1D83TF8K1QG30kBv2sCqnPCMYsdSbaJfcsw-E3S5A9VQ',
+    scriptUrl: BELL_SCRIPT_URL,
+    headerCell: 'O1:O3',
+    kuyrukCell: 'A1:A3'
+  },
+  'T-70': {
+    sheetId: '10Zsl_8A-7zx0lI-qCj5YDvVxMJlJsWI0TY7vetnkpsw',
+    scriptUrl: T70_SCRIPT_URL,
+    headerCell: 'S1:S3',
+    kuyrukCell: 'A1:A3'
+  },
+  'B-360': {
+    sheetId: '1KB2pplUH4H9CYlkHjkkC2uQfSCHy1G5rXSFzraKTLk0',
+    scriptUrl: B360_SCRIPT_URL,
+    headerCell: 'P1:P3',
+    kuyrukCell: 'A1:A3'
+  },
+  'C-650': {
+    sheetId: '1hlNZdkyBzVsj_zf-ES_CNfear0Ju80qAx6S1R-GKSyE',
+    scriptUrl: C650_SCRIPT_URL,
+    headerCell: 'P1:P3',
+    kuyrukCell: 'A1:A3'
+  }
+};
+
+/**
+ * Türkçe ay adları haritası
+ */
+const TR_MONTHS_MAP: Record<string, string> = {
+  'ocak': '01', 'oca': '01',
+  'şubat': '02', 'subat': '02', 'şub': '02', 'sub': '02',
+  'mart': '03', 'mar': '03',
+  'nisan': '04', 'nis': '04',
+  'mayıs': '05', 'mayis': '05', 'may': '05',
+  'haziran': '06', 'haz': '06',
+  'temmuz': '07', 'tem': '07',
+  'ağustos': '08', 'agustos': '08', 'ağu': '08', 'agu': '08',
+  'eylül': '09', 'eylul': '09', 'eyl': '09',
+  'ekim': '10', 'eki': '10',
+  'kasım': '11', 'kasim': '11', 'kas': '11',
+  'aralık': '12', 'aralik': '12', 'ara': '12'
+};
+
+/**
+ * Tarih metinlerini ISO formatına (YYYY-MM-DD) dönüştürür.
+ * Saat dilimi kaymalarını önlemek için doğrudan tarih parçasını işler.
+ */
+export const parseToIsoDate = (dStr: any): string | null => {
+  if (!dStr) return null;
+  const s = String(dStr).trim();
+  
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    return s.slice(0, 10);
+  }
+
+  // Türkçe ay adı içeren tarihler (Örn: "3 Kasım, 14:44", "3 Kasım 2026", "30-Kas-26")
+  const trMatch = s.match(/(\d{1,2})[\s\-]+([a-zA-ZçğıöşüÇĞİÖŞÜ]+)(?:[\s\-]+(\d{2,4}))?/i);
+  if (trMatch) {
+    const day = trMatch[1].padStart(2, '0');
+    const mName = trMatch[2].toLocaleLowerCase('tr-TR');
+    const mNum = TR_MONTHS_MAP[mName];
+    if (mNum) {
+      let yr = trMatch[3];
+      if (!yr) {
+        yr = String(new Date().getFullYear());
+      } else if (yr.length === 2) {
+        yr = '20' + yr;
+      }
+      return `${yr}-${mNum}-${day}`;
+    }
+  }
+
+  const datePart = s.split(/[\sT]+/)[0];
+  const parts = datePart.split(/[\.\/\-]/);
+  if (parts.length === 3) {
+    let yr = parts[2];
+    if (yr.length === 2) yr = `20${yr}`;
+    
+    if (parts[0].length === 4) {
+      return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+    }
+    
+    const p0 = parseInt(parts[0], 10);
+    const p1 = parseInt(parts[1], 10);
+    
+    // Assuming DD.MM.YYYY format
+    const dayNum = p0;
+    const monthNum = p1;
+    
+    return `${yr}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+  }
+
+  return null;
+};
+
+/**
+ * Tarih metinlerini Gün.Ay.Yıl (DD.MM.YYYY veya DD.MM.YYYY HH:mm) formatına dönüştürür.
+ * Tabloda ve dışa aktarmada her zaman bu format kullanılır.
+ */
+export const formatDayMonthYear = (val: any): string => {
+  if (!val || val === '-') return '-';
+  const s = String(val).trim();
+  
+  // Zaten DD.MM.YYYY formatında ise doğrudan döndür
+  if (/^\d{2}\.\d{2}\.\d{4}/.test(s)) {
+    return s.split(' ')[0];
+  }
+
+  // Türkçe ay adı içeren tarihler
+  const trMatch = s.match(/(\d{1,2})[\s\-]+([a-zA-ZçğıöşüÇĞİÖŞÜ]+)(?:[\s\-]+(\d{2,4}))?/i);
+  if (trMatch) {
+    const day = trMatch[1].padStart(2, '0');
+    const mName = trMatch[2].toLocaleLowerCase('tr-TR');
+    const mNum = TR_MONTHS_MAP[mName];
+    if (mNum) {
+      let yr = trMatch[3];
+      if (!yr) {
+        yr = String(new Date().getFullYear());
+      } else if (yr.length === 2) {
+        yr = '20' + yr;
+      }
+      return `${day}.${mNum}.${yr}`;
+    }
+  }
+  
+  // YYYY-MM-DD veya ISO formatında ise Gün.Ay.Yıl yap
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const dPart = s.split(/[\sT]+/)[0];
+    const parts = dPart.split('-');
+    return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  }
+
+  // Slash veya nokta ayrılmış tarihler
+  const datePart = s.split(/[\sT]+/)[0];
+  const parts = datePart.split(/[\.\/\-]/);
+  if (parts.length === 3) {
+    let yr = parts[2];
+    if (yr.length === 2) yr = `20${yr}`;
+    if (parts[0].length === 4) {
+      return `${parts[2]}.${parts[1]}.${parts[0]}`;
+    }
+    const p0 = parseInt(parts[0], 10);
+    const p1 = parseInt(parts[1], 10);
+    
+    let monthNum = p1;
+    let dayNum = p0;
+    
+    if (p0 === 11 || p0 === 10) {
+      monthNum = p0;
+      dayNum = p1;
+    } else if (p1 === 11 || p1 === 10) {
+      monthNum = p1;
+      dayNum = p0;
+    } else if (p0 > 12) {
+      dayNum = p0;
+      monthNum = p1;
+    }
+
+    return `${String(dayNum).padStart(2, '0')}.${String(monthNum).padStart(2, '0')}.${yr}`;
+  }
+
+  return s;
+};
+
+/**
+ * Hava aracı tipinin Online Excel dosyasının 'Son Sürüm Geçmişi' (Kullanıcı tarafından hücrelerde/satırlarda yapılan gerçek veri değişikliği zamanı) tarih ve saatini çeker.
+ * Otomatik veri çekme/script çalıştırma revizyonlarını değil, kullanıcıların hücre verisini güncellediği gerçek sürüm geçmişini esas alır.
+ * Tümü strictly "GG.AA.YYYY SS:dd" (DD.MM.YYYY HH:mm) formatında döndürülür.
+ */
+export const fetchAircraftTypeVersionHistory = async (
+  aircraftType: string,
+  fallbackDateStr?: string
+): Promise<{ lastUpdatedStr: string; lastUpdatedIso: string | null; dateStr: string; isoDate: string | null }> => {
+  // 1. ÖNCELİK: "Saatlik Faaliyet Günlüğü" (envanterLog/intraDayLog) sütun B'deki en son tarih verisi
+  if (fallbackDateStr && fallbackDateStr !== '-') {
+    const iso = parseToIsoDate(fallbackDateStr);
+    let displayStr = formatDayMonthYear(fallbackDateStr);
+    if (iso) {
+      return {
+        lastUpdatedStr: displayStr,
+        lastUpdatedIso: iso,
+        dateStr: displayStr,
+        isoDate: iso
+      };
+    }
+  }
+
+  const config = AIRCRAFT_TYPE_SHEET_MAP[aircraftType];
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const defStr = `${day}.${month}.${now.getFullYear()}`;
+  const defIso = `${now.getFullYear()}-${month}-${day}`;
+
+  if (!config) {
+    return {
+      lastUpdatedStr: defStr,
+      lastUpdatedIso: defIso,
+      dateStr: defStr,
+      isoDate: defIso
+    };
+  }
+
+  // 2. Drive File Metadata (Backup)
+  try {
+    const metaRes = await proxyFetch(LOG_SCRIPT_URL, {
+      action: 'getFileMetadata',
+      sheetId: config.sheetId
+    });
+
+    const metaData = metaRes && metaRes.data ? (metaRes.data.data || metaRes.data) : metaRes;
+    if (metaData && metaData.lastUpdated && metaData.lastUpdated !== '-') {
+      let formatted = formatDayMonthYear(metaData.lastUpdated);
+      const iso = parseToIsoDate(metaData.lastUpdated) || metaData.isoDate || null;
+
+      if (formatted && formatted !== '-') {
+        return {
+          lastUpdatedStr: formatted,
+          lastUpdatedIso: iso,
+          dateStr: formatted,
+          isoDate: iso
+        };
+      }
+    }
+  } catch (errMeta) {
+    console.warn(`[VersionHistory] ${aircraftType} getFileMetadata hatası:`, errMeta);
+  }
+
+  return {
+    lastUpdatedStr: defStr,
+    lastUpdatedIso: defIso,
+    dateStr: defStr,
+    isoDate: defIso
+  };
 };

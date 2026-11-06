@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, Search, AlertCircle, Download, Fuel } from 'lucide-react';
+import { X, Search, AlertCircle, AlertTriangle, Download, Fuel, Clock } from 'lucide-react';
 import { LOG_SCRIPT_URL, MAIL_LOG_SHEET_ID, getCallSignByTail } from '../constants';
-import { parseSingleCellToHour, fetchYakitData, proxyFetch, YakitKaydi } from '../services/sheetService';
+import { parseSingleCellToHour, fetchYakitData, proxyFetch, YakitKaydi, fetchAircraftTypeVersionHistory, formatDayMonthYear, parseToIsoDate } from '../services/sheetService';
 import { Aircraft } from '../types';
 import * as XLSX from 'xlsx';
 
@@ -25,6 +25,20 @@ interface SorguResult {
   toplamYakit: number;
   saatlikYakit: number;
   fuelRecords: YakitKaydi[];
+  surumGecmisi?: string;
+  surumGecmisiIso?: string | null;
+  sonIkmalTarihi?: string;
+  sonIkmalTarihiIso?: string | null;
+  hasMismatchWarning?: boolean;
+}
+
+interface TypeWarningInfo {
+  type: string;
+  latestFuelDateStr: string;
+  latestFuelDateIso: string;
+  versionDateStr: string;
+  versionDateIso: string;
+  aircraftWithMaxFuel: string;
 }
 
 const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, fleet }) => {
@@ -32,10 +46,12 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [includeFuel, setIncludeFuel] = useState(true);
+  const [includeUpdateDates, setIncludeUpdateDates] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [results, setResults] = useState<SorguResult[]>([]);
   const [error, setError] = useState('');
+  const [typeWarnings, setTypeWarnings] = useState<Record<string, TypeWarningInfo>>({});
   const [selectedFuelModal, setSelectedFuelModal] = useState<{
     kuyrukNo: string;
     records: YakitKaydi[];
@@ -89,6 +105,10 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
       }
     }
     
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      return s.slice(0, 10);
+    }
+
     if (s.includes('T') || s.includes('Z') || s.includes('GMT')) {
       const dt = new Date(s);
       if (!isNaN(dt.getTime())) {
@@ -188,6 +208,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
     
     setError('');
     setResults([]);
+    setTypeWarnings({});
     setIsLoading(true);
     setHasSearched(true);
 
@@ -272,7 +293,57 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
         }
       });
 
-      const finalResults = Object.values(resultMap)
+      // Determine unique aircraft types in the fleet selection
+      const activeTypes: string[] = Array.from(new Set(
+        fleet
+          .filter(a => type === 'Tümü' || a.tip === type)
+          .map(a => a.tip || '')
+          .filter(Boolean)
+      ));
+
+      // Build fallback date for each type from "Saatlik Faaliyet Günlüğü" (intraDayLog)
+      const typeFallbackDateMap: Record<string, string | undefined> = {};
+      const intraDayLog = res?.data?.intraDayLog || res?.intraDayLog || [];
+
+      activeTypes.forEach((t: string) => {
+        const typeLogs = intraDayLog.filter((r: any) => {
+          // 1. Tip üzerinden filtrele
+          const rTip = String(r.tip || '').trim().toUpperCase();
+          const targetTip = t.toUpperCase();
+          if (rTip === targetTip) return true;
+          
+          // 2. Eğer tip yoksa, fleet içinden kuyrukNo ile eşleştir
+          const rKuyruk = String(r.kuyrukNo || '').trim().toUpperCase();
+          const a = fleet.find(f => f.kuyrukNo.toUpperCase() === rKuyruk);
+          return a?.tip?.toUpperCase() === targetTip;
+        });
+        
+        // Sadece en son tarihi al (Kronolojik Sıralama)
+        if (typeLogs.length > 0) {
+          const sortedLogs = [...typeLogs]
+            .map(r => ({ raw: r.tarih, iso: parseToIsoDate(r.tarih) }))
+            .filter(x => x.iso)
+            .sort((a, b) => a.iso!.localeCompare(b.iso!));
+          
+          if (sortedLogs.length > 0) {
+            const latestLog = sortedLogs[sortedLogs.length - 1];
+            typeFallbackDateMap[t] = formatDayMonthYear(latestLog.raw);
+          }
+        }
+      });
+
+      // Fetch version history for active aircraft types if includeUpdateDates is enabled
+      const typeVersionMap: Record<string, { dateStr: string; isoDate: string | null; timestamp?: string }> = {};
+      if (includeUpdateDates) {
+        await Promise.all(
+          activeTypes.map(async (t) => {
+            const hist = await fetchAircraftTypeVersionHistory(t, typeFallbackDateMap[t]);
+            typeVersionMap[t] = hist;
+          })
+        );
+      }
+
+      const intermediateResults = Object.values(resultMap)
         .map(item => {
           if (item.baslangicSaat !== null && item.bitisSaat !== null) {
             item.fark = item.bitisSaat - item.baslangicSaat;
@@ -291,12 +362,90 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
           item.toplamYakit = matchingFuel.reduce((acc, curr) => acc + curr.miktar, 0);
           item.saatlikYakit = item.fark > 0 ? (item.toplamYakit / item.fark) : 0;
 
+          // Calculate latest fuel date for this aircraft
+          if (matchingFuel.length > 0) {
+            const sortedFuel = [...matchingFuel]
+              .map(f => ({ ...f, normDate: normalizeDate(f.tarih) }))
+              .filter(f => f.normDate)
+              .sort((a, b) => b.normDate!.localeCompare(a.normDate!));
+            
+            if (sortedFuel.length > 0 && sortedFuel[0].normDate) {
+              item.sonIkmalTarihiIso = sortedFuel[0].normDate;
+              item.sonIkmalTarihi = formatDisplayDate(sortedFuel[0].normDate);
+            } else {
+              item.sonIkmalTarihiIso = null;
+              item.sonIkmalTarihi = '-';
+            }
+          } else {
+            item.sonIkmalTarihiIso = null;
+            item.sonIkmalTarihi = '-';
+          }
+
+          // Version history for this aircraft's type (Gün.Ay.Yıl formatında)
+          if (includeUpdateDates && typeVersionMap[item.tip]) {
+            item.surumGecmisi = formatDayMonthYear(typeVersionMap[item.tip].dateStr || '-');
+            item.surumGecmisiIso = typeVersionMap[item.tip].isoDate || null;
+          } else {
+            item.surumGecmisi = '-';
+            item.surumGecmisiIso = null;
+          }
+
           return item;
         })
         .filter(item => item.baslangicSaat !== null || item.bitisSaat !== null || item.toplamYakit > 0)
         .sort((a, b) => a.kuyrukNo.localeCompare(b.kuyrukNo));
 
-      setResults(finalResults);
+      // Critical evaluation per aircraft type:
+      // "her hava aracı tipi kendi içlerinde ayrı ayrı olmak üzere; içlerindeki veri güncelleme tarihi en son yakıt tarihinden geri olamaz"
+      const detectedWarnings: Record<string, TypeWarningInfo> = {};
+
+      if (includeUpdateDates) {
+        // Find max fuel date per aircraft type among results
+        activeTypes.forEach((t: string) => {
+          const typeAircraftList = intermediateResults.filter(r => r.tip === t);
+          let maxFuelIso: string | null = null;
+          let maxFuelStr: string = '';
+          let maxFuelTail: string = '';
+
+          typeAircraftList.forEach(r => {
+            if (r.sonIkmalTarihiIso) {
+              if (!maxFuelIso || r.sonIkmalTarihiIso > maxFuelIso) {
+                maxFuelIso = r.sonIkmalTarihiIso;
+                maxFuelStr = r.sonIkmalTarihi || '';
+                maxFuelTail = r.kuyrukNo;
+              }
+            }
+          });
+
+          const vHist = typeVersionMap[t];
+          if (maxFuelIso && vHist?.isoDate) {
+            // Outdated if version date is strictly older than the latest fuel date
+            // (Same date is allowed)
+            if (vHist.isoDate < maxFuelIso) {
+              detectedWarnings[t] = {
+                type: t,
+                latestFuelDateStr: maxFuelStr,
+                latestFuelDateIso: maxFuelIso,
+                versionDateStr: formatDayMonthYear(vHist.dateStr),
+                versionDateIso: vHist.isoDate,
+                aircraftWithMaxFuel: maxFuelTail
+              };
+            }
+          }
+        });
+
+        // Apply warning flag to intermediate results if its type has mismatch
+        intermediateResults.forEach(r => {
+          if (detectedWarnings[r.tip]) {
+            r.hasMismatchWarning = true;
+          } else {
+            r.hasMismatchWarning = false;
+          }
+        });
+      }
+
+      setTypeWarnings(detectedWarnings);
+      setResults(intermediateResults);
     } catch (err: any) {
       console.error("Sorgulama hatası:", err);
       setError('Veriler çekilirken bir hata oluştu. Lütfen tekrar deneyiniz.');
@@ -309,7 +458,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
     if (results.length === 0) return;
 
     const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const totalCols = includeFuel ? 9 : 7;
+    const totalCols = 7 + (includeFuel ? 2 : 0) + (includeUpdateDates ? 2 : 0);
     
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -324,6 +473,8 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
           .saat-col { font-weight: bold; color: #475569; }
           .fark-col { font-weight: bold; color: #2563eb; font-size: 14px; background-color: #eff6ff; }
           .yakit-col { font-weight: bold; color: #b45309; font-size: 13px; background-color: #fffbeb; }
+          .tarih-col { font-weight: bold; color: #334155; font-size: 12px; background-color: #f8fafc; }
+          .warning-row td { background-color: #fef08a !important; color: #854d0e !important; }
         </style>
       </head>
       <body>
@@ -349,6 +500,10 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
             <th>TOPLAM YAKIT (LT)</th>
             <th>SAATLİK YAKIT (LT/SAAT)</th>
             ` : ''}
+            ${includeUpdateDates ? `
+            <th>SON SÜRÜM GEÇMİŞİ</th>
+            <th>SON İKMAL TARİHİ</th>
+            ` : ''}
           </tr>
     `;
 
@@ -358,10 +513,11 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
       const bitisDec = isDec ? (r.bitisDecimal || '-') : formatAsDecimal(r.bitisSaat);
       const yakitStr = r.toplamYakit > 0 ? r.toplamYakit.toLocaleString('tr-TR') : '-';
       const saatlikYakitStr = r.saatlikYakit > 0 ? r.saatlikYakit.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-';
+      const rowClass = r.hasMismatchWarning ? 'class="warning-row"' : '';
       
       html += `
-        <tr>
-          <td class="kuyruk-col">${r.kuyrukNo}</td>
+        <tr ${rowClass}>
+          <td class="kuyruk-col">${r.kuyrukNo}${r.hasMismatchWarning ? ' (İKAZ: Güncelleme Gecikmiş)' : ''}</td>
           <td class="saat-col" style="mso-number-format:'\@';">${startDec}</td>
           <td class="saat-col" style="mso-number-format:'\@';">${formatAsHour(r.baslangicSaat)}</td>
           <td class="saat-col" style="mso-number-format:'\@';">${bitisDec}</td>
@@ -371,6 +527,10 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
           ${includeFuel ? `
           <td class="yakit-col" style="mso-number-format:'\@';">${yakitStr}</td>
           <td class="yakit-col" style="mso-number-format:'\@';">${saatlikYakitStr}</td>
+          ` : ''}
+          ${includeUpdateDates ? `
+          <td class="tarih-col" style="mso-number-format:'\@'; ${r.hasMismatchWarning ? 'background-color: #fef08a; color: #854d0e; font-weight: bold;' : ''}">${formatDayMonthYear(r.surumGecmisi) || '-'}</td>
+          <td class="tarih-col" style="mso-number-format:'\@'; ${r.hasMismatchWarning ? 'background-color: #fef08a; color: #854d0e; font-weight: bold;' : ''}">${formatDayMonthYear(r.sonIkmalTarihi) || '-'}</td>
           ` : ''}
         </tr>
       `;
@@ -388,6 +548,10 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
           ${includeFuel ? `
           <td class="yakit-col" style="mso-number-format:'\@'; color: #92400e; font-size: 16px;">${totalYakit.toLocaleString('tr-TR')} Lt</td>
           <td class="yakit-col" style="mso-number-format:'\@'; color: #92400e; font-size: 16px;">${overallSaatlikYakit} Lt/S</td>
+          ` : ''}
+          ${includeUpdateDates ? `
+          <td style="text-align: center; color: #64748b; font-size: 12px;">-</td>
+          <td style="text-align: center; color: #64748b; font-size: 12px;">-</td>
           ` : ''}
         </tr>
     `;
@@ -409,7 +573,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-[96vw] xl:max-w-7xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="bg-emerald-900 p-6 flex justify-between items-center shrink-0">
           <div>
             <h2 className="text-2xl font-black text-white uppercase tracking-widest flex items-center gap-3">
@@ -456,6 +620,18 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
               <span>Yakıt Dahil</span>
             </label>
           </div>
+          <div className="flex flex-col">
+            <label className="text-emerald-800 text-[10px] font-black uppercase tracking-widest mb-1 ml-1">Güncelleme Tarihleri</label>
+            <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2.5 rounded-xl border-2 border-slate-200 hover:border-emerald-500 transition-all text-xs font-bold text-slate-700 h-[42px] select-none">
+              <input 
+                type="checkbox" 
+                checked={includeUpdateDates} 
+                onChange={(e) => setIncludeUpdateDates(e.target.checked)} 
+                className="w-4 h-4 accent-emerald-700 rounded cursor-pointer"
+              />
+              <span>Son Sürüm Dahil</span>
+            </label>
+          </div>
           <div className="flex gap-2 ml-auto">
             {results.length > 0 && (
               <button 
@@ -489,13 +665,34 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
             </div>
           )}
 
+          {Object.keys(typeWarnings).length > 0 && (
+            <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col gap-2 shadow-sm animate-pulse">
+              <div className="flex items-center gap-2 text-amber-900 font-black text-sm">
+                <AlertTriangle className="text-amber-600 shrink-0" size={20} />
+                <span>KRİTİK UYARI: E-TABLO VERİ GÜNCELLEME İKAZI</span>
+              </div>
+              <div className="text-xs text-amber-800 font-semibold space-y-1.5">
+                {(Object.values(typeWarnings) as TypeWarningInfo[]).map((w, idx) => (
+                  <p key={idx} className="flex items-start gap-2">
+                    <span className="font-black text-amber-950 bg-amber-200 border border-amber-300 px-2 py-0.5 rounded text-[11px] shrink-0">
+                      {w.type}
+                    </span>
+                    <span>
+                      Online Excel sürüm geçmişi (<strong>{w.versionDateStr}</strong>), en son gerçekleşen yakıt ikmal tarihinden (<strong>{w.latestFuelDateStr}</strong> - {w.aircraftWithMaxFuel}) daha eski veya aynı tarihte kalmıştır! İlgili hava aracı tipine ait satırlar sarı dolgu ile yanıp sönerek ikaz verilmektedir. Lütfen e-tabloyu güncelleyiniz.
+                    </span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="w-14 h-14 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-5"></div>
               <h3 className="text-lg font-black text-slate-800 uppercase tracking-wide">VERİLER SORGULANIYOR...</h3>
               <p className="text-slate-500 text-xs font-semibold mt-1 max-w-md">
                 {includeFuel 
-                  ? "Faaliyet logları ve Yakıt İkmal Verileri Google Sheets üzerinden çekiliyor, lütfen bekleyiniz..." 
+                  ? "Faaliyet logları, Yakıt İkmal Verileri ve Online Excel Sürüm Geçmişi çekiliyor, lütfen bekleyiniz..." 
                   : "Faaliyet logları çekiliyor, lütfen bekleyiniz..."}
               </p>
             </div>
@@ -514,7 +711,23 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
                     {includeFuel && (
                       <>
                         <th className="px-2 py-4 text-center text-[10px] font-black uppercase tracking-widest border-r border-emerald-800 bg-amber-950/70">TOPLAM YAKIT (LT)</th>
-                        <th className="px-2 py-4 text-center text-[10px] font-black uppercase tracking-widest bg-amber-950/70">SAATLİK YAKIT (LT/SAAT)</th>
+                        <th className="px-2 py-4 text-center text-[10px] font-black uppercase tracking-widest border-r border-emerald-800 bg-amber-950/70">SAATLİK YAKIT (LT/SAAT)</th>
+                      </>
+                    )}
+                    {includeUpdateDates && (
+                      <>
+                        <th className="px-2 py-4 text-center text-[10px] font-black uppercase tracking-widest border-r border-emerald-800 bg-sky-950/80" title="Online Excel E-Tablo En Son Değişiklik Sürümü">
+                          <div className="flex items-center justify-center gap-1">
+                            <Clock size={12} className="text-sky-300" />
+                            <span>SON SÜRÜM GEÇMİŞİ</span>
+                          </div>
+                        </th>
+                        <th className="px-2 py-4 text-center text-[10px] font-black uppercase tracking-widest bg-sky-950/80">
+                          <div className="flex items-center justify-center gap-1">
+                            <Fuel size={12} className="text-amber-300" />
+                            <span>SON İKMAL TARİHİ</span>
+                          </div>
+                        </th>
                       </>
                     )}
                   </tr>
@@ -526,8 +739,28 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
                     const bitisDec = isDec ? (r.bitisDecimal || '-') : formatAsDecimal(r.bitisSaat);
                     
                     return (
-                      <tr key={i} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-2 py-4 font-black text-emerald-900 text-sm border-r border-slate-100">{r.kuyrukNo}</td>
+                      <tr 
+                        key={i} 
+                        className={`transition-colors ${
+                          r.hasMismatchWarning 
+                            ? 'bg-amber-100/80 hover:bg-amber-200/90 animate-pulse border-y-2 border-amber-300' 
+                            : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <td className="px-2 py-4 font-black text-emerald-900 text-sm border-r border-slate-100">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{r.kuyrukNo}</span>
+                            {r.hasMismatchWarning && (
+                              <span 
+                                title="İlgili e-tablo sürüm güncellemesi son yakıt ikmal tarihinden geride!" 
+                                className="inline-flex items-center gap-0.5 bg-amber-300 text-amber-950 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-amber-400 shadow-xs"
+                              >
+                                <AlertTriangle size={10} className="text-amber-800 shrink-0" />
+                                İKAZ
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-2 py-4 text-center font-bold text-slate-400 text-xs border-r border-slate-100">
                           {startDec}
                         </td>
@@ -555,8 +788,27 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
                             >
                               {r.toplamYakit > 0 ? `${r.toplamYakit.toLocaleString('tr-TR')} Lt` : '-'}
                             </td>
-                            <td className="px-2 py-4 text-center font-bold text-amber-900 text-xs bg-amber-50/30">
+                            <td className="px-2 py-4 text-center font-bold text-amber-900 text-xs bg-amber-50/30 border-r border-slate-100">
                               {r.saatlikYakit > 0 ? `${r.saatlikYakit.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} Lt/S` : '-'}
+                            </td>
+                          </>
+                        )}
+                        {includeUpdateDates && (
+                          <>
+                            <td className={`px-2 py-4 text-center font-bold text-xs border-r border-slate-100 ${r.hasMismatchWarning ? 'text-amber-900 font-extrabold' : 'text-slate-600'}`}>
+                              <span className="inline-flex items-center gap-1 justify-center">
+                                <Clock size={12} className="text-slate-400 shrink-0" />
+                                {formatDayMonthYear(r.surumGecmisi) || '-'}
+                              </span>
+                            </td>
+                            <td className={`px-2 py-4 text-center font-bold text-xs ${r.hasMismatchWarning ? 'text-amber-950 font-black' : 'text-slate-700'}`}>
+                              {r.sonIkmalTarihi && r.sonIkmalTarihi !== '-' ? (
+                                <span className={`px-2 py-0.5 rounded-md font-black ${r.hasMismatchWarning ? 'bg-amber-200 text-amber-950 border border-amber-300' : 'bg-slate-100 text-slate-800'}`}>
+                                  {formatDayMonthYear(r.sonIkmalTarihi)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">-</span>
+                              )}
                             </td>
                           </>
                         )}
@@ -580,7 +832,7 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
                         <td className="px-4 py-6 text-center font-black text-amber-900 text-lg bg-amber-100/60 border-r border-emerald-200">
                           {results.reduce((acc, curr) => acc + (curr.toplamYakit || 0), 0).toLocaleString('tr-TR')} Lt
                         </td>
-                        <td className="px-4 py-6 text-center font-black text-amber-950 text-base bg-amber-100/60">
+                        <td className="px-4 py-6 text-center font-black text-amber-950 text-base bg-amber-100/60 border-r border-emerald-200">
                           {(() => {
                             const totHours = results.reduce((acc, curr) => acc + curr.fark, 0);
                             const totFuel = results.reduce((acc, curr) => acc + (curr.toplamYakit || 0), 0);
@@ -588,6 +840,16 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
                               ? `${(totFuel / totHours).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} Lt/S`
                               : '-';
                           })()}
+                        </td>
+                      </>
+                    )}
+                    {includeUpdateDates && (
+                      <>
+                        <td className="px-2 py-6 text-center text-xs font-bold text-slate-400 border-r border-emerald-200">
+                          -
+                        </td>
+                        <td className="px-2 py-6 text-center text-xs font-bold text-slate-400">
+                          -
                         </td>
                       </>
                     )}

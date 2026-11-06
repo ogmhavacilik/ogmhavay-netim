@@ -8,9 +8,146 @@ function doPost(e) {
     if (!e || !e.postData || !e.postData.contents) return jsonError("Post verisi alınamadı.");
     var params = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.openById(params.sheetId);
-    ss.setSpreadsheetTimeZone("Europe/Istanbul");
     var action = (params.action || "getAircraftData").toString().trim();
     var logSsId = "1Fw-l_O3vW45_TZs9GPQ19dt_NF0LagyWez4mVBvu6Bg";
+
+    // Zorunlu saat dilimi ayarı (Europe/Istanbul)
+    try {
+      ss.setSpreadsheetTimeZone("Europe/Istanbul");
+    } catch(e) {}
+
+    // -----------------------------------------------------
+    // 🟡 AKSİYON: DOSYA METADATA / SÜRÜM GEÇMİŞİ (REVISIONS)
+    // -----------------------------------------------------
+    if (action === "getFileMetadata" || action === "getVersionHistory" || action === "getSurumGecmisi" || action === "getFileLastUpdated") {
+      var targetFileId = params.sheetId || ss.getId();
+      var lastUpdated = "";
+      var fileName = "";
+      var isoDate = "";
+      var lastUser = "";
+      var firstSheetDate = "";
+
+      // 0. ÖNCELİK: İlk sayfadaki (1. sıradaki sayfa) veri güncelleme tarihini doğrudan oku
+      try {
+        var firstSheet = ss.getSheets()[0];
+        if (firstSheet) {
+          var al1Val = firstSheet.getRange("AL1").getValue();
+          if (al1Val instanceof Date && !isNaN(al1Val.getTime())) {
+            firstSheetDate = Utilities.formatDate(al1Val, "Europe/Istanbul", "dd.MM.yyyy");
+            isoDate = Utilities.formatDate(al1Val, "Europe/Istanbul", "yyyy-MM-dd");
+          } else {
+            var r1Vals = firstSheet.getRange(1, 1, 1, Math.min(firstSheet.getLastColumn() || 40, 50)).getDisplayValues()[0];
+            for (var cIdx = 0; cIdx < r1Vals.length; cIdx++) {
+              var val = String(r1Vals[cIdx] || "").trim();
+              if (val && (val.match(/^\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}/) || val.match(/^\d{4}-\d{2}-\d{2}/))) {
+                firstSheetDate = val;
+                break;
+              }
+            }
+          }
+        }
+      } catch(eSheet) {}
+
+      // 1. ÖNCELİK: Google Drive Revisions API v3 (E-Tablo Sürüm Geçmişindeki Gerçek Kullanıcı Düzenlemeleri)
+      try {
+        var token = ScriptApp.getOAuthToken();
+        var revUrl = "https://www.googleapis.com/drive/v3/files/" + targetFileId + "/revisions?fields=revisions(id,modifiedTime,lastModifyingUser)&pageSize=1000";
+        var res = UrlFetchApp.fetch(revUrl, {
+          headers: { "Authorization": "Bearer " + token },
+          muteHttpExceptions: true
+        });
+        if (res.getResponseCode() === 200) {
+          var parsed = JSON.parse(res.getContentText());
+          if (parsed.revisions && parsed.revisions.length > 0) {
+            for (var rIdx = parsed.revisions.length - 1; rIdx >= 0; rIdx--) {
+              var rev = parsed.revisions[rIdx];
+              if (rev.modifiedTime) {
+                var d = new Date(rev.modifiedTime);
+                var revDisplay = Utilities.formatDate(d, "Europe/Istanbul", "dd.MM.yyyy HH:mm");
+                var revIso = Utilities.formatDate(d, "Europe/Istanbul", "yyyy-MM-dd");
+
+                if (firstSheetDate) {
+                  var timePart = Utilities.formatDate(d, "Europe/Istanbul", "HH:mm");
+                  lastUpdated = firstSheetDate.indexOf(":") === -1 ? (firstSheetDate + " " + timePart) : firstSheetDate;
+                } else {
+                  lastUpdated = revDisplay;
+                  isoDate = revIso;
+                }
+                lastUser = (rev.lastModifyingUser && rev.lastModifyingUser.displayName) || "";
+                break;
+              }
+            }
+          }
+        }
+      } catch (errRev) {
+        Logger.log("Revisions API v3 hatası: " + errRev);
+      }
+
+      // 2. YEDEK: Drive Advanced Service v2
+      if (!lastUpdated) {
+        try {
+          if (typeof Drive !== "undefined" && Drive.Revisions && Drive.Revisions.list) {
+            var revs = Drive.Revisions.list(targetFileId);
+            if (revs && revs.items && revs.items.length > 0) {
+              var lastItem = revs.items[revs.items.length - 1];
+              var d2 = new Date(lastItem.modifiedDate);
+              var d2Display = Utilities.formatDate(d2, "Europe/Istanbul", "dd.MM.yyyy HH:mm");
+              var d2Iso = Utilities.formatDate(d2, "Europe/Istanbul", "yyyy-MM-dd");
+              if (firstSheetDate) {
+                var timePart2 = Utilities.formatDate(d2, "Europe/Istanbul", "HH:mm");
+                lastUpdated = firstSheetDate.indexOf(":") === -1 ? (firstSheetDate + " " + timePart2) : firstSheetDate;
+              } else {
+                lastUpdated = d2Display;
+                isoDate = d2Iso;
+              }
+              lastUser = lastItem.lastModifyingUserName || "";
+            }
+          }
+        } catch (errDriveV2) {
+          Logger.log("Drive v2 revisions hatası: " + errDriveV2);
+        }
+      }
+
+      // 3. YEDEK: DriveApp.getFileById (Dosya genel son değişiklik)
+      if (!lastUpdated) {
+        if (firstSheetDate) {
+          lastUpdated = firstSheetDate;
+        } else {
+          try {
+            var file = DriveApp.getFileById(targetFileId);
+            fileName = file.getName();
+            var lu = file.getLastUpdated();
+            lastUpdated = Utilities.formatDate(lu, "Europe/Istanbul", "dd.MM.yyyy HH:mm");
+            isoDate = Utilities.formatDate(lu, "Europe/Istanbul", "yyyy-MM-dd");
+          } catch (err) {
+            try {
+              var lu2 = DriveApp.getFileById(ss.getId()).getLastUpdated();
+              lastUpdated = Utilities.formatDate(lu2, "Europe/Istanbul", "dd.MM.yyyy HH:mm");
+              isoDate = Utilities.formatDate(lu2, "Europe/Istanbul", "yyyy-MM-dd");
+            } catch (err2) {
+              lastUpdated = Utilities.formatDate(new Date(), "Europe/Istanbul", "dd.MM.yyyy HH:mm");
+              isoDate = Utilities.formatDate(new Date(), "Europe/Istanbul", "yyyy-MM-dd");
+            }
+          }
+        }
+      }
+
+      try {
+        if (!fileName) {
+          fileName = DriveApp.getFileById(targetFileId).getName();
+        }
+      } catch (e) {
+        fileName = ss.getName();
+      }
+
+      return jsonSuccess({
+        sheetId: targetFileId,
+        name: fileName,
+        lastUpdated: lastUpdated,
+        isoDate: isoDate,
+        lastUser: lastUser
+      });
+    }
 
     // -----------------------------------------------------
     // 🔵 AKSİYON: ÖPL VERİSİ (ARŞİV) SORGULAMA

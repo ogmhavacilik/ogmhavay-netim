@@ -6,25 +6,91 @@ function doPost(e) {
     // Sayfa ismi varsa onu al, yoksa ilk sayfayı al
     var sheet = sheetName ? ss.getSheetByName(sheetName) : ss.getSheets()[0];
     
-    // GÜNCELLEME AKSİYONU
-    if (contents.action === 'replaceEntireSpreadsheet') {
-      var fileData = contents.fileData;
-      if (!fileData) {
-        return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Dosya verisi eksik." })).setMimeType(ContentService.MimeType.JSON);
-      }
+    if (contents.action === 'getFileMetadata' || contents.action === 'getVersionHistory' || contents.action === 'getSurumGecmisi') {
+      var targetFileId = contents.sheetId || ss.getId();
+      var lastUpdated = "";
+      var isoDate = "";
+      var lastUser = "";
+      var firstSheetDate = "";
+      
+      // 0. ÖNCELİK: İlk sayfadaki (1. sıradaki sayfa) veri güncelleme tarihini doğrudan oku
       try {
-        var decodedData = Utilities.base64Decode(fileData.split(',')[1] || fileData);
-        var blob = Utilities.newBlob(decodedData, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'temp.xlsx');
-        var fileId = ss.getId();
-        Drive.Files.update({
-          title: ss.getName(),
-          mimeType: MimeType.GOOGLE_SHEETS
-        }, fileId, blob);
-        return ContentService.createTextOutput(JSON.stringify({ success: true, message: "Excel başarıyla yüklendi." })).setMimeType(ContentService.MimeType.JSON);
-      } catch (e) {
-        return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Excel yükleme hatası: " + e.toString() })).setMimeType(ContentService.MimeType.JSON);
+        var firstSheet = ss.getSheets()[0];
+        if (firstSheet) {
+          var o1Val = firstSheet.getRange("O1").getValue();
+          if (o1Val instanceof Date && !isNaN(o1Val.getTime())) {
+            firstSheetDate = Utilities.formatDate(o1Val, "Europe/Istanbul", "dd.MM.yyyy");
+            isoDate = Utilities.formatDate(o1Val, "Europe/Istanbul", "yyyy-MM-dd");
+          } else {
+            var o1Str = firstSheet.getRange("O1").getDisplayValue().trim();
+            if (o1Str && (o1Str.match(/^\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}/) || o1Str.match(/^\d{4}-\d{2}-\d{2}/))) {
+              firstSheetDate = o1Str;
+            }
+          }
+        }
+      } catch(eSheet) {}
+      
+      try {
+        var token = ScriptApp.getOAuthToken();
+        var revUrl = "https://www.googleapis.com/drive/v3/files/" + targetFileId + "/revisions?fields=revisions(id,modifiedTime,lastModifyingUser)&pageSize=1000";
+        var res = UrlFetchApp.fetch(revUrl, {
+          headers: { "Authorization": "Bearer " + token },
+          muteHttpExceptions: true
+        });
+        if (res.getResponseCode() === 200) {
+          var parsed = JSON.parse(res.getContentText());
+          if (parsed.revisions && parsed.revisions.length > 0) {
+            for (var rIdx = parsed.revisions.length - 1; rIdx >= 0; rIdx--) {
+              var rev = parsed.revisions[rIdx];
+              if (rev.modifiedTime) {
+                var d = new Date(rev.modifiedTime);
+                var revDisplay = Utilities.formatDate(d, "Europe/Istanbul", "dd.MM.yyyy HH:mm");
+                var revIso = Utilities.formatDate(d, "Europe/Istanbul", "yyyy-MM-dd");
+                
+                if (firstSheetDate) {
+                  var timePart = Utilities.formatDate(d, "Europe/Istanbul", "HH:mm");
+                  lastUpdated = firstSheetDate.indexOf(":") === -1 ? (firstSheetDate + " " + timePart) : firstSheetDate;
+                } else {
+                  lastUpdated = revDisplay;
+                  isoDate = revIso;
+                }
+                lastUser = (rev.lastModifyingUser && rev.lastModifyingUser.displayName) || "";
+                break;
+              }
+            }
+          }
+        }
+      } catch (errRev) {}
+
+      if (!lastUpdated) {
+        if (firstSheetDate) {
+          lastUpdated = firstSheetDate;
+        } else {
+          try {
+            var file = DriveApp.getFileById(targetFileId);
+            var lu = file.getLastUpdated();
+            lastUpdated = Utilities.formatDate(lu, "Europe/Istanbul", "dd.MM.yyyy HH:mm");
+            isoDate = Utilities.formatDate(lu, "Europe/Istanbul", "yyyy-MM-dd");
+          } catch (err) {
+            lastUpdated = Utilities.formatDate(new Date(), "Europe/Istanbul", "dd.MM.yyyy HH:mm");
+            isoDate = Utilities.formatDate(new Date(), "Europe/Istanbul", "yyyy-MM-dd");
+          }
+        }
       }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        success: true,
+        data: {
+          sheetId: targetFileId,
+          name: ss.getName(),
+          lastUpdated: lastUpdated,
+          isoDate: isoDate,
+          lastUser: lastUser
+        }
+      })).setMimeType(ContentService.MimeType.JSON);
     }
+
 
     if (contents.action === 'updateAircraftData') {
       var kuyrukNo = contents.kuyrukNo;
