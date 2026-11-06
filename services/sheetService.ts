@@ -1100,8 +1100,20 @@ export const fetchYakitData = async (): Promise<YakitKaydi[]> => {
           }
         }
 
+        // Shift fuel dates by +1 day as requested by user ("geriden +1 geliyor +1 ekle")
+        let shiftedTarih = rawTarih;
+        const iso = parseToIsoDate(rawTarih);
+        if (iso) {
+          const d = new Date(iso);
+          d.setDate(d.getDate() + 1);
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          shiftedTarih = `${day}.${m}.${y}`;
+        }
+
         return {
-          tarih: rawTarih,
+          tarih: shiftedTarih,
           kuyrukNo: kNo,
           miktar: parseFuelAmount(rawMiktar),
           ikmalYeri,
@@ -1172,8 +1184,20 @@ export const fetchYakitData = async (): Promise<YakitKaydi[]> => {
         'FATURA NO', 'fişNo', 'Fiş No', 'Belge No', 'Fiş/Fatura', 'C', 'c', '2'
       ]) || '').trim();
 
+      // Shift fuel dates by +1 day as requested by user ("geriden +1 geliyor +1 ekle")
+      let shiftedTarih = rawTarih;
+      const iso = parseToIsoDate(rawTarih);
+      if (iso) {
+        const d = new Date(iso);
+        d.setDate(d.getDate() + 1);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        shiftedTarih = `${day}.${m}.${y}`;
+      }
+
       const res: YakitKaydi = {
-        tarih: rawTarih,
+        tarih: shiftedTarih,
         kuyrukNo: kNo,
         miktar: parseFuelAmount(rawMiktar),
         ikmalYeri,
@@ -1769,11 +1793,46 @@ const TR_MONTHS_MAP: Record<string, string> = {
  * Saat dilimi kaymalarını önlemek için doğrudan tarih parçasını işler.
  */
 export const parseToIsoDate = (dStr: any): string | null => {
-  if (!dStr) return null;
-  const s = String(dStr).trim();
+  if (!dStr && dStr !== 0) return null;
   
+  if (dStr instanceof Date) {
+    if (isNaN(dStr.getTime())) return null;
+    const y = dStr.getFullYear();
+    const m = dStr.getMonth() + 1;
+    const d = dStr.getDate();
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
+  const s = String(dStr).trim();
+  if (!s || s === '-') return null;
+  
+  // Handle Excel serial date (e.g. 45892)
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const serial = parseFloat(s);
+    if (serial > 30000 && serial < 70000) {
+      const dt = new Date((serial - 25569) * 86400 * 1000);
+      const y = dt.getUTCFullYear();
+      const m = dt.getUTCMonth() + 1;
+      const d = dt.getUTCDate();
+      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+  }
+
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
     return s.slice(0, 10);
+  }
+
+  // Handle ISO date with T/Z
+  if (s.includes('T') || s.includes('Z')) {
+    const dt = new Date(s);
+    if (!isNaN(dt.getTime())) {
+      // If it has Z, it's UTC. If not, treat as local or use UTC based on heuristic.
+      // For absolute dates, we usually want the UTC date part.
+      const y = dt.getUTCFullYear();
+      const m = dt.getUTCMonth() + 1;
+      const d = dt.getUTCDate();
+      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
   }
 
   // Türkçe ay adı içeren tarihler (Örn: "3 Kasım, 14:44", "3 Kasım 2026", "30-Kas-26")
@@ -1806,9 +1865,15 @@ export const parseToIsoDate = (dStr: any): string | null => {
     const p0 = parseInt(parts[0], 10);
     const p1 = parseInt(parts[1], 10);
     
-    // Assuming DD.MM.YYYY format
-    const dayNum = p0;
-    const monthNum = p1;
+    // Default to DD.MM.YYYY for dots and dashes, but handle US slash format heuristic
+    let dayNum = p0;
+    let monthNum = p1;
+
+    if (s.includes('/') && p0 <= 12 && p1 > 12) {
+      // Likely MM/DD/YYYY
+      monthNum = p0;
+      dayNum = p1;
+    }
     
     return `${yr}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
   }
@@ -1821,68 +1886,12 @@ export const parseToIsoDate = (dStr: any): string | null => {
  * Tabloda ve dışa aktarmada her zaman bu format kullanılır.
  */
 export const formatDayMonthYear = (val: any): string => {
-  if (!val || val === '-') return '-';
-  const s = String(val).trim();
+  if (!val && val !== 0) return '-';
+  const iso = parseToIsoDate(val);
+  if (!iso) return String(val);
   
-  // Zaten DD.MM.YYYY formatında ise doğrudan döndür
-  if (/^\d{2}\.\d{2}\.\d{4}/.test(s)) {
-    return s.split(' ')[0];
-  }
-
-  // Türkçe ay adı içeren tarihler
-  const trMatch = s.match(/(\d{1,2})[\s\-]+([a-zA-ZçğıöşüÇĞİÖŞÜ]+)(?:[\s\-]+(\d{2,4}))?/i);
-  if (trMatch) {
-    const day = trMatch[1].padStart(2, '0');
-    const mName = trMatch[2].toLocaleLowerCase('tr-TR');
-    const mNum = TR_MONTHS_MAP[mName];
-    if (mNum) {
-      let yr = trMatch[3];
-      if (!yr) {
-        yr = String(new Date().getFullYear());
-      } else if (yr.length === 2) {
-        yr = '20' + yr;
-      }
-      return `${day}.${mNum}.${yr}`;
-    }
-  }
-  
-  // YYYY-MM-DD veya ISO formatında ise Gün.Ay.Yıl yap
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-    const dPart = s.split(/[\sT]+/)[0];
-    const parts = dPart.split('-');
-    return `${parts[2]}.${parts[1]}.${parts[0]}`;
-  }
-
-  // Slash veya nokta ayrılmış tarihler
-  const datePart = s.split(/[\sT]+/)[0];
-  const parts = datePart.split(/[\.\/\-]/);
-  if (parts.length === 3) {
-    let yr = parts[2];
-    if (yr.length === 2) yr = `20${yr}`;
-    if (parts[0].length === 4) {
-      return `${parts[2]}.${parts[1]}.${parts[0]}`;
-    }
-    const p0 = parseInt(parts[0], 10);
-    const p1 = parseInt(parts[1], 10);
-    
-    let monthNum = p1;
-    let dayNum = p0;
-    
-    if (p0 === 11 || p0 === 10) {
-      monthNum = p0;
-      dayNum = p1;
-    } else if (p1 === 11 || p1 === 10) {
-      monthNum = p1;
-      dayNum = p0;
-    } else if (p0 > 12) {
-      dayNum = p0;
-      monthNum = p1;
-    }
-
-    return `${String(dayNum).padStart(2, '0')}.${String(monthNum).padStart(2, '0')}.${yr}`;
-  }
-
-  return s;
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y}`;
 };
 
 /**

@@ -77,90 +77,12 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
     });
   };
 
-  const normalizeDate = (dateStr: any): string | null => {
-    if (!dateStr && dateStr !== 0) return null;
-    if (dateStr instanceof Date) {
-      if (isNaN(dateStr.getTime())) return null;
-      const trDt = new Date(dateStr.getTime() + 3 * 3600 * 1000);
-      const y = trDt.getUTCFullYear();
-      const m = trDt.getUTCMonth() + 1;
-      const d = trDt.getUTCDate();
-      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    }
-    const s = String(dateStr).trim();
-    if (!s || s === '-') return null;
-
-    if (typeof dateStr === 'number' || /^\d{5}(\.\d+)?$/.test(s)) {
-      const num = typeof dateStr === 'number' ? dateStr : parseFloat(s);
-      if (num > 30000 && num < 60000) {
-        const excelEpoch = new Date(1899, 11, 30);
-        const dateObj = new Date(excelEpoch.getTime() + num * 86400 * 1000);
-        if (!isNaN(dateObj.getTime())) {
-          const trDt = new Date(dateObj.getTime() + 3 * 3600 * 1000);
-          const y = trDt.getUTCFullYear();
-          const m = trDt.getUTCMonth() + 1;
-          const d = trDt.getUTCDate();
-          return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        }
-      }
-    }
-    
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-      return s.slice(0, 10);
-    }
-
-    if (s.includes('T') || s.includes('Z') || s.includes('GMT')) {
-      const dt = new Date(s);
-      if (!isNaN(dt.getTime())) {
-        const trDt = new Date(dt.getTime() + 3 * 3600 * 1000);
-        const y = trDt.getUTCFullYear();
-        const m = trDt.getUTCMonth() + 1;
-        const d = trDt.getUTCDate();
-        return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      }
-    }
-
-    if (s.includes('-') || s.includes('.') || s.includes('/')) {
-      const parts = s.split(/[- ./:]/).filter(Boolean);
-      if (parts.length >= 3) {
-        let y = -1, m = -1, d = -1;
-        if (parts[0].length === 4) {
-          y = parseInt(parts[0], 10);
-          m = parseInt(parts[1], 10);
-          d = parseInt(parts[2], 10);
-        } else if (parts[2].length === 4 || parts[2].length === 2) {
-          d = parseInt(parts[0], 10);
-          m = parseInt(parts[1], 10);
-          y = parseInt(parts[2], 10);
-          if (y < 100) y += 2000;
-        }
-        if (y > 1900 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-          return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        }
-      }
-    }
-    
-    const dt = new Date(s);
-    if (!isNaN(dt.getTime())) {
-      const trDt = new Date(dt.getTime() + 3 * 3600 * 1000);
-      const y = trDt.getUTCFullYear();
-      const m = trDt.getUTCMonth() + 1;
-      const d = trDt.getUTCDate();
-      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    }
-    return null;
+  const formatDisplayDate = (dateStr: any): string => {
+    return formatDayMonthYear(dateStr);
   };
 
-  const formatDisplayDate = (dateStr: any): string => {
-    if (!dateStr && dateStr !== 0) return '-';
-    const norm = normalizeDate(dateStr);
-    if (norm) {
-      const parts = norm.split('-');
-      if (parts.length === 3) {
-        return `${parts[2]}.${parts[1]}.${parts[0]}`;
-      }
-    }
-    return String(dateStr);
+  const normalizeDate = (dateStr: any): string | null => {
+    return parseToIsoDate(dateStr);
   };
 
   const getMatchingKey = (inputKuyruk: string, mapKeys: string[]): string | null => {
