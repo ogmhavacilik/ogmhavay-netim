@@ -376,121 +376,241 @@ const GovdeSorgulaModal: React.FC<GovdeSorgulaModalProps> = ({ isOpen, onClose, 
     }
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     if (results.length === 0) return;
-
-    const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const totalCols = 7 + (includeFuel ? 2 : 0) + (includeUpdateDates ? 2 : 0);
     
-    let html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8" />
-        <style>
-          table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
-          th, td { border: 1px solid #e2e8f0; padding: 12px 8px; text-align: center; vertical-align: middle; font-size: 12px; }
-          .header-row th { background-color: #064e3b; color: white; font-weight: bold; font-size: 11px; }
-          .title-row { background-color: #f8fafc; font-weight: bold; font-size: 14px; color: #064e3b; }
-          .kuyruk-col { font-weight: bold; color: #064e3b; font-size: 14px; }
-          .saat-col { font-weight: bold; color: #475569; }
-          .fark-col { font-weight: bold; color: #2563eb; font-size: 14px; background-color: #eff6ff; }
-          .yakit-col { font-weight: bold; color: #b45309; font-size: 13px; background-color: #fffbeb; }
-          .tarih-col { font-weight: bold; color: #334155; font-size: 12px; background-color: #f8fafc; }
-          .warning-row td { background-color: #fef08a !important; color: #854d0e !important; }
-        </style>
-      </head>
-      <body>
-        <table>
-          <tr>
-            <td colspan="${totalCols}" style="border: none; text-align: right; color: gray; font-size: 10px;">Veri Çekiliş Tarihi: ${dateStr}</td>
-          </tr>
-          <tr>
-            <td colspan="${totalCols}" class="title-row" style="text-align: center;">GÖVDE UÇUŞ SAATİ ${includeFuel ? 'VE YAKIT ' : ''}SORGULAMA SONUÇLARI (${type})</td>
-          </tr>
-          <tr>
-            <td colspan="${totalCols}" style="text-align: center; font-weight: bold; color: #475569; background-color: #f8fafc;">Başlangıç: ${formatDisplayDate(startDate)} | Bitiş: ${formatDisplayDate(endDate)}</td>
-          </tr>
-          <tr class="header-row">
-            <th>KUYRUK NO</th>
-            <th>BAŞLANGIÇ (ONDALIK)</th>
-            <th>BAŞLANGIÇ (SAAT)</th>
-            <th>BİTİŞ (ONDALIK)</th>
-            <th>BİTİŞ (SAAT)</th>
-            <th>TOPLAM UÇUŞ</th>
-            <th>TOPLAM UÇUŞ (ONDALIK)</th>
-            ${includeFuel ? `
-            <th>TOPLAM YAKIT (LT)</th>
-            <th>SAATLİK YAKIT (LT/SAAT)</th>
-            ` : ''}
-            ${includeUpdateDates ? `
-            <th>SON SÜRÜM GEÇMİŞİ</th>
-            <th>SON İKMAL TARİHİ</th>
-            ` : ''}
-          </tr>
-    `;
+    const ExcelJS = (await import('exceljs')).default;
+    const workbook = new ExcelJS.Workbook();
+    
+    // 1. SUMMARY SHEET
+    const summarySheet = workbook.addWorksheet('Genel Özet');
+    
+    // Colors (HEX)
+    const emerald900 = '064E3B';
+    const blue600 = '2563EB';
+    const amber800 = '92400E';
+    const amber100 = 'FEF3C7';
+    const slate100 = 'F1F5F9';
+    const white = 'FFFFFF';
 
-    results.forEach(r => {
+    // Set Columns
+    const summaryColumns = [
+      { header: 'KUYRUK NO', key: 'kuyrukNo', width: 18 },
+      { header: 'BAŞL. (ONDALIK)', key: 'baslOndalik', width: 18 },
+      { header: 'BAŞL. (SAAT)', key: 'baslSaat', width: 15 },
+      { header: 'BİTİŞ (ONDALIK)', key: 'bitisOndalik', width: 18 },
+      { header: 'BİTİŞ (SAAT)', key: 'bitisSaat', width: 15 },
+      { header: 'TOPLAM UÇUŞ', key: 'toplamUcus', width: 15 },
+      { header: 'TOPLAM UÇUŞ (OND)', key: 'toplamUcusOndalik', width: 20 },
+    ];
+
+    if (includeFuel) {
+      summaryColumns.push(
+        { header: 'TOPLAM YAKIT (LT)', key: 'toplamYakit', width: 20 },
+        { header: 'SAATLİK YAKIT (LT/S)', key: 'saatlikYakit', width: 20 }
+      );
+    }
+
+    if (includeUpdateDates) {
+      summaryColumns.push(
+        { header: 'SON SÜRÜM GEÇMİŞİ', key: 'surumGecmisi', width: 20 },
+        { header: 'SON İKMAL TARİHİ', key: 'sonIkmalTarihi', width: 20 }
+      );
+    }
+
+    summarySheet.columns = summaryColumns;
+
+    // Header Styling
+    const headerRow = summarySheet.getRow(1);
+    headerRow.height = 30;
+    headerRow.eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: emerald900 } };
+      cell.font = { color: { argb: white }, bold: true, size: 10 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = {
+        top: { style: 'thin', color: { argb: '000000' } },
+        left: { style: 'thin', color: { argb: '000000' } },
+        bottom: { style: 'thin', color: { argb: '000000' } },
+        right: { style: 'thin', color: { argb: '000000' } }
+      };
+    });
+
+    // Add Data
+    results.forEach((r, idx) => {
       const isDec = r.tip === 'Bell-429' || r.tip === 'B-360' || r.tip === 'C-650';
       const startDec = isDec ? (r.baslangicDecimal || '-') : formatAsDecimal(r.baslangicSaat);
       const bitisDec = isDec ? (r.bitisDecimal || '-') : formatAsDecimal(r.bitisSaat);
-      const yakitStr = r.toplamYakit > 0 ? r.toplamYakit.toLocaleString('tr-TR') : '-';
-      const saatlikYakitStr = r.saatlikYakit > 0 ? r.saatlikYakit.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-';
-      const rowClass = r.hasMismatchWarning ? 'class="warning-row"' : '';
       
-      html += `
-        <tr ${rowClass}>
-          <td class="kuyruk-col">${r.kuyrukNo}${r.hasMismatchWarning ? ' (İKAZ: Güncelleme Gecikmiş)' : ''}</td>
-          <td class="saat-col" style="mso-number-format:'\@';">${startDec}</td>
-          <td class="saat-col" style="mso-number-format:'\@';">${formatAsHour(r.baslangicSaat)}</td>
-          <td class="saat-col" style="mso-number-format:'\@';">${bitisDec}</td>
-          <td class="saat-col" style="mso-number-format:'\@';">${formatAsHour(r.bitisSaat)}</td>
-          <td class="fark-col" style="mso-number-format:'\@';">${formatAsHour(r.fark)}</td>
-          <td class="fark-col" style="mso-number-format:'\@';">${formatAsDecimal(r.fark)}</td>
-          ${includeFuel ? `
-          <td class="yakit-col" style="mso-number-format:'\@';">${yakitStr}</td>
-          <td class="yakit-col" style="mso-number-format:'\@';">${saatlikYakitStr}</td>
-          ` : ''}
-          ${includeUpdateDates ? `
-          <td class="tarih-col" style="mso-number-format:'\@'; ${r.hasMismatchWarning ? 'background-color: #fef08a; color: #854d0e; font-weight: bold;' : ''}">${formatDayMonthYear(r.surumGecmisi) || '-'}</td>
-          <td class="tarih-col" style="mso-number-format:'\@'; ${r.hasMismatchWarning ? 'background-color: #fef08a; color: #854d0e; font-weight: bold;' : ''}">${formatDayMonthYear(r.sonIkmalTarihi) || '-'}</td>
-          ` : ''}
-        </tr>
-      `;
+      const rowData: any = {
+        kuyrukNo: r.kuyrukNo + (r.hasMismatchWarning ? ' (İKAZ)' : ''),
+        baslOndalik: startDec,
+        baslSaat: formatAsHour(r.baslangicSaat),
+        bitisOndalik: bitisDec,
+        bitisSaat: formatAsHour(r.bitisSaat),
+        toplamUcus: formatAsHour(r.fark),
+        toplamUcusOndalik: formatAsDecimal(r.fark),
+      };
+
+      if (includeFuel) {
+        rowData.toplamYakit = r.toplamYakit > 0 ? r.toplamYakit : 0;
+        rowData.saatlikYakit = r.saatlikYakit > 0 ? Number(r.saatlikYakit.toFixed(2)) : 0;
+      }
+
+      if (includeUpdateDates) {
+        rowData.surumGecmisi = formatDayMonthYear(r.surumGecmisi) || '-';
+        rowData.sonIkmalTarihi = formatDayMonthYear(r.sonIkmalTarihi) || '-';
+      }
+
+      const row = summarySheet.addRow(rowData);
+      row.height = 25;
+      
+      row.eachCell((cell, colNumber) => {
+        const colKey = summaryColumns[colNumber - 1].key;
+        
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'CCCCCC' } },
+          left: { style: 'thin', color: { argb: 'CCCCCC' } },
+          bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
+          right: { style: 'thin', color: { argb: 'CCCCCC' } }
+        };
+        cell.font = { size: 10, color: { argb: '334155' } };
+
+        if (r.hasMismatchWarning) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: amber100 } };
+          cell.font = { color: { argb: '854D0E' }, bold: true };
+        } else {
+          if (colKey === 'kuyrukNo') {
+            cell.font = { bold: true, color: { argb: emerald900 } };
+          } else if (colKey === 'toplamUcus' || colKey === 'toplamUcusOndalik') {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F0F7FF' } };
+            cell.font = { color: { argb: blue600 }, bold: true };
+          } else if (colKey === 'toplamYakit' || colKey === 'saatlikYakit') {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFBEB' } };
+            cell.font = { color: { argb: amber800 }, bold: true };
+          }
+        }
+      });
+
+      // Hyperlink to Detail Sheet
+      if (includeFuel) {
+        const fuelCellIdx = summaryColumns.findIndex(c => c.key === 'toplamYakit');
+        if (fuelCellIdx !== -1 && r.toplamYakit > 0 && r.fuelRecords && r.fuelRecords.length > 0) {
+          const fuelCell = row.getCell(fuelCellIdx + 1);
+          const sheetName = r.kuyrukNo.replace(/[:\\/?*\[\]]/g, '_').substring(0, 31);
+          
+          fuelCell.value = {
+            text: r.toplamYakit.toString(),
+            hyperlink: `#'${sheetName}'!A1`
+          };
+          fuelCell.font = { color: { argb: blue600 }, underline: true, bold: true };
+
+          // Create Detail Sheet
+          const detailSheet = workbook.addWorksheet(sheetName);
+          detailSheet.columns = [
+            { header: 'SIRA NO', key: 'idx', width: 10 },
+            { header: 'TARİH', key: 'tarih', width: 15 },
+            { header: 'İKMA L YERİ', key: 'yer', width: 35 },
+            { header: 'FİŞ / FATURA NO', key: 'fis', width: 20 },
+            { header: 'AÇIKLAMA', key: 'aciklama', width: 40 },
+            { header: 'YAKIT MİKTARI (LT)', key: 'miktar', width: 20 },
+          ];
+
+          // Detail Header Style
+          const dHeader = detailSheet.getRow(1);
+          dHeader.height = 25;
+          dHeader.eachCell((cell) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '78350F' } };
+            cell.font = { color: { argb: white }, bold: true };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = {
+              top: { style: 'thin' },
+              left: { style: 'thin' },
+              bottom: { style: 'thin' },
+              right: { style: 'thin' }
+            };
+          });
+
+          r.fuelRecords.forEach((fr, fIdx) => {
+            const dRow = detailSheet.addRow({
+              idx: fIdx + 1,
+              tarih: formatDayMonthYear(fr.tarih),
+              yer: fr.ikmalYeri || '-',
+              fis: fr.faturaNo || '-',
+              aciklama: fr.aciklama || '-',
+              miktar: fr.miktar
+            });
+            dRow.eachCell((cell) => {
+              cell.alignment = { vertical: 'middle', horizontal: 'center' };
+              cell.border = {
+                top: { style: 'thin', color: { argb: 'CCCCCC' } },
+                left: { style: 'thin', color: { argb: 'CCCCCC' } },
+                bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
+                right: { style: 'thin', color: { argb: 'CCCCCC' } }
+              };
+            });
+          });
+
+          const backRow = detailSheet.addRow(['']);
+          const backCell = backRow.getCell(1);
+          backCell.value = {
+            text: '← GENEL ÖZET SAYFASINA DÖN',
+            hyperlink: "#'Genel Özet'!A1"
+          };
+          backCell.font = { color: { argb: blue600 }, bold: true, underline: true };
+        }
+      }
     });
 
+    // TOTALS ROW
     const totalFark = results.reduce((acc, curr) => acc + curr.fark, 0);
     const totalYakit = results.reduce((acc, curr) => acc + curr.toplamYakit, 0);
-    const overallSaatlikYakit = totalFark > 0 && totalYakit > 0 ? (totalYakit / totalFark).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-';
+    const overallSaatlikYakit = totalFark > 0 && totalYakit > 0 ? (totalYakit / totalFark) : 0;
 
-    html += `
-        <tr style="background-color: #f0fdf4; font-weight: bold;">
-          <td colspan="5" style="text-align: right; padding-right: 20px; color: #064e3b; font-size: 14px;">TOPLAM:</td>
-          <td class="fark-col" style="mso-number-format:'\@'; color: #1e40af; font-size: 16px;">${formatAsHour(totalFark)}</td>
-          <td class="fark-col" style="mso-number-format:'\@'; color: #1e40af; font-size: 16px;">${formatAsDecimal(totalFark)}</td>
-          ${includeFuel ? `
-          <td class="yakit-col" style="mso-number-format:'\@'; color: #92400e; font-size: 16px;">${totalYakit.toLocaleString('tr-TR')} Lt</td>
-          <td class="yakit-col" style="mso-number-format:'\@'; color: #92400e; font-size: 16px;">${overallSaatlikYakit} Lt/S</td>
-          ` : ''}
-          ${includeUpdateDates ? `
-          <td style="text-align: center; color: #64748b; font-size: 12px;">-</td>
-          <td style="text-align: center; color: #64748b; font-size: 12px;">-</td>
-          ` : ''}
-        </tr>
-    `;
+    const totalsData: any = {
+      kuyrukNo: 'TOPLAM:',
+      baslOndalik: '-',
+      baslSaat: '-',
+      bitisOndalik: '-',
+      bitisSaat: '-',
+      toplamUcus: formatAsHour(totalFark),
+      toplamUcusOndalik: formatAsDecimal(totalFark),
+    };
 
-    html += `
-        </table>
-      </body>
-      </html>
-    `;
+    if (includeFuel) {
+      totalsData.toplamYakit = totalYakit;
+      totalsData.saatlikYakit = Number(overallSaatlikYakit.toFixed(2));
+    }
+    
+    if (includeUpdateDates) {
+      totalsData.surumGecmisi = '-';
+      totalsData.sonIkmalTarihi = '-';
+    }
 
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.download = `Govde_Ucus_${includeFuel ? 've_Yakit_' : ''}${type}_${startDate}_${endDate}.xls`;
-    link.href = url;
-    link.click();
-    URL.revokeObjectURL(url);
+    const lastRow = summarySheet.addRow(totalsData);
+    lastRow.height = 30;
+    lastRow.eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F0FDF4' } };
+      cell.font = { bold: true, color: { argb: emerald900 }, size: 11 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = {
+        top: { style: 'double', color: { argb: '000000' } },
+        left: { style: 'thin', color: { argb: '000000' } },
+        bottom: { style: 'thin', color: { argb: '000000' } },
+        right: { style: 'thin', color: { argb: '000000' } }
+      };
+    });
+
+    // Save File
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    const dateSuffix = new Date().toISOString().split('T')[0];
+    anchor.download = `OGM_Govde_Ucus_Raporu_${dateSuffix}.xlsx`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
   };
 
   return (
